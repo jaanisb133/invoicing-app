@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Iestatījumi</h2>
+</div>
+
+<div class="page-body">
+    {% if request.query_params.get('saved') %}
+    <div class="alert alert-success">Iestatījumi saglabāti!</div>
+    {% endif %}
+
+    <form method="post" action="/settings">
+        <div class="card">
+            <div class="card-header">Uzņēmuma informācija</div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Uzņēmuma nosaukums</label>
+                        <input type="text" name="company_name" class="form-control"
+                               value="{{ settings.get('company_name', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Reģistrācijas numurs</label>
+                        <input type="text" name="reg_number" class="form-control"
+                               value="{{ settings.get('reg_number', '') }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>PVN numurs</label>
+                        <input type="text" name="vat_number" class="form-control"
+                               value="{{ settings.get('vat_number', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Juridiskā adrese</label>
+                        <input type="text" name="legal_address" class="form-control"
+                               value="{{ settings.get('legal_address', '') }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Banka</label>
+                        <input type="text" name="bank_name" class="form-control"
+                               value="{{ settings.get('bank_name', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Bankas konts</label>
+                        <input type="text" name="bank_account" class="form-control"
+                               value="{{ settings.get('bank_account', '') }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Dokumentu iestatījumi</div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Pirkuma dokumenta prefikss</label>
+                        <input type="text" name="buy_doc_prefix" class="form-control"
+                               value="{{ settings.get('buy_doc_prefix', 'PIR') }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Pārdošanas dokumenta prefikss</label>
+                        <input type="text" name="sell_doc_prefix" class="form-control"
+                               value="{{ settings.get('sell_doc_prefix', 'PAR') }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Pirkuma dokumenta nosaukums</label>
+                        <input type="text" name="buy_doc_name" class="form-control"
+                               value="{{ settings.get('buy_doc_name', 'PIRKUMA PAVADZĪME') }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Pārdošanas dokumenta nosaukums</label>
+                        <input type="text" name="sell_doc_name" class="form-control"
+                               value="{{ settings.get('sell_doc_name', 'PĀRDOŠANAS PAVADZĪME') }}">
+                    </div>
+                </div>
+                <div class="form-group" style="max-width:200px">
+                    <label>PVN likme (%)</label>
+                    <input type="text" name="default_vat_rate" class="form-control"
+                           value="{{ settings.get('default_vat_rate', '21') }}">
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Saglabāt iestatījumus</button>
+    </form>
+</div>
+{% endblock %}

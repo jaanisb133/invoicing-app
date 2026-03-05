@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>
+        {% if doc_type == 'buy' %}Jauna iegāde (pirkums){% else %}Jauna pārdošana{% endif %}
+    </h2>
+    <div class="btn-group">
+        <a href="/documents/new?doc_type=buy"
+           class="btn {% if doc_type == 'buy' %}btn-success{% else %}btn-outline{% endif %}">Iegāde</a>
+        <a href="/documents/new?doc_type=sell"
+           class="btn {% if doc_type == 'sell' %}btn-primary{% else %}btn-outline{% endif %}">Pārdošana</a>
+    </div>
+</div>
+
+<div class="page-body">
+    {% if request.query_params.get('error') %}
+    <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
+    {% endif %}
+
+    <form method="post" action="/documents/create" id="docForm">
+        <input type="hidden" name="doc_type" value="{{ doc_type }}">
+
+        <div class="card">
+            <div class="card-header">Dokumenta informācija</div>
+            <div class="card-body">
+                <div class="form-row-3">
+                    <div class="form-group">
+                        <label>Klients *</label>
+                        <div style="display:flex;gap:8px">
+                            <select name="client_id" id="clientSelect" class="form-control" required>
+                                <option value="">— Izvēlieties klientu —</option>
+                                {% for c in clients %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline" onclick="showQuickAddClient()">+</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Datums</label>
+                        <input type="date" name="doc_date" class="form-control"
+                               value="{{ today if today else '' }}"
+                               id="docDate">
+                    </div>
+                    <div class="form-group">
+                        <label>PVN likme (%)</label>
+                        <input type="number" name="vat_rate" id="vatRate" class="form-control"
+                               value="{{ settings.get('default_vat_rate', '21') }}" step="0.1" min="0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>PDF veidne</label>
+                        <select name="template" class="form-control">
+                            {% for key, label in templates.items() %}
+                            <option value="{{ key }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Piezīmes</label>
+                        <input type="text" name="notes" class="form-control">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                <span>Preces</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="addItemRow()">+ Pievienot preci</button>
+            </div>
+            <div class="card-body">
+                <div class="table-wrapper">
+                    <table class="doc-items-table">
+                        <thead>
+                            <tr>
+                                <th>Produkts</th>
+                                <th style="width:100px">Mērvienība</th>
+                                <th style="width:100px">Daudzums</th>
+                                <th style="width:100px">Cena</th>
+                                <th style="width:100px">Summa</th>
+                                <th style="width:40px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsBody">
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" class="text-right" style="font-weight:600">Summa bez PVN:</td>
+                                <td id="subtotalDisplay" style="font-weight:600">0.00</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" class="text-right">PVN:</td>
+                                <td id="vatDisplay">0.00</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" class="text-right" style="font-weight:700;font-size:16px">Kopā ar PVN:</td>
+                                <td id="totalDisplay" style="font-weight:700;font-size:16px">0.00</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 32px">
+            Izveidot dokumentu
+        </button>
+    </form>
+</div>
+
+<!-- Quick Add Client Modal -->
+<div class="modal-overlay" id="quickAddClientModal">
+    <div class="modal">
+        <div class="modal-title">Ātrā klienta pievienošana</div>
+        <div class="form-group">
+            <label>Nosaukums *</label>
+            <input type="text" id="qc_name" class="form-control" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Reģ. Nr.</label>
+                <input type="text" id="qc_reg_number" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>PVN Nr.</label>
+                <input type="text" id="qc_vat_number" class="form-control">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Juridiskā adrese</label>
+            <input type="text" id="qc_legal_address" class="form-control">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Banka</label>
+                <input type="text" id="qc_bank_name" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Bankas konts</label>
+                <input type="text" id="qc_bank_account" class="form-control">
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-outline"
+                    onclick="document.getElementById('quickAddClientModal').classList.remove('active')">Atcelt</button>
+            <button type="button" class="btn btn-primary" onclick="quickAddClient()">Pievienot</button>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Add Product Modal -->
+<div class="modal-overlay" id="quickAddProductModal">
+    <div class="modal">
+        <div class="modal-title">Ātrā produkta pievienošana</div>
+        <div class="form-group">
+            <label>Nosaukums *</label>
+            <input type="text" id="qp_name" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label>Mērvienība</label>
+            <select id="qp_unit" class="form-control">
+                {% for u in units %}
+                <option value="{{ u }}">{{ u }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-outline"
+                    onclick="document.getElementById('quickAddProductModal').classList.remove('active')">Atcelt</button>
+            <button type="button" class="btn btn-primary" onclick="quickAddProduct()">Pievienot</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const products = {{ products | tojson }};
+const stockMap = {{ stock_map | tojson }};
+const units = {{ units | tojson }};
+const docType = "{{ doc_type }}";
+let itemIndex = 0;
+
+// Set today's date if empty
+const dateInput = document.getElementById('docDate');
+if (!dateInput.value) {
+    dateInput.value = new Date().toISOString().slice(0, 10);
+}
+
+function addItemRow() {
+    const idx = itemIndex++;
+    const tbody = document.getElementById('itemsBody');
+    const tr = document.createElement('tr');
+    tr.className = 'item-row';
+    tr.id = 'item-' + idx;
+
+    let productOptions = '<option value="">— Produkts —</option>';
+    products.forEach(p => {
+        const stockInfo = docType === 'sell' ? ' (atl: ' + (stockMap[p.id] || 0).toFixed(2) + ')' : '';
+        productOptions += '<option value="' + p.id + '" data-unit="' + p.unit + '">' + p.name + stockInfo + '</option>';
+    });
+
+    let unitOptions = '';
+    units.forEach(u => {
+        unitOptions += '<option value="' + u + '">' + u + '</option>';
+    });
+
+    tr.innerHTML = `
+        <td>
+            <div style="display:flex;gap:4px">
+                <select name="items[${idx}][product_id]" class="form-control" onchange="onProductChange(this, ${idx})" required>
+                    ${productOptions}
+                </select>
+                <button type="button" class="btn btn-outline btn-sm" onclick="showQuickAddProduct()" style="flex-shrink:0">+</button>
+            </div>
+            <div class="stock-hint" id="stock-hint-${idx}"></div>
+        </td>
+        <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control">${unitOptions}</select></td>
+        <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="1" onchange="recalculate()" oninput="recalculate()" required></td>
+        <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="0" onchange="recalculate()" oninput="recalculate()" required></td>
+        <td class="item-total text-right" id="total-${idx}">0.00</td>
+        <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
+    `;
+    tbody.appendChild(tr);
+    recalculate();
+}
+
+function removeItemRow(idx) {
+    const row = document.getElementById('item-' + idx);
+    if (row) row.remove();
+    recalculate();
+}
+
+function onProductChange(select, idx) {
+    const option = select.selectedOptions[0];
+    if (option && option.dataset.unit) {
+        document.getElementById('unit-' + idx).value = option.dataset.unit;
+    }
+    // Show stock hint for sell docs
+    if (docType === 'sell' && select.value) {
+        const stock = stockMap[parseInt(select.value)] || 0;
+        const hint = document.getElementById('stock-hint-' + idx);
+        hint.textContent = 'Pieejams: ' + stock.toFixed(2);
+        hint.className = stock <= 0 ? 'stock-hint stock-warn' : 'stock-hint';
+    }
+}
+
+function recalculate() {
+    let subtotal = 0;
+    document.querySelectorAll('.item-row').forEach(row => {
+        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
+        const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
+        const lineTotal = qty * price;
+        subtotal += lineTotal;
+        const idx = row.id.split('-')[1];
+        document.getElementById('total-' + idx).textContent = lineTotal.toFixed(2);
+    });
+
+    const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+    const vat = subtotal * (vatRate / 100);
+    const total = subtotal + vat;
+
+    document.getElementById('subtotalDisplay').textContent = subtotal.toFixed(2);
+    document.getElementById('vatDisplay').textContent = vat.toFixed(2);
+    document.getElementById('totalDisplay').textContent = total.toFixed(2);
+}
+
+document.getElementById('vatRate').addEventListener('input', recalculate);
+
+// Quick-add modals
+function showQuickAddClient() {
+    document.getElementById('quickAddClientModal').classList.add('active');
+}
+
+function showQuickAddProduct() {
+    document.getElementById('quickAddProductModal').classList.add('active');
+}
+
+async function quickAddClient() {
+    const data = {
+        name: document.getElementById('qc_name').value,
+        reg_number: document.getElementById('qc_reg_number').value,
+        vat_number: document.getElementById('qc_vat_number').value,
+        legal_address: document.getElementById('qc_legal_address').value,
+        bank_name: document.getElementById('qc_bank_name').value,
+        bank_account: document.getElementById('qc_bank_account').value,
+    };
+    if (!data.name) return;
+
+    const resp = await fetch('/api/clients/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    const client = await resp.json();
+
+    const select = document.getElementById('clientSelect');
+    const opt = new Option(client.name, client.id, true, true);
+    select.add(opt);
+
+    document.getElementById('quickAddClientModal').classList.remove('active');
+    ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_bank_name', 'qc_bank_account'].forEach(
+        id => document.getElementById(id).value = ''
+    );
+}
+
+async function quickAddProduct() {
+    const name = document.getElementById('qp_name').value;
+    const unit = document.getElementById('qp_unit').value;
+    if (!name) return;
+
+    const resp = await fetch('/api/products/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, unit})
+    });
+    const product = await resp.json();
+
+    products.push(product);
+    stockMap[product.id] = 0;
+
+    // Refresh all product dropdowns in existing rows
+    document.querySelectorAll('.item-row select[name*="product_id"]').forEach(select => {
+        const stockInfo = docType === 'sell' ? ' (atl: 0.00)' : '';
+        const opt = new Option(product.name + stockInfo, product.id);
+        opt.dataset.unit = product.unit;
+        select.add(opt);
+    });
+
+    document.getElementById('quickAddProductModal').classList.remove('active');
+    document.getElementById('qp_name').value = '';
+}
+
+// Start with one empty row
+addItemRow();
+</script>
+{% endblock %}

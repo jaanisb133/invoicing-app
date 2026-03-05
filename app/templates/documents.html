@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Dokumenti</h2>
+    <div class="btn-group">
+        <a href="/documents/new?doc_type=buy" class="btn btn-success">+ Jauna iegāde</a>
+        <a href="/documents/new?doc_type=sell" class="btn btn-primary">+ Jauna pārdošana</a>
+    </div>
+</div>
+
+<div class="page-body">
+    <div class="card">
+        <div class="card-body">
+            <form method="get" action="/documents" class="filters-bar">
+                <div class="form-group">
+                    <label>Tips</label>
+                    <select name="doc_type" class="form-control">
+                        <option value="">Visi</option>
+                        <option value="buy" {% if filters.doc_type == 'buy' %}selected{% endif %}>Iegāde</option>
+                        <option value="sell" {% if filters.doc_type == 'sell' %}selected{% endif %}>Pārdošana</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Klients</label>
+                    <select name="client_id" class="form-control">
+                        <option value="">Visi</option>
+                        {% for c in clients %}
+                        <option value="{{ c.id }}" {% if filters.client_id == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>No datuma</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+                </div>
+                <div class="form-group">
+                    <label>Līdz datumam</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="btn btn-outline">Filtrēt</button>
+                </div>
+            </form>
+
+            {% if documents %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nr.</th>
+                            <th>Tips</th>
+                            <th>Klients</th>
+                            <th>Datums</th>
+                            <th>PVN %</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documents %}
+                        <tr>
+                            <td>{{ doc.doc_number }}</td>
+                            <td>
+                                {% if doc.doc_type == 'buy' %}
+                                <span class="badge badge-buy">Iegāde</span>
+                                {% else %}
+                                <span class="badge badge-sell">Pārdošana</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ doc.client_name }}</td>
+                            <td>{{ doc.doc_date }}</td>
+                            <td>{{ doc.vat_rate }}%</td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="/documents/{{ doc.id }}" class="btn btn-outline btn-sm">Skatīt</a>
+                                    <a href="/documents/{{ doc.id }}/pdf" class="btn btn-outline btn-sm">PDF</a>
+                                    <form method="post" action="/documents/{{ doc.id }}/delete"
+                                          onsubmit="return confirm('Vai tiešām dzēst dokumentu {{ doc.doc_number }}?')">
+                                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">Nav dokumentu ar izvēlētajiem filtriem.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Produkti</h2>
+    <button class="btn btn-primary" onclick="document.getElementById('addProductModal').classList.add('active')">
+        + Pievienot produktu
+    </button>
+</div>
+
+<div class="page-body">
+    <div class="card">
+        <div class="card-body">
+            {% if products %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nosaukums</th>
+                            <th>Mērvienība</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in products %}
+                        <tr>
+                            <td>{{ p.name }}</td>
+                            <td>{{ p.unit }}</td>
+                            <td>
+                                <div class="btn-group">
+                                    <button class="btn btn-outline btn-sm"
+                                            onclick="editProduct({{ p.id }}, '{{ p.name }}', '{{ p.unit }}')">
+                                        Rediģēt
+                                    </button>
+                                    <form method="post" action="/products/{{ p.id }}/delete"
+                                          onsubmit="return confirm('Vai tiešām dzēst šo produktu?')">
+                                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">Nav produktu. Pievienojiet pirmo produktu!</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal-overlay" id="addProductModal">
+    <div class="modal">
+        <div class="modal-title">Pievienot produktu</div>
+        <form method="post" action="/products/add">
+            <div class="form-group">
+                <label>Nosaukums</label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Mērvienība</label>
+                <select name="unit" class="form-control">
+                    {% for u in units %}
+                    <option value="{{ u }}">{{ u }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline"
+                        onclick="document.getElementById('addProductModal').classList.remove('active')">Atcelt</button>
+                <button type="submit" class="btn btn-primary">Pievienot</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Product Modal -->
+<div class="modal-overlay" id="editProductModal">
+    <div class="modal">
+        <div class="modal-title">Rediģēt produktu</div>
+        <form method="post" id="editProductForm">
+            <div class="form-group">
+                <label>Nosaukums</label>
+                <input type="text" name="name" id="editProductName" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Mērvienība</label>
+                <select name="unit" id="editProductUnit" class="form-control">
+                    {% for u in units %}
+                    <option value="{{ u }}">{{ u }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline"
+                        onclick="document.getElementById('editProductModal').classList.remove('active')">Atcelt</button>
+                <button type="submit" class="btn btn-primary">Saglabāt</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editProduct(id, name, unit) {
+    document.getElementById('editProductForm').action = '/products/' + id + '/edit';
+    document.getElementById('editProductName').value = name;
+    document.getElementById('editProductUnit').value = unit;
+    document.getElementById('editProductModal').classList.add('active');
+}
+</script>
+{% endblock %}

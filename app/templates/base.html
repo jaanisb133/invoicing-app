@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pavadzīmju Pārvaldnieks</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <button class="hamburger" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h1>Pavadzīmju Pārvaldnieks</h1>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">Pārskats</a>
+            <a href="/settings" class="{% if page == 'settings' %}active{% endif %}">Iestatījumi</a>
+            <a href="/products" class="{% if page == 'products' %}active{% endif %}">Produkti</a>
+            <a href="/clients" class="{% if page == 'clients' %}active{% endif %}">Klienti</a>
+            <a href="/documents/new?doc_type=buy" class="{% if page == 'new_document' %}active{% endif %}">Jauns dokuments</a>
+            <a href="/documents" class="{% if page == 'documents' %}active{% endif %}">Dokumenti</a>
+            <a href="/stock" class="{% if page == 'stock' %}active{% endif %}">Noliktava</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+    <script>
+        // Close sidebar on mobile when clicking outside
+        document.addEventListener('click', function(e) {
+            const sidebar = document.querySelector('.sidebar');
+            const hamburger = document.querySelector('.hamburger');
+            if (window.innerWidth <= 768 && sidebar.classList.contains('open')
+                && !sidebar.contains(e.target) && !hamburger.contains(e.target)) {
+                sidebar.classList.remove('open');
+            }
+        });
+    </script>
+</body>
+</html>

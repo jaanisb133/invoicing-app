@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Pārskats</h2>
+    <div class="btn-group">
+        <a href="/documents/new?doc_type=buy" class="btn btn-success">+ Jauna iegāde</a>
+        <a href="/documents/new?doc_type=sell" class="btn btn-primary">+ Jauna pārdošana</a>
+    </div>
+</div>
+
+<div class="page-body">
+    {% if settings.get('company_name') %}
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">{{ stock | length }}</div>
+            <div class="stat-label">Aktīvi produkti</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ recent_docs | length }}</div>
+            <div class="stat-label">Pēdējie dokumenti</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">
+                {% set total_stock = stock | sum(attribute='stock') %}
+                {{ "%.0f" | format(total_stock) }}
+            </div>
+            <div class="stat-label">Kopējais krājums</div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        Sveicināti! Lai sāktu, lūdzu aizpildiet <a href="/settings">uzņēmuma iestatījumus</a>.
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header">Pēdējie dokumenti</div>
+        <div class="card-body">
+            {% if recent_docs %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nr.</th>
+                            <th>Tips</th>
+                            <th>Klients</th>
+                            <th>Datums</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in recent_docs %}
+                        <tr>
+                            <td>{{ doc.doc_number }}</td>
+                            <td>
+                                {% if doc.doc_type == 'buy' %}
+                                <span class="badge badge-buy">Iegāde</span>
+                                {% else %}
+                                <span class="badge badge-sell">Pārdošana</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ doc.client_name }}</td>
+                            <td>{{ doc.doc_date }}</td>
+                            <td><a href="/documents/{{ doc.id }}" class="btn btn-outline btn-sm">Skatīt</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">Nav dokumentu. Izveidojiet pirmo dokumentu!</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if stock %}
+    <div class="card">
+        <div class="card-header">Noliktavas atlikumi</div>
+        <div class="card-body">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Produkts</th>
+                            <th>Mērvienība</th>
+                            <th class="text-right">Iepirkts</th>
+                            <th class="text-right">Pārdots</th>
+                            <th class="text-right">Atlikums</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in stock %}
+                        <tr>
+                            <td>{{ s.name }}</td>
+                            <td>{{ s.unit }}</td>
+                            <td class="text-right">{{ "%.2f" | format(s.bought) }}</td>
+                            <td class="text-right">{{ "%.2f" | format(s.sold) }}</td>
+                            <td class="text-right" style="font-weight:600">{{ "%.2f" | format(s.stock) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

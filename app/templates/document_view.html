@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>
+        {% if doc.doc_type == 'buy' %}
+        <span class="badge badge-buy">Iegāde</span>
+        {% else %}
+        <span class="badge badge-sell">Pārdošana</span>
+        {% endif %}
+        {{ doc.doc_number }}
+    </h2>
+    <div class="btn-group">
+        {% for key, label in templates.items() %}
+        <a href="/documents/{{ doc.id }}/pdf?template={{ key }}" class="btn btn-outline btn-sm" target="_blank">
+            PDF: {{ label }}
+        </a>
+        {% endfor %}
+        <a href="/documents" class="btn btn-outline">Atpakaļ</a>
+    </div>
+</div>
+
+<div class="page-body">
+    {% if request.query_params.get('created') %}
+    <div class="alert alert-success">Dokuments veiksmīgi izveidots! PDF fails ir pieejams.</div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <div class="doc-meta">
+                <div class="doc-meta-section">
+                    <h4>Piegādātājs / Pārdevējs</h4>
+                    {% if doc.doc_type == 'buy' %}
+                    <p>
+                        <strong>{{ client.name }}</strong><br>
+                        {% if client.reg_number %}Reģ.Nr.: {{ client.reg_number }}<br>{% endif %}
+                        {% if client.vat_number %}PVN Nr.: {{ client.vat_number }}<br>{% endif %}
+                        {% if client.legal_address %}{{ client.legal_address }}<br>{% endif %}
+                        {% if client.bank_name %}Banka: {{ client.bank_name }}<br>{% endif %}
+                        {% if client.bank_account %}Konts: {{ client.bank_account }}{% endif %}
+                    </p>
+                    {% else %}
+                    <p>
+                        <strong>{{ settings.get('company_name', '') }}</strong><br>
+                        {% if settings.get('reg_number') %}Reģ.Nr.: {{ settings.get('reg_number') }}<br>{% endif %}
+                        {% if settings.get('vat_number') %}PVN Nr.: {{ settings.get('vat_number') }}<br>{% endif %}
+                        {% if settings.get('legal_address') %}{{ settings.get('legal_address') }}<br>{% endif %}
+                        {% if settings.get('bank_name') %}Banka: {{ settings.get('bank_name') }}<br>{% endif %}
+                        {% if settings.get('bank_account') %}Konts: {{ settings.get('bank_account') }}{% endif %}
+                    </p>
+                    {% endif %}
+                </div>
+                <div class="doc-meta-section">
+                    <h4>Pircējs</h4>
+                    {% if doc.doc_type == 'sell' %}
+                    <p>
+                        <strong>{{ client.name }}</strong><br>
+                        {% if client.reg_number %}Reģ.Nr.: {{ client.reg_number }}<br>{% endif %}
+                        {% if client.vat_number %}PVN Nr.: {{ client.vat_number }}<br>{% endif %}
+                        {% if client.legal_address %}{{ client.legal_address }}<br>{% endif %}
+                        {% if client.bank_name %}Banka: {{ client.bank_name }}<br>{% endif %}
+                        {% if client.bank_account %}Konts: {{ client.bank_account }}{% endif %}
+                    </p>
+                    {% else %}
+                    <p>
+                        <strong>{{ settings.get('company_name', '') }}</strong><br>
+                        {% if settings.get('reg_number') %}Reģ.Nr.: {{ settings.get('reg_number') }}<br>{% endif %}
+                        {% if settings.get('vat_number') %}PVN Nr.: {{ settings.get('vat_number') }}<br>{% endif %}
+                        {% if settings.get('legal_address') %}{{ settings.get('legal_address') }}<br>{% endif %}
+                        {% if settings.get('bank_name') %}Banka: {{ settings.get('bank_name') }}<br>{% endif %}
+                        {% if settings.get('bank_account') %}Konts: {{ settings.get('bank_account') }}{% endif %}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <p class="mb-4"><strong>Datums:</strong> {{ doc.doc_date }}</p>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nr.</th>
+                            <th>Nosaukums</th>
+                            <th>Mērvienība</th>
+                            <th class="text-right">Daudzums</th>
+                            <th class="text-right">Cena (bez PVN)</th>
+                            <th class="text-right">Summa (bez PVN)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ item.product_name }}</td>
+                            <td>{{ item.unit }}</td>
+                            <td class="text-right">{{ "%.2f" | format(item.quantity) }}</td>
+                            <td class="text-right">{{ "%.2f" | format(item.price_per_unit) }}</td>
+                            <td class="text-right">{{ "%.2f" | format(item.quantity * item.price_per_unit) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="totals-section">
+                <div class="total-line">Summa bez PVN: <strong>{{ "%.2f" | format(subtotal) }} EUR</strong></div>
+                <div class="total-line">PVN ({{ doc.vat_rate }}%): <strong>{{ "%.2f" | format(vat_amount) }} EUR</strong></div>
+                <div class="grand-total">Kopā: {{ "%.2f" | format(total) }} EUR</div>
+            </div>
+
+            {% if doc.notes %}
+            <p class="mt-4"><strong>Piezīmes:</strong> {{ doc.notes }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Klienti</h2>
+    <button class="btn btn-primary" onclick="document.getElementById('addClientModal').classList.add('active')">
+        + Pievienot klientu
+    </button>
+</div>
+
+<div class="page-body">
+    <div class="card">
+        <div class="card-body">
+            {% if clients %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nosaukums</th>
+                            <th>Reģ. Nr.</th>
+                            <th>PVN Nr.</th>
+                            <th>Kontaktpersona</th>
+                            <th>Tālrunis</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in clients %}
+                        <tr>
+                            <td>{{ c.name }}</td>
+                            <td>{{ c.reg_number or '—' }}</td>
+                            <td>{{ c.vat_number or '—' }}</td>
+                            <td>{{ c.contact_person or '—' }}</td>
+                            <td>{{ c.phone or '—' }}</td>
+                            <td>
+                                <div class="btn-group">
+                                    <button class="btn btn-outline btn-sm"
+                                            onclick='editClient({{ c | tojson }})'>
+                                        Rediģēt
+                                    </button>
+                                    <form method="post" action="/clients/{{ c.id }}/delete"
+                                          onsubmit="return confirm('Vai tiešām dzēst šo klientu?')">
+                                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">Nav klientu. Pievienojiet pirmo klientu!</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Add Client Modal -->
+<div class="modal-overlay" id="addClientModal">
+    <div class="modal">
+        <div class="modal-title">Pievienot klientu</div>
+        <form method="post" action="/clients/add">
+            <div class="form-group">
+                <label>Nosaukums *</label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Reģistrācijas Nr.</label>
+                    <input type="text" name="reg_number" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>PVN Nr.</label>
+                    <input type="text" name="vat_number" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Juridiskā adrese</label>
+                <input type="text" name="legal_address" class="form-control">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Banka</label>
+                    <input type="text" name="bank_name" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Bankas konts</label>
+                    <input type="text" name="bank_account" class="form-control">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Kontaktpersona</label>
+                    <input type="text" name="contact_person" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Tālrunis</label>
+                    <input type="text" name="phone" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>E-pasts</label>
+                <input type="email" name="email" class="form-control">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline"
+                        onclick="document.getElementById('addClientModal').classList.remove('active')">Atcelt</button>
+                <button type="submit" class="btn btn-primary">Pievienot</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Client Modal -->
+<div class="modal-overlay" id="editClientModal">
+    <div class="modal">
+        <div class="modal-title">Rediģēt klientu</div>
+        <form method="post" id="editClientForm">
+            <div class="form-group">
+                <label>Nosaukums *</label>
+                <input type="text" name="name" id="ec_name" class="form-control" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Reģistrācijas Nr.</label>
+                    <input type="text" name="reg_number" id="ec_reg_number" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>PVN Nr.</label>
+                    <input type="text" name="vat_number" id="ec_vat_number" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Juridiskā adrese</label>
+                <input type="text" name="legal_address" id="ec_legal_address" class="form-control">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Banka</label>
+                    <input type="text" name="bank_name" id="ec_bank_name" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Bankas konts</label>
+                    <input type="text" name="bank_account" id="ec_bank_account" class="form-control">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Kontaktpersona</label>
+                    <input type="text" name="contact_person" id="ec_contact_person" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Tālrunis</label>
+                    <input type="text" name="phone" id="ec_phone" class="form-control">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>E-pasts</label>
+                <input type="email" name="email" id="ec_email" class="form-control">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline"
+                        onclick="document.getElementById('editClientModal').classList.remove('active')">Atcelt</button>
+                <button type="submit" class="btn btn-primary">Saglabāt</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editClient(c) {
+    document.getElementById('editClientForm').action = '/clients/' + c.id + '/edit';
+    const fields = ['name', 'reg_number', 'vat_number', 'legal_address',
+                     'bank_name', 'bank_account', 'contact_person', 'phone', 'email'];
+    fields.forEach(f => {
+        document.getElementById('ec_' + f).value = c[f] || '';
+    });
+    document.getElementById('editClientModal').classList.add('active');
+}
+</script>
+{% endblock %}

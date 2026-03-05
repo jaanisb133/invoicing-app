@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Noliktava</h2>
+</div>
+
+<div class="page-body">
+    <div class="card">
+        <div class="card-body">
+            <form method="get" action="/stock" class="filters-bar">
+                <div class="form-group">
+                    <label>No datuma</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+                </div>
+                <div class="form-group">
+                    <label>Līdz datumam</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="btn btn-outline">Filtrēt</button>
+                </div>
+                {% if filters.date_from or filters.date_to %}
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <a href="/stock" class="btn btn-outline">Notīrīt</a>
+                </div>
+                {% endif %}
+            </form>
+
+            {% if stock %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Produkts</th>
+                            <th>Mērvienība</th>
+                            <th class="text-right">Iepirkts</th>
+                            <th class="text-right">Pārdots</th>
+                            <th class="text-right">Atlikums</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in stock %}
+                        <tr>
+                            <td>{{ s.name }}</td>
+                            <td>{{ s.unit }}</td>
+                            <td class="text-right">{{ "%.2f" | format(s.bought) }}</td>
+                            <td class="text-right">{{ "%.2f" | format(s.sold) }}</td>
+                            <td class="text-right" style="font-weight:600;{% if s.stock <= 0 %}color:var(--danger){% endif %}">
+                                {{ "%.2f" | format(s.stock) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">Nav produktu noliktavā.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
