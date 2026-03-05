@@ -185,6 +185,7 @@ const products = {{ products | tojson }};
 const stockMap = {{ stock_map | tojson }};
 const units = {{ units | tojson }};
 const docType = "{{ doc_type }}";
+const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
 let itemIndex = 0;
 
 // Set today's date if empty
@@ -202,7 +203,7 @@ function addItemRow() {
 
     let productOptions = '<option value="">— Produkts —</option>';
     products.forEach(p => {
-        const stockInfo = docType === 'sell' ? ' (atl: ' + (stockMap[p.id] || 0).toFixed(2) + ')' : '';
+        const stockInfo = (stockEnabled && docType === 'sell') ? ' (atl: ' + (stockMap[p.id] || 0).toFixed(2) + ')' : '';
         productOptions += '<option value="' + p.id + '" data-unit="' + p.unit + '">' + p.name + stockInfo + '</option>';
     });
 
@@ -243,7 +244,7 @@ function onProductChange(select, idx) {
         document.getElementById('unit-' + idx).value = option.dataset.unit;
     }
     // Show stock hint for sell docs
-    if (docType === 'sell' && select.value) {
+    if (stockEnabled && docType === 'sell' && select.value) {
         const stock = stockMap[parseInt(select.value)] || 0;
         const hint = document.getElementById('stock-hint-' + idx);
         hint.textContent = 'Pieejams: ' + stock.toFixed(2);
@@ -327,7 +328,7 @@ async function quickAddProduct() {
 
     // Refresh all product dropdowns in existing rows
     document.querySelectorAll('.item-row select[name*="product_id"]').forEach(select => {
-        const stockInfo = docType === 'sell' ? ' (atl: 0.00)' : '';
+        const stockInfo = (stockEnabled && docType === 'sell') ? ' (atl: 0.00)' : '';
         const opt = new Option(product.name + stockInfo, product.id);
         opt.dataset.unit = product.unit;
         select.add(opt);

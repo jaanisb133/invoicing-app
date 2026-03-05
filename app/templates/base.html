@@ -20,7 +20,9 @@
             <a href="/clients" class="{% if page == 'clients' %}active{% endif %}">Klienti</a>
             <a href="/documents/new?doc_type=buy" class="{% if page == 'new_document' %}active{% endif %}">Jauns dokuments</a>
             <a href="/documents" class="{% if page == 'documents' %}active{% endif %}">Dokumenti</a>
+            {% if stock_enabled is not defined or stock_enabled %}
             <a href="/stock" class="{% if page == 'stock' %}active{% endif %}">Noliktava</a>
+            {% endif %}
         </nav>
     </aside>
 

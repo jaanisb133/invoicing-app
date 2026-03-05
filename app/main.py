@@ -22,6 +22,10 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 UNITS = ["kg", "gab", "kaste", "iepak.", "l"]
 
 
+def _stock_enabled():
+    return db.get_setting("stock_enabled", "1") == "1"
+
+
 @app.on_event("startup")
 def startup():
     db.init_db()
@@ -36,11 +40,13 @@ async def dashboard(request: Request):
     recent_docs = db.get_documents()[:10]
     stock = db.get_stock()
     settings = db.get_all_settings()
+    stock_on = _stock_enabled()
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "recent_docs": recent_docs,
-        "stock": stock,
+        "stock": stock if stock_on else [],
         "settings": settings,
+        "stock_enabled": stock_on,
         "page": "dashboard",
     })
 
@@ -55,6 +61,7 @@ async def settings_page(request: Request):
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "settings": settings,
+        "stock_enabled": _stock_enabled(),
         "page": "settings",
     })
 
@@ -73,6 +80,7 @@ async def save_settings(
     buy_doc_name: str = Form("PIRKUMA PAVADZĪME"),
     sell_doc_name: str = Form("PĀRDOŠANAS PAVADZĪME"),
     default_vat_rate: str = Form("21"),
+    stock_enabled: str = Form("0"),
 ):
     db.save_all_settings({
         "company_name": company_name,
@@ -86,6 +94,7 @@ async def save_settings(
         "buy_doc_name": buy_doc_name,
         "sell_doc_name": sell_doc_name,
         "default_vat_rate": default_vat_rate,
+        "stock_enabled": stock_enabled,
     })
     return RedirectResponse("/settings?saved=1", status_code=303)
 
@@ -101,6 +110,7 @@ async def products_page(request: Request):
         "request": request,
         "products": products,
         "units": UNITS,
+        "stock_enabled": _stock_enabled(),
         "page": "products",
     })
 
@@ -133,6 +143,7 @@ async def clients_page(request: Request):
     return templates.TemplateResponse("clients.html", {
         "request": request,
         "clients": clients,
+        "stock_enabled": _stock_enabled(),
         "page": "clients",
     })
 
@@ -199,6 +210,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         "clients": clients,
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to},
+        "stock_enabled": _stock_enabled(),
         "page": "documents",
     })
 
@@ -208,7 +220,8 @@ async def new_document_page(request: Request, doc_type: str = "buy"):
     clients = db.get_all_clients()
     products = db.get_all_products()
     settings = db.get_all_settings()
-    stock_data = db.get_stock()
+    stock_on = _stock_enabled()
+    stock_data = db.get_stock() if stock_on else []
     stock_map = {s["id"]: s["stock"] for s in stock_data}
     return templates.TemplateResponse("document_form.html", {
         "request": request,
@@ -218,6 +231,7 @@ async def new_document_page(request: Request, doc_type: str = "buy"):
         "settings": settings,
         "doc_type": doc_type,
         "stock_map": stock_map,
+        "stock_enabled": stock_on,
         "templates": TEMPLATES,
         "page": "new_document",
     })
@@ -284,6 +298,7 @@ async def view_document(request: Request, doc_id: int):
         "vat_amount": vat_amount,
         "total": total,
         "templates": TEMPLATES,
+        "stock_enabled": _stock_enabled(),
         "page": "documents",
     })
 
@@ -307,10 +322,12 @@ async def delete_document(doc_id: int):
 
 @app.get("/stock", response_class=HTMLResponse)
 async def stock_page(request: Request, date_from: str = "", date_to: str = ""):
-    stock = db.get_stock(date_from=date_from or None, date_to=date_to or None)
+    stock_on = _stock_enabled()
+    stock = db.get_stock(date_from=date_from or None, date_to=date_to or None) if stock_on else []
     return templates.TemplateResponse("stock.html", {
         "request": request,
         "stock": stock,
+        "stock_enabled": stock_on,
         "filters": {"date_from": date_from, "date_to": date_to},
         "page": "stock",
     })

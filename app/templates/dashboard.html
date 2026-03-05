@@ -20,6 +20,7 @@
             <div class="stat-value">{{ recent_docs | length }}</div>
             <div class="stat-label">Pēdējie dokumenti</div>
         </div>
+        {% if stock_enabled %}
         <div class="stat-card">
             <div class="stat-value">
                 {% set total_stock = stock | sum(attribute='stock') %}
@@ -27,6 +28,7 @@
             </div>
             <div class="stat-label">Kopējais krājums</div>
         </div>
+        {% endif %}
     </div>
     {% else %}
     <div class="alert alert-info">
@@ -74,7 +76,7 @@
         </div>
     </div>
 
-    {% if stock %}
+    {% if stock_enabled and stock %}
     <div class="card">
         <div class="card-header">Noliktavas atlikumi</div>
         <div class="card-body">

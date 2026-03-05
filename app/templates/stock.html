@@ -6,8 +6,14 @@
 </div>
 
 <div class="page-body">
+    {% if not stock_enabled %}
+    <div class="alert alert-info">
+        Noliktavas uzskaite ir izslēgta. Ieslēdziet to <a href="/settings">iestatījumos</a>, lai izsekotu krājumus.
+    </div>
+    {% endif %}
     <div class="card">
         <div class="card-body">
+            {% if stock_enabled %}
             <form method="get" action="/stock" class="filters-bar">
                 <div class="form-group">
                     <label>No datuma</label>
@@ -58,6 +64,9 @@
             </div>
             {% else %}
             <div class="empty-state">Nav produktu noliktavā.</div>
+            {% endif %}
+            {% else %}
+            <div class="empty-state">Noliktavas uzskaite ir izslēgta.</div>
             {% endif %}
         </div>
     </div>
