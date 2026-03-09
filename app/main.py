@@ -56,7 +56,7 @@ def _set_session_cookie(response, user_id):
 
 
 def _stock_enabled(user_id):
-    return db.get_user_setting(user_id, "stock_enabled", "1") == "1"
+    return db.get_user_setting(user_id, "stock_enabled", "0") == "1"
 
 
 def _user_settings(user_id):

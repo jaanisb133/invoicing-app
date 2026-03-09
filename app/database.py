@@ -529,7 +529,7 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
     """
     conn = get_connection()
     try:
-        stock_on = get_user_setting(user_id, "stock_enabled", "1") == "1"
+        stock_on = get_user_setting(user_id, "stock_enabled", "0") == "1"
         if stock_on and doc_type == "sell":
             for item in items:
                 available = _get_product_stock(conn, item["product_id"], user_id)
