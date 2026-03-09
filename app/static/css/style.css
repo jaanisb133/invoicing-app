@@ -1,5 +1,5 @@
 /* ============================================================
-   Pavadzīmju Pārvaldnieks — Modern SaaS Stylesheet
+   V-Rēķini — Modern SaaS Stylesheet
    ============================================================ */
 
 :root {
@@ -29,6 +29,82 @@
     --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.03);
     --transition: 0.15s ease;
 }
+
+/* Dark theme */
+[data-theme="dark"] {
+    --primary: #0f172a;
+    --primary-light: #1e293b;
+    --primary-hover: #334155;
+    --accent: #818cf8;
+    --accent-hover: #6366f1;
+    --accent-soft: rgba(129, 140, 248, 0.15);
+    --success: #22d3ee;
+    --success-soft: rgba(34, 211, 238, 0.15);
+    --danger: #f87171;
+    --danger-soft: rgba(248, 113, 113, 0.15);
+    --warning: #fbbf24;
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --text: #e2e8f0;
+    --text-light: #94a3b8;
+    --text-lighter: #64748b;
+    --border: #334155;
+    --border-light: #1e293b;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -1px rgba(0,0,0,0.3);
+    --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .form-control { background: #0f172a; color: var(--text); border-color: var(--border); }
+[data-theme="dark"] .form-control:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+[data-theme="dark"] .modal { background: var(--bg-card); }
+[data-theme="dark"] .radio-card { background: var(--bg); border-color: var(--border); }
+[data-theme="dark"] .radio-card:hover, [data-theme="dark"] .radio-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+[data-theme="dark"] .btn-outline { color: var(--text); border-color: var(--border); }
+[data-theme="dark"] .btn-outline:hover { background: var(--border); }
+[data-theme="dark"] .btn-primary:hover { box-shadow: 0 2px 8px rgba(129,140,248,0.3); }
+[data-theme="dark"] .btn-success:hover { background: #06b6d4; }
+[data-theme="dark"] .badge-buy { color: #22d3ee; }
+[data-theme="dark"] .badge-sell { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+[data-theme="dark"] .alert-success { color: #22d3ee; border-color: rgba(34,211,238,0.2); }
+[data-theme="dark"] .alert-danger { color: #f87171; border-color: rgba(248,113,113,0.2); }
+[data-theme="dark"] .alert-info { color: #818cf8; border-color: rgba(129,140,248,0.2); }
+[data-theme="dark"] .account-dropdown { background: var(--bg-card); border-color: var(--border); }
+[data-theme="dark"] .account-dropdown a { color: var(--text); }
+[data-theme="dark"] .account-dropdown a:hover { background: var(--bg); }
+[data-theme="dark"] .stat-value { color: var(--text); }
+[data-theme="dark"] .totals-section .grand-total { color: var(--text); border-color: var(--text); }
+[data-theme="dark"] .setup-card { background: var(--bg-card); }
+[data-theme="dark"] .logo-preview { background: var(--bg); border-color: var(--border); }
+[data-theme="dark"] .login-card { background: var(--bg-card); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .login-card h1 { color: var(--text); }
+
+/* Theme toggle button */
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    color: rgba(255,255,255,0.6);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 8px;
+    margin-bottom: 2px;
+    transition: all var(--transition);
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+}
+
+.theme-toggle:hover {
+    background: rgba(255,255,255,0.08);
+    color: white;
+}
+
+.theme-toggle svg { flex-shrink: 0; opacity: 0.6; }
+.theme-toggle:hover svg { opacity: 1; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 

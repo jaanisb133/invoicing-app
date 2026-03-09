@@ -1,5 +1,5 @@
 """
-Database module for Pavadzīmju Pārvaldnieks (Web).
+Database module for V-Rēķini (Web).
 Multi-tenant SaaS architecture: all business data is isolated per user.
 """
 
@@ -138,6 +138,24 @@ def init_db():
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS recurring_invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            doc_type TEXT NOT NULL DEFAULT 'sell',
+            client_id INTEGER NOT NULL,
+            vat_rate REAL NOT NULL DEFAULT 21.0,
+            notes TEXT DEFAULT '',
+            template TEXT DEFAULT 'classic',
+            frequency TEXT NOT NULL DEFAULT 'monthly',
+            next_run DATE NOT NULL,
+            send_email INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            items_json TEXT NOT NULL DEFAULT '[]',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (client_id) REFERENCES clients(id)
         );
     """)
 
@@ -845,3 +863,75 @@ TIER_LIMITS = {
 
 def get_tier_limits(tier):
     return TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
+
+# --- Recurring Invoices ---
+
+def create_recurring_invoice(user_id, doc_type, client_id, vat_rate, notes, template,
+                             frequency, next_run, send_email, items_json):
+    conn = get_connection()
+    cursor = conn.execute(
+        """INSERT INTO recurring_invoices
+           (user_id, doc_type, client_id, vat_rate, notes, template, frequency, next_run, send_email, items_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, doc_type, client_id, vat_rate, notes, template, frequency, next_run,
+         1 if send_email else 0, items_json)
+    )
+    rid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return rid
+
+
+def get_recurring_invoices(user_id):
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT r.*, c.name as client_name FROM recurring_invoices r
+           JOIN clients c ON r.client_id = c.id
+           WHERE r.user_id = ? ORDER BY r.next_run""",
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_recurring_invoice(recurring_id):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM recurring_invoices WHERE id = ?", (recurring_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_recurring_next_run(recurring_id, next_run):
+    conn = get_connection()
+    conn.execute("UPDATE recurring_invoices SET next_run = ? WHERE id = ?", (next_run, recurring_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_recurring_invoice(user_id, recurring_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM recurring_invoices WHERE id = ? AND user_id = ?", (recurring_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def toggle_recurring_invoice(user_id, recurring_id):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE recurring_invoices SET active = CASE WHEN active = 1 THEN 0 ELSE 1 END WHERE id = ? AND user_id = ?",
+        (recurring_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_due_recurring_invoices(today_str):
+    """Get all active recurring invoices due on or before today."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM recurring_invoices WHERE active = 1 AND next_run <= ?",
+        (today_str,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

@@ -1,5 +1,5 @@
 """
-PDF invoice generation for Pavadzīmju Pārvaldnieks (Web).
+PDF invoice generation for V-Rēķini (Web).
 Adapted from desktop/pdf_generator.py with 3 professional templates.
 Uses reportlab for PDF creation with Latvian character support.
 """

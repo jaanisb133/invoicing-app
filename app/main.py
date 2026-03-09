@@ -1,10 +1,18 @@
 """
-Pavadzīmju Pārvaldnieks — Multi-tenant SaaS Invoice Manager (FastAPI)
+V-Rēķini — Multi-tenant SaaS Invoice Manager (FastAPI)
 """
 
 import os
+import json
 import secrets
 import datetime
+import asyncio
+import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from fastapi import FastAPI, Request, Form, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,10 +20,12 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from itsdangerous import URLSafeTimedSerializer
 
+logger = logging.getLogger("vrekini")
+
 from app import database as db
 from app.pdf_generator import generate_invoice_pdf, TEMPLATES
 
-app = FastAPI(title="Pavadzīmju Pārvaldnieks")
+app = FastAPI(title="V-Rēķini")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
@@ -116,8 +126,121 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthMiddleware)
 
 
+def _calc_next_run(current_date, frequency):
+    """Calculate the next run date based on frequency."""
+    if isinstance(current_date, str):
+        current_date = datetime.date.fromisoformat(current_date)
+    if frequency == "monthly":
+        month = current_date.month + 1
+        year = current_date.year
+        if month > 12:
+            month = 1
+            year += 1
+        day = min(current_date.day, [31,29 if year%4==0 and (year%100!=0 or year%400==0) else 28,31,30,31,30,31,31,30,31,30,31][month-1])
+        return datetime.date(year, month, day)
+    elif frequency == "bimonthly":
+        month = current_date.month + 2
+        year = current_date.year
+        while month > 12:
+            month -= 12
+            year += 1
+        day = min(current_date.day, [31,29 if year%4==0 and (year%100!=0 or year%400==0) else 28,31,30,31,30,31,31,30,31,30,31][month-1])
+        return datetime.date(year, month, day)
+    elif frequency == "quarterly":
+        month = current_date.month + 3
+        year = current_date.year
+        while month > 12:
+            month -= 12
+            year += 1
+        day = min(current_date.day, [31,29 if year%4==0 and (year%100!=0 or year%400==0) else 28,31,30,31,30,31,31,30,31,30,31][month-1])
+        return datetime.date(year, month, day)
+    elif frequency == "halfyearly":
+        month = current_date.month + 6
+        year = current_date.year
+        while month > 12:
+            month -= 12
+            year += 1
+        day = min(current_date.day, [31,29 if year%4==0 and (year%100!=0 or year%400==0) else 28,31,30,31,30,31,31,30,31,30,31][month-1])
+        return datetime.date(year, month, day)
+    elif frequency == "yearly":
+        year = current_date.year + 1
+        day = min(current_date.day, [31,29 if year%4==0 and (year%100!=0 or year%400==0) else 28,31,30,31,30,31,31,30,31,30,31][current_date.month-1])
+        return datetime.date(year, current_date.month, day)
+    return current_date
+
+
+async def _process_recurring_invoices():
+    """Background task that checks and processes due recurring invoices."""
+    while True:
+        try:
+            today = datetime.date.today().isoformat()
+            due = db.get_due_recurring_invoices(today)
+
+            for rec in due:
+                try:
+                    items = json.loads(rec["items_json"])
+                    if not items:
+                        continue
+
+                    doc_id, doc_number = db.create_document(
+                        rec["user_id"], rec["doc_type"], rec["client_id"],
+                        today, items, rec["vat_rate"], rec["notes"]
+                    )
+
+                    template = rec.get("template", "classic")
+                    filepath = generate_invoice_pdf(doc_id, template=template)
+
+                    # Send email if enabled
+                    if rec["send_email"]:
+                        client = db.get_client(rec["client_id"])
+                        if client and client.get("email"):
+                            settings = db.get_all_user_settings(rec["user_id"])
+                            smtp_host = settings.get("smtp_host", "")
+                            smtp_port = int(settings.get("smtp_port", "587") or "587")
+                            smtp_user = settings.get("smtp_user", "")
+                            smtp_pass = settings.get("smtp_pass", "")
+                            smtp_from = settings.get("smtp_from", "") or smtp_user
+
+                            if smtp_host and smtp_user and smtp_pass:
+                                company_name = settings.get("company_name", "")
+                                doc_type_name = settings.get("sell_doc_name", "PAVADZĪME") if rec["doc_type"] == "sell" else settings.get("buy_doc_name", "PAVADZĪME")
+
+                                msg = MIMEMultipart()
+                                msg["From"] = smtp_from
+                                msg["To"] = client["email"]
+                                msg["Subject"] = f"{doc_type_name} Nr. {doc_number} — {company_name}"
+
+                                body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n"
+                                msg.attach(MIMEText(body, "plain", "utf-8"))
+
+                                with open(filepath, "rb") as f:
+                                    part = MIMEBase("application", "pdf")
+                                    part.set_payload(f.read())
+                                    encoders.encode_base64(part)
+                                    part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(filepath)}")
+                                    msg.attach(part)
+
+                                with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                                    server.starttls()
+                                    server.login(smtp_user, smtp_pass)
+                                    server.send_message(msg)
+
+                    # Calculate next run
+                    next_run = _calc_next_run(rec["next_run"], rec["frequency"])
+                    db.update_recurring_next_run(rec["id"], next_run.isoformat())
+                    logger.info(f"Recurring #{rec['id']}: created doc #{doc_id}, next run {next_run}")
+
+                except Exception as e:
+                    logger.error(f"Error processing recurring invoice #{rec['id']}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error in recurring invoice loop: {e}")
+
+        await asyncio.sleep(3600)  # Check every hour
+
+
 @app.on_event("startup")
-def startup():
+async def startup():
     db.init_db()
     temp_pw = db.ensure_default_admin()
     if temp_pw:
@@ -127,6 +250,9 @@ def startup():
         print(f"  Parole: {temp_pw}")
         print(f"  (Parole jāmaina pie pirmās pieslēgšanās)")
         print(f"{'='*60}\n")
+
+    # Start recurring invoice background task
+    asyncio.create_task(_process_recurring_invoices())
 
 
 # =============================================================================
@@ -446,9 +572,14 @@ async def save_settings(
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form("-"),
     invoice_number_digits: str = Form("3"),
+    smtp_host: str = Form(""),
+    smtp_port: str = Form("587"),
+    smtp_user: str = Form(""),
+    smtp_pass: str = Form(""),
+    smtp_from: str = Form(""),
 ):
     user = request.state.user
-    db.save_all_user_settings(user["id"], {
+    settings_dict = {
         "company_name": company_name,
         "reg_number": reg_number,
         "vat_number": vat_number,
@@ -464,7 +595,15 @@ async def save_settings(
         "invoice_number_type": invoice_number_type,
         "invoice_number_separator": invoice_number_separator,
         "invoice_number_digits": invoice_number_digits,
-    })
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
+        "smtp_user": smtp_user,
+        "smtp_from": smtp_from,
+    }
+    # Only update password if provided (don't overwrite with empty)
+    if smtp_pass:
+        settings_dict["smtp_pass"] = smtp_pass
+    db.save_all_user_settings(user["id"], settings_dict)
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
@@ -755,6 +894,92 @@ async def download_pdf(request: Request, doc_id: int, template: str = "classic")
                         filename=os.path.basename(filepath))
 
 
+@app.post("/documents/{doc_id}/send")
+async def send_document_email(request: Request, doc_id: int):
+    """Send invoice PDF to client via email."""
+    user = request.state.user
+    form = await request.form()
+    recipient_email = form.get("email", "").strip()
+    template = form.get("template", "classic")
+
+    doc, items = db.get_document(doc_id)
+    if not doc or doc.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404)
+
+    if not recipient_email:
+        return RedirectResponse(
+            f"/documents/{doc_id}?error=Nav norādīta e-pasta adrese&template={template}",
+            status_code=303
+        )
+
+    # Get SMTP settings
+    settings = _user_settings(user["id"])
+    smtp_host = settings.get("smtp_host", "")
+    smtp_port = int(settings.get("smtp_port", "587") or "587")
+    smtp_user = settings.get("smtp_user", "")
+    smtp_pass = settings.get("smtp_pass", "")
+    smtp_from = settings.get("smtp_from", "") or smtp_user
+
+    if not smtp_host or not smtp_user or not smtp_pass:
+        return RedirectResponse(
+            f"/documents/{doc_id}?error=SMTP iestatījumi nav konfigurēti. Atveriet Iestatījumus.&template={template}",
+            status_code=303
+        )
+
+    # Generate PDF
+    filepath = generate_invoice_pdf(doc_id, template=template)
+
+    # Get client and company info for email
+    client = db.get_client(doc["client_id"])
+    company_name = settings.get("company_name", "")
+    doc_type_name = settings.get("sell_doc_name", "PAVADZĪME") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "PAVADZĪME")
+
+    # Build email
+    msg = MIMEMultipart()
+    msg["From"] = smtp_from
+    msg["To"] = recipient_email
+    msg["Subject"] = f"{doc_type_name} Nr. {doc['doc_number']} — {company_name}"
+
+    body = f"""Labdien!
+
+Pielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}
+Datums: {doc['doc_date']}
+
+Ar cieņu,
+{company_name}
+"""
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    # Attach PDF
+    with open(filepath, "rb") as f:
+        part = MIMEBase("application", "pdf")
+        part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(filepath)}")
+        msg.attach(part)
+
+    # Send
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+    except Exception as e:
+        return RedirectResponse(
+            f"/documents/{doc_id}?error=E-pasta sūtīšanas kļūda: {str(e)}&template={template}",
+            status_code=303
+        )
+
+    # Save the email as client's email if not already set
+    if client and not client.get("email"):
+        db.update_client(user["id"], client["id"], email=recipient_email)
+
+    return RedirectResponse(
+        f"/documents/{doc_id}?sent=1&template={template}",
+        status_code=303
+    )
+
+
 @app.post("/documents/{doc_id}/delete")
 async def delete_document(request: Request, doc_id: int):
     user = request.state.user
@@ -779,6 +1004,122 @@ async def stock_page(request: Request, date_from: str = "", date_to: str = ""):
         "page": "stock",
     })
     return templates.TemplateResponse("stock.html", ctx)
+
+
+# =============================================================================
+# Recurring Invoices
+# =============================================================================
+
+FREQUENCY_LABELS = {
+    "monthly": "Katru mēnesi",
+    "bimonthly": "Katrus 2 mēnešus",
+    "quarterly": "Katru ceturksni",
+    "halfyearly": "Katrus 6 mēnešus",
+    "yearly": "Katru gadu",
+}
+
+
+@app.get("/recurring", response_class=HTMLResponse)
+async def recurring_page(request: Request):
+    ctx = _base_context(request)
+    user = request.state.user
+    recurring = db.get_recurring_invoices(user["id"])
+    ctx.update({
+        "recurring": recurring,
+        "frequency_labels": FREQUENCY_LABELS,
+        "page": "recurring",
+    })
+    return templates.TemplateResponse("recurring.html", ctx)
+
+
+@app.post("/recurring/create")
+async def create_recurring(request: Request):
+    user = request.state.user
+    form = await request.form()
+
+    doc_type = form.get("doc_type", "sell")
+    client_id = int(form.get("client_id", 0))
+    vat_rate = float(form.get("vat_rate", 21.0))
+    notes = form.get("notes", "")
+    template = form.get("template", "classic")
+    frequency = form.get("frequency", "monthly")
+    next_run = form.get("next_run", "")
+    send_email = form.get("send_email", "0") == "1"
+
+    if not next_run:
+        next_run = _calc_next_run(datetime.date.today(), frequency).isoformat()
+
+    # Collect items from form
+    items = []
+    i = 0
+    while f"items[{i}][product_id]" in form:
+        items.append({
+            "product_id": int(form[f"items[{i}][product_id]"]),
+            "quantity": float(form[f"items[{i}][quantity]"]),
+            "unit": form[f"items[{i}][unit]"],
+            "price_per_unit": float(form[f"items[{i}][price_per_unit]"]),
+        })
+        i += 1
+
+    if not items:
+        return RedirectResponse("/recurring?error=no_items", status_code=303)
+
+    db.create_recurring_invoice(
+        user["id"], doc_type, client_id, vat_rate, notes, template,
+        frequency, next_run, send_email, json.dumps(items)
+    )
+
+    return RedirectResponse("/recurring?created=1", status_code=303)
+
+
+@app.post("/recurring/from-document/{doc_id}")
+async def create_recurring_from_document(request: Request, doc_id: int):
+    """Create a recurring invoice schedule from an existing document."""
+    user = request.state.user
+    form = await request.form()
+    frequency = form.get("frequency", "monthly")
+    send_email = form.get("send_email", "0") == "1"
+    template = form.get("template", "classic")
+    next_run = form.get("next_run", "")
+
+    doc, items = db.get_document(doc_id)
+    if not doc or doc.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404)
+
+    if not next_run:
+        next_run = _calc_next_run(datetime.date.today(), frequency).isoformat()
+
+    items_data = [
+        {
+            "product_id": item["product_id"],
+            "quantity": item["quantity"],
+            "unit": item["unit"],
+            "price_per_unit": item["price_per_unit"],
+        }
+        for item in items
+    ]
+
+    db.create_recurring_invoice(
+        user["id"], doc["doc_type"], doc["client_id"], doc["vat_rate"],
+        doc.get("notes", ""), template, frequency, next_run, send_email,
+        json.dumps(items_data)
+    )
+
+    return RedirectResponse(f"/documents/{doc_id}?scheduled=1&template={template}", status_code=303)
+
+
+@app.post("/recurring/{recurring_id}/toggle")
+async def toggle_recurring(request: Request, recurring_id: int):
+    user = request.state.user
+    db.toggle_recurring_invoice(user["id"], recurring_id)
+    return RedirectResponse("/recurring", status_code=303)
+
+
+@app.post("/recurring/{recurring_id}/delete")
+async def delete_recurring(request: Request, recurring_id: int):
+    user = request.state.user
+    db.delete_recurring_invoice(user["id"], recurring_id)
+    return RedirectResponse("/recurring", status_code=303)
 
 
 # =============================================================================

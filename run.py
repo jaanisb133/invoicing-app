@@ -1,4 +1,4 @@
-"""Run the Pavadzīmju Pārvaldnieks web application."""
+"""Run the V-Rēķini web application."""
 
 import uvicorn
 

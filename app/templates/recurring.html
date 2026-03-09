@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Periodiskie rēķini</h2>
+</div>
+
+<div class="page-body">
+    {% if request.query_params.get('created') %}
+    <div class="alert alert-success">Periodiskais rēķins veiksmīgi izveidots!</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'no_items' %}
+    <div class="alert alert-danger">Jāpievieno vismaz viena pozīcija.</div>
+    {% endif %}
+
+    {% if recurring %}
+    <div class="card">
+        <div class="card-body">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Klients</th>
+                            <th>Tips</th>
+                            <th>Biežums</th>
+                            <th>Nākamā izpilde</th>
+                            <th>E-pasts</th>
+                            <th>Statuss</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rec in recurring %}
+                        <tr style="{% if not rec.active %}opacity:0.5{% endif %}">
+                            <td>{{ rec.client_name }}</td>
+                            <td>
+                                {% if rec.doc_type == 'buy' %}
+                                <span class="badge badge-buy">Iegāde</span>
+                                {% else %}
+                                <span class="badge badge-sell">Pārdošana</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ frequency_labels.get(rec.frequency, rec.frequency) }}</td>
+                            <td>{{ rec.next_run }}</td>
+                            <td>
+                                {% if rec.send_email %}
+                                <span style="color:var(--success)">Jā</span>
+                                {% else %}
+                                <span style="color:var(--text-light)">Nē</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if rec.active %}
+                                <span class="badge badge-sell">Aktīvs</span>
+                                {% else %}
+                                <span style="color:var(--text-light)">Apturēts</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <form method="post" action="/recurring/{{ rec.id }}/toggle">
+                                        <button type="submit" class="btn btn-outline btn-sm">
+                                            {% if rec.active %}Apturēt{% else %}Aktivizēt{% endif %}
+                                        </button>
+                                    </form>
+                                    <form method="post" action="/recurring/{{ rec.id }}/delete"
+                                          onsubmit="return confirm('Vai tiešām dzēst šo periodisko rēķinu?')">
+                                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body">
+            <div class="empty-state">
+                <p>Nav periodisko rēķinu.</p>
+                <p style="font-size:13px;color:var(--text-light);margin-top:8px">
+                    Lai izveidotu periodisku rēķinu, atveriet esošu dokumentu un nospiediet pogu "Periodiskais rēķins".
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
