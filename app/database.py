@@ -663,28 +663,57 @@ def delete_document(user_id, doc_id):
 # --- Stock (per-user) ---
 
 def _get_product_stock(conn, product_id, user_id):
-    row = conn.execute("""
+    # Only count documents created after stock was enabled
+    enabled_date = ""
+    row_s = conn.execute(
+        "SELECT value FROM user_settings WHERE user_id = ? AND key = 'stock_enabled_date'",
+        (user_id,)
+    ).fetchone()
+    if row_s:
+        enabled_date = row_s["value"]
+
+    date_filter = ""
+    params_buy = [product_id, user_id]
+    params_sell = [product_id, user_id]
+    if enabled_date:
+        date_filter = " AND d.created_at >= ?"
+        params_buy.append(enabled_date)
+        params_sell.append(enabled_date)
+
+    row = conn.execute(f"""
         SELECT
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = ? AND d.doc_type = 'buy' AND d.user_id = ?), 0
+                 WHERE di.product_id = ? AND d.doc_type = 'buy' AND d.user_id = ?{date_filter}), 0
             ) -
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = ? AND d.doc_type = 'sell' AND d.user_id = ?), 0
+                 WHERE di.product_id = ? AND d.doc_type = 'sell' AND d.user_id = ?{date_filter}), 0
             ) as stock
-    """, (product_id, user_id, product_id, user_id)).fetchone()
+    """, params_buy + params_sell).fetchone()
     return row["stock"] if row else 0
 
 
 def get_stock(user_id, date_from=None, date_to=None):
     conn = get_connection()
 
+    # Respect stock_enabled_date: only count documents created on or after that date
+    enabled_row = conn.execute(
+        "SELECT value FROM user_settings WHERE user_id = ? AND key = 'stock_enabled_date'",
+        (user_id,)
+    ).fetchone()
+    enabled_date = enabled_row["value"] if enabled_row and enabled_row["value"] else None
+
     date_filter = ""
     params_buy = [user_id]
     params_sell = [user_id]
+
+    if enabled_date:
+        date_filter += " AND d.created_at >= ?"
+        params_buy.append(enabled_date)
+        params_sell.append(enabled_date)
 
     if date_from:
         date_filter += " AND d.doc_date >= ?"

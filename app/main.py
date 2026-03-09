@@ -595,6 +595,18 @@ async def save_settings(
         "sell_doc_name": sell_doc_name,
         "default_vat_rate": default_vat_rate,
         "stock_enabled": stock_enabled,
+    }
+
+    # When stock is first enabled, record the date so stock counts from 0
+    if stock_enabled == "1":
+        existing = db.get_user_setting(user["id"], "stock_enabled_date", "")
+        if not existing:
+            settings_dict["stock_enabled_date"] = datetime.date.today().isoformat()
+    else:
+        # If stock is disabled, clear the enabled date so re-enabling resets again
+        settings_dict["stock_enabled_date"] = ""
+
+    settings_dict.update({
         "invoice_number_type": invoice_number_type,
         "invoice_number_separator": invoice_number_separator,
         "invoice_number_digits": invoice_number_digits,
@@ -841,7 +853,10 @@ async def create_document(request: Request):
     except ValueError as e:
         return RedirectResponse(f"/documents/new?doc_type={doc_type}&error={str(e)}", status_code=303)
 
-    generate_invoice_pdf(doc_id, template=template)
+    try:
+        generate_invoice_pdf(doc_id, template=template)
+    except Exception as e:
+        logger.exception("PDF generation failed for doc %s", doc_id)
 
     return RedirectResponse(f"/documents/{doc_id}?created=1", status_code=303)
 

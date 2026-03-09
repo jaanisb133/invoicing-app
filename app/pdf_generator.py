@@ -444,7 +444,6 @@ def _generate_modern(doc_id):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
         ('LEFTPADDING', (0, 0), (0, -1), 14),
         ('RIGHTPADDING', (1, 0), (1, -1), 14),
-        ('ROUNDEDCORNERS', [4, 4, 4, 4]),
     ]))
     elements.append(header_table)
     elements.append(Spacer(1, 7 * mm))
