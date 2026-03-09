@@ -1,11 +1,9 @@
 """
 PDF invoice generation for V-Rēķini (Web).
-Adapted from desktop/pdf_generator.py with 3 professional templates.
-Uses reportlab for PDF creation with Latvian character support.
+Three professional templates using Liberation Sans for clean Latvian typography.
 """
 
 import os
-import sys
 import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -27,12 +25,23 @@ TEMPLATES = {
     "minimal": "Minimālā",
 }
 
+# --- Colour palette (matches the web UI monochrome theme) ---
+C_BLACK = colors.Color(0.067, 0.094, 0.153)       # #111827
+C_DARK = colors.Color(0.122, 0.161, 0.216)         # #1f2937
+C_GRAY = colors.Color(0.216, 0.255, 0.318)         # #374151
+C_MID = colors.Color(0.420, 0.447, 0.502)          # #6b7280
+C_SILVER = colors.Color(0.612, 0.639, 0.686)       # #9ca3af
+C_BORDER = colors.Color(0.898, 0.906, 0.922)       # #e5e7eb
+C_LIGHT_BG = colors.Color(0.976, 0.980, 0.984)     # #f9fafb
+C_WHITE = colors.white
+
 
 def _get_font_path(filename):
     """Find font file across different OS locations."""
     app_dir = os.path.dirname(os.path.abspath(__file__))
     search_paths = [
         os.path.join(app_dir, "fonts"),
+        "/usr/share/fonts/truetype/liberation",
         "/usr/share/fonts/truetype/dejavu",
         "/usr/local/share/fonts",
         os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts"),
@@ -45,12 +54,16 @@ def _get_font_path(filename):
 
 
 def _register_fonts():
-    """Register fonts with Latvian character support."""
+    """Register fonts with Latvian character support.
+    Prefers Liberation Sans (clean, professional, metrically-compatible with Arial).
+    Falls back to DejaVu Sans, then Helvetica.
+    """
     from reportlab.pdfbase.pdfmetrics import registerFontFamily
 
     font_options = [
-        ("Arial", "arial.ttf", "Arial-Bold", "arialbd.ttf"),
+        ("Liberation", "LiberationSans-Regular.ttf", "Liberation-Bold", "LiberationSans-Bold.ttf"),
         ("DejaVu", "DejaVuSans.ttf", "DejaVu-Bold", "DejaVuSans-Bold.ttf"),
+        ("Arial", "arial.ttf", "Arial-Bold", "arialbd.ttf"),
     ]
 
     for font_name, font_file, bold_name, bold_file in font_options:
@@ -77,7 +90,6 @@ def get_output_dir():
 
 
 def _get_logo_path(user_id):
-    """Find logo file for a user."""
     app_dir = os.path.dirname(os.path.abspath(__file__))
     logo_dir = os.path.join(os.path.dirname(app_dir), "data", "logos")
     filename = db.get_user_setting(user_id, "logo_filename")
@@ -89,10 +101,8 @@ def _get_logo_path(user_id):
 
 
 def _make_logo_element(logo_path, max_width=40*mm, max_height=20*mm):
-    """Create a reportlab Image element from a logo file, scaled to fit."""
     try:
         img = Image(logo_path)
-        # Scale to fit within max dimensions while maintaining aspect ratio
         w, h = img.drawWidth, img.drawHeight
         if w > 0 and h > 0:
             ratio = min(max_width / w, max_height / h)
@@ -113,7 +123,6 @@ def _get_doc_data(doc_id):
     user_id = doc.get("user_id", 0)
     settings = db.get_all_user_settings(user_id) if user_id else db.get_all_settings()
 
-    # Format date
     raw_date = doc["doc_date"]
     try:
         if isinstance(raw_date, str):
@@ -124,13 +133,11 @@ def _get_doc_data(doc_id):
     except Exception:
         display_date = raw_date
 
-    # Document type label
     if doc["doc_type"] == "buy":
         doc_type_label = settings.get("buy_doc_name", "PIRKUMA PAVADZĪME")
     else:
         doc_type_label = settings.get("sell_doc_name", "PĀRDOŠANAS PAVADZĪME")
 
-    # Party info
     def party_info(source_client, from_settings=False):
         if from_settings:
             return {
@@ -157,10 +164,7 @@ def _get_doc_data(doc_id):
         supplier = party_info(None, from_settings=True)
         buyer = party_info(client)
 
-    # Calculate totals
-    subtotal = 0
-    for item in items:
-        subtotal += item["quantity"] * item["price_per_unit"]
+    subtotal = sum(item["quantity"] * item["price_per_unit"] for item in items)
     vat_rate = doc["vat_rate"]
     vat_amount = subtotal * (vat_rate / 100)
     total = subtotal + vat_amount
@@ -182,10 +186,8 @@ def _get_doc_data(doc_id):
 
 
 def generate_invoice_pdf(doc_id, template="classic"):
-    """Generate a PDF invoice using the specified template."""
     if template not in TEMPLATES:
         template = "classic"
-
     generators = {
         "classic": _generate_classic,
         "modern": _generate_modern,
@@ -194,8 +196,25 @@ def generate_invoice_pdf(doc_id, template="classic"):
     return generators[template](doc_id)
 
 
+def _party_lines(info, FONT_BOLD, style):
+    """Build a list of Paragraph elements for a party info block."""
+    lines = []
+    lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", style))
+    if info['reg']:
+        lines.append(Paragraph(f"Reģ.Nr.: {info['reg']}", style))
+    if info['vat']:
+        lines.append(Paragraph(f"PVN Nr.: {info['vat']}", style))
+    if info['addr']:
+        lines.append(Paragraph(info['addr'], style))
+    if info['bank']:
+        lines.append(Paragraph(f"Banka: {info['bank']}", style))
+    if info['account']:
+        lines.append(Paragraph(f"Konts: {info['account']}", style))
+    return lines
+
+
 # =============================================================================
-# Template 1: Classic — Traditional Latvian business invoice
+# Template 1: Classic — Traditional, formal Latvian business invoice
 # =============================================================================
 
 def _generate_classic(doc_id):
@@ -210,115 +229,149 @@ def _generate_classic(doc_id):
     pdf = SimpleDocTemplate(
         filepath, pagesize=A4,
         leftMargin=20 * mm, rightMargin=20 * mm,
-        topMargin=15 * mm, bottomMargin=15 * mm
+        topMargin=18 * mm, bottomMargin=15 * mm
     )
 
     title_style = ParagraphStyle(
-        'InvoiceTitle', fontSize=16, alignment=TA_CENTER, spaceAfter=6 * mm,
-        fontName=FONT_BOLD, leading=20
+        'InvoiceTitle', fontSize=15, alignment=TA_CENTER, spaceAfter=2 * mm,
+        fontName=FONT_BOLD, leading=19, textColor=C_BLACK
     )
     doc_num_style = ParagraphStyle(
-        'DocNum', fontSize=12, alignment=TA_CENTER, spaceAfter=8 * mm,
-        fontName=FONT, leading=16
+        'DocNum', fontSize=11, alignment=TA_CENTER, spaceAfter=2 * mm,
+        fontName=FONT, leading=14, textColor=C_GRAY
     )
-    normal = ParagraphStyle('N', fontSize=10, leading=14, fontName=FONT)
-    bold = ParagraphStyle('B', fontSize=10, leading=14, fontName=FONT_BOLD)
+    date_style = ParagraphStyle(
+        'Date', fontSize=10, alignment=TA_CENTER, spaceAfter=8 * mm,
+        fontName=FONT, leading=13, textColor=C_MID
+    )
+    normal = ParagraphStyle('N', fontSize=9.5, leading=14, fontName=FONT, textColor=C_BLACK)
+    bold = ParagraphStyle('B', fontSize=9.5, leading=14, fontName=FONT_BOLD, textColor=C_BLACK)
+    section_label = ParagraphStyle('SL', fontSize=8, leading=11, fontName=FONT_BOLD,
+                                   textColor=C_MID, spaceAfter=1 * mm)
 
     elements = []
 
     # Logo
     logo_path = _get_logo_path(doc.get("user_id", 0))
     if logo_path:
-        logo_el = _make_logo_element(logo_path)
+        logo_el = _make_logo_element(logo_path, max_width=42*mm, max_height=21*mm)
         if logo_el:
             elements.append(logo_el)
-            elements.append(Spacer(1, 3 * mm))
+            elements.append(Spacer(1, 4 * mm))
 
-    # Title
+    # Title block
     elements.append(Paragraph(data["doc_type_label"], title_style))
     elements.append(Paragraph(f"Nr. {doc['doc_number']}", doc_num_style))
-    elements.append(Paragraph(f"Datums: {data['display_date']}", bold))
-    elements.append(Spacer(1, 4 * mm))
+    elements.append(Paragraph(f"Datums: {data['display_date']}", date_style))
 
-    # Parties table
-    field_labels = [
-        ("Nosaukums", "name"), ("Reģ.Nr.", "reg"), ("PVN Nr.", "vat"),
-        ("Adrese", "addr"), ("Banka", "bank"), ("Konts", "account"),
-    ]
+    # Thin divider
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=C_BORDER, spaceAfter=6 * mm))
 
-    parties_data = [[
-        Paragraph(f"<font name='{FONT_BOLD}'>Piegādātājs (Pārdevējs)</font>", normal),
-        Paragraph(f"<font name='{FONT_BOLD}'>Pircējs</font>", normal),
-    ]]
-    for label, key in field_labels:
-        parties_data.append([
-            Paragraph(f"{label}: {data['supplier'][key]}", normal),
-            Paragraph(f"{label}: {data['buyer'][key]}", normal),
+    # Parties
+    s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", section_label)] + \
+              _party_lines(data['supplier'], FONT_BOLD, normal)
+    b_lines = [Paragraph("PIRCĒJS", section_label)] + \
+              _party_lines(data['buyer'], FONT_BOLD, normal)
+
+    party_rows = []
+    for i in range(max(len(s_lines), len(b_lines))):
+        party_rows.append([
+            s_lines[i] if i < len(s_lines) else "",
+            b_lines[i] if i < len(b_lines) else "",
         ])
 
-    parties_table = Table(parties_data, colWidths=[85 * mm, 85 * mm])
+    parties_table = Table(party_rows, colWidths=[85 * mm, 85 * mm])
     parties_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('TOPPADDING', (0, 0), (-1, -1), 1),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-        ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.black),
+        ('LEFTPADDING', (1, 0), (1, -1), 6 * mm),
     ]))
     elements.append(parties_table)
-    elements.append(Spacer(1, 6 * mm))
+    elements.append(Spacer(1, 7 * mm))
 
     # Items table
+    th = ParagraphStyle('TH', fontSize=8.5, fontName=FONT_BOLD, textColor=C_DARK, leading=11)
+    td = ParagraphStyle('TD', fontSize=9.5, leading=13, fontName=FONT, textColor=C_BLACK)
+    td_r = ParagraphStyle('TDR', fontSize=9.5, leading=13, fontName=FONT,
+                          textColor=C_BLACK, alignment=TA_RIGHT)
+
     items_data = [[
-        Paragraph(f"<font name='{FONT_BOLD}'>Nr.</font>", normal),
-        Paragraph(f"<font name='{FONT_BOLD}'>Nosaukums</font>", normal),
-        Paragraph(f"<font name='{FONT_BOLD}'>Mērv.</font>", normal),
-        Paragraph(f"<font name='{FONT_BOLD}'>Daudzums</font>", normal),
-        Paragraph(f"<font name='{FONT_BOLD}'>Cena</font>", normal),
-        Paragraph(f"<font name='{FONT_BOLD}'>Summa</font>", normal),
+        Paragraph("Nr.", th),
+        Paragraph("Nosaukums", th),
+        Paragraph("Mērvienība", th),
+        Paragraph("Daudzums", th),
+        Paragraph("Cena (EUR)", th),
+        Paragraph("Summa (EUR)", th),
     ]]
 
     for i, item in enumerate(data["items"], 1):
         line_total = item["quantity"] * item["price_per_unit"]
         items_data.append([
-            Paragraph(str(i), normal),
-            Paragraph(item["product_name"], normal),
-            Paragraph(item["unit"], normal),
-            Paragraph(f"{item['quantity']:.2f}", normal),
-            Paragraph(f"{item['price_per_unit']:.2f}", normal),
-            Paragraph(f"{line_total:.2f}", normal),
+            Paragraph(str(i), td),
+            Paragraph(item["product_name"], td),
+            Paragraph(item["unit"], td),
+            Paragraph(f"{item['quantity']:.2f}", td_r),
+            Paragraph(f"{item['price_per_unit']:.2f}", td_r),
+            Paragraph(f"{line_total:.2f}", td_r),
         ])
 
     num_items = len(data["items"])
-    items_data.append(["", "", "", "",
-                       Paragraph(f"<font name='{FONT_BOLD}'>Summa bez PVN:</font>", normal),
-                       Paragraph(f"<font name='{FONT_BOLD}'>{data['subtotal']:.2f}</font>", normal)])
-    items_data.append(["", "", "", "",
-                       Paragraph(f"<font name='{FONT_BOLD}'>PVN ({data['vat_rate']:.0f}%):</font>", normal),
-                       Paragraph(f"<font name='{FONT_BOLD}'>{data['vat_amount']:.2f}</font>", normal)])
-    items_data.append(["", "", "", "",
-                       Paragraph(f"<font name='{FONT_BOLD}'>Kopā ar PVN:</font>", normal),
-                       Paragraph(f"<font name='{FONT_BOLD}'>{data['total']:.2f}</font>", normal)])
-
-    col_widths = [10 * mm, 60 * mm, 20 * mm, 25 * mm, 25 * mm, 30 * mm]
+    col_widths = [10 * mm, 62 * mm, 18 * mm, 22 * mm, 28 * mm, 30 * mm]
     items_table = Table(items_data, colWidths=col_widths)
-    items_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, num_items), 0.5, colors.black),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
+
+    style_cmds = [
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
         ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
+        ('BACKGROUND', (0, 0), (-1, 0), C_LIGHT_BG),
+        ('LINEBELOW', (0, 0), (-1, 0), 0.75, C_GRAY),
+        ('LINEBELOW', (0, num_items), (-1, num_items), 0.75, C_GRAY),
+    ]
+    for row in range(1, num_items + 1):
+        style_cmds.append(('LINEBELOW', (0, row), (-1, row), 0.25, C_BORDER))
+
+    items_table.setStyle(TableStyle(style_cmds))
+    elements.append(items_table)
+    elements.append(Spacer(1, 5 * mm))
+
+    # Totals
+    total_label = ParagraphStyle('TotL', fontSize=9.5, leading=13, fontName=FONT,
+                                 textColor=C_MID, alignment=TA_RIGHT)
+    total_val = ParagraphStyle('TotV', fontSize=9.5, leading=13, fontName=FONT_BOLD,
+                               textColor=C_BLACK, alignment=TA_RIGHT)
+    grand_label = ParagraphStyle('GL', fontSize=11, leading=15, fontName=FONT_BOLD,
+                                 textColor=C_BLACK, alignment=TA_RIGHT)
+    grand_val = ParagraphStyle('GV', fontSize=11, leading=15, fontName=FONT_BOLD,
+                               textColor=C_BLACK, alignment=TA_RIGHT)
+
+    totals_data = [
+        [Paragraph("Summa bez PVN:", total_label),
+         Paragraph(f"{data['subtotal']:.2f} EUR", total_val)],
+        [Paragraph(f"PVN ({data['vat_rate']:.0f}%):", total_label),
+         Paragraph(f"{data['vat_amount']:.2f} EUR", total_val)],
+        [Paragraph("Kopā ar PVN:", grand_label),
+         Paragraph(f"{data['total']:.2f} EUR", grand_val)],
+    ]
+    totals_table = Table(totals_data, colWidths=[128 * mm, 42 * mm])
+    totals_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('LINEABOVE', (0, 2), (-1, 2), 0.75, C_DARK),
     ]))
-    elements.append(items_table)
+    elements.append(totals_table)
 
     if doc["notes"]:
         elements.append(Spacer(1, 6 * mm))
-        elements.append(Paragraph(f"Piezīmes: {doc['notes']}", normal))
+        elements.append(Paragraph(f"<font name='{FONT_BOLD}'>Piezīmes:</font> {doc['notes']}", normal))
 
-    elements.append(Spacer(1, 15 * mm))
+    elements.append(Spacer(1, 18 * mm))
+    sig_style = ParagraphStyle('Sig', fontSize=9, leading=12, fontName=FONT, textColor=C_MID)
     sig_data = [[
-        Paragraph(f"<font name='{FONT_BOLD}'>Izsniedza:</font> ____________________", normal),
-        Paragraph(f"<font name='{FONT_BOLD}'>Saņēma:</font> ____________________", normal),
+        Paragraph(f"<font name='{FONT_BOLD}'>Izsniedza:</font>  ________________________", sig_style),
+        Paragraph(f"<font name='{FONT_BOLD}'>Saņēma:</font>  ________________________", sig_style),
     ]]
     elements.append(Table(sig_data, colWidths=[85 * mm, 85 * mm]))
 
@@ -327,7 +380,7 @@ def _generate_classic(doc_id):
 
 
 # =============================================================================
-# Template 2: Modern — Clean design with accent color and structured layout
+# Template 2: Modern — Bold header band, structured, high contrast
 # =============================================================================
 
 def _generate_modern(doc_id):
@@ -339,94 +392,74 @@ def _generate_modern(doc_id):
     filename = f"{doc['doc_number']}.pdf"
     filepath = os.path.join(output_dir, filename)
 
-    accent = colors.Color(0.15, 0.30, 0.55)  # Deep blue
-    accent_light = colors.Color(0.92, 0.95, 0.98)
-    gray_line = colors.Color(0.80, 0.80, 0.80)
-
     pdf = SimpleDocTemplate(
         filepath, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
-        topMargin=12 * mm, bottomMargin=12 * mm
+        topMargin=14 * mm, bottomMargin=14 * mm
     )
 
     styles = {
-        "title": ParagraphStyle('Title', fontSize=20, fontName=FONT_BOLD,
-                                textColor=accent, leading=24, spaceAfter=2 * mm),
-        "doc_num": ParagraphStyle('DocNum', fontSize=11, fontName=FONT,
-                                  textColor=colors.Color(0.4, 0.4, 0.4), leading=14),
-        "section": ParagraphStyle('Section', fontSize=9, fontName=FONT_BOLD,
-                                  textColor=accent, leading=12, spaceAfter=1 * mm,
-                                  spaceBefore=3 * mm),
-        "normal": ParagraphStyle('N', fontSize=9, leading=13, fontName=FONT),
-        "bold": ParagraphStyle('B', fontSize=9, leading=13, fontName=FONT_BOLD),
-        "small": ParagraphStyle('S', fontSize=8, leading=11, fontName=FONT,
-                                textColor=colors.Color(0.45, 0.45, 0.45)),
-        "total_label": ParagraphStyle('TL', fontSize=10, leading=13,
-                                      fontName=FONT_BOLD, alignment=TA_RIGHT),
-        "total_value": ParagraphStyle('TV', fontSize=10, leading=13,
-                                      fontName=FONT_BOLD, alignment=TA_RIGHT, textColor=accent),
-        "grand_total": ParagraphStyle('GT', fontSize=13, leading=16,
-                                      fontName=FONT_BOLD, alignment=TA_RIGHT, textColor=accent),
+        "title": ParagraphStyle('Title', fontSize=18, fontName=FONT_BOLD,
+                                textColor=C_WHITE, leading=22),
+        "doc_info": ParagraphStyle('DocInfo', fontSize=10, fontName=FONT,
+                                   textColor=colors.Color(0.85, 0.85, 0.85), leading=14),
+        "section": ParagraphStyle('Section', fontSize=7.5, fontName=FONT_BOLD,
+                                  textColor=C_MID, leading=10, spaceBefore=2 * mm),
+        "normal": ParagraphStyle('N', fontSize=9, leading=13, fontName=FONT, textColor=C_BLACK),
+        "bold": ParagraphStyle('B', fontSize=9, leading=13, fontName=FONT_BOLD, textColor=C_BLACK),
+        "total_label": ParagraphStyle('TL', fontSize=9.5, leading=13,
+                                      fontName=FONT, alignment=TA_RIGHT, textColor=C_MID),
+        "total_value": ParagraphStyle('TV', fontSize=9.5, leading=13,
+                                      fontName=FONT_BOLD, alignment=TA_RIGHT, textColor=C_BLACK),
+        "grand_label": ParagraphStyle('GL', fontSize=12, leading=16,
+                                      fontName=FONT_BOLD, alignment=TA_RIGHT, textColor=C_BLACK),
+        "grand_value": ParagraphStyle('GV', fontSize=12, leading=16,
+                                      fontName=FONT_BOLD, alignment=TA_RIGHT, textColor=C_BLACK),
     }
 
     elements = []
 
-    # Logo
+    # Dark header band (simulated with a table)
     logo_path = _get_logo_path(doc.get("user_id", 0))
+    header_left = []
     if logo_path:
-        logo_el = _make_logo_element(logo_path, max_width=50*mm, max_height=25*mm)
+        logo_el = _make_logo_element(logo_path, max_width=45*mm, max_height=20*mm)
         if logo_el:
-            elements.append(logo_el)
-            elements.append(Spacer(1, 3 * mm))
+            header_left.append(logo_el)
+            header_left.append(Spacer(1, 2 * mm))
+    header_left.append(Paragraph(data["doc_type_label"], styles["title"]))
 
-    # Header: Title + doc number + date on the right
-    header_data = [[
-        Paragraph(data["doc_type_label"], styles["title"]),
-        Paragraph(f"Nr. {doc['doc_number']}<br/>Datums: {data['display_date']}", styles["doc_num"]),
-    ]]
+    header_right = Paragraph(
+        f"Nr. {doc['doc_number']}<br/>Datums: {data['display_date']}",
+        styles["doc_info"]
+    )
+
+    header_data = [[header_left, header_right]]
     header_table = Table(header_data, colWidths=[110 * mm, 64 * mm])
     header_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BACKGROUND', (0, 0), (-1, -1), C_BLACK),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (0, -1), 14),
+        ('RIGHTPADDING', (1, 0), (1, -1), 14),
+        ('ROUNDEDCORNERS', [4, 4, 4, 4]),
     ]))
     elements.append(header_table)
-    elements.append(HRFlowable(width="100%", thickness=2, color=accent, spaceAfter=4 * mm))
+    elements.append(Spacer(1, 7 * mm))
 
-    # Parties - side by side boxes
-    elements.append(Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", styles["section"]))
-    supplier_lines = [
-        f"<font name='{FONT_BOLD}'>{data['supplier']['name']}</font>",
-        f"Reģ.Nr.: {data['supplier']['reg']}" if data['supplier']['reg'] else "",
-        f"PVN Nr.: {data['supplier']['vat']}" if data['supplier']['vat'] else "",
-        f"{data['supplier']['addr']}" if data['supplier']['addr'] else "",
-        f"Banka: {data['supplier']['bank']}" if data['supplier']['bank'] else "",
-        f"Konts: {data['supplier']['account']}" if data['supplier']['account'] else "",
-    ]
-    buyer_lines = [
-        f"<font name='{FONT_BOLD}'>{data['buyer']['name']}</font>",
-        f"Reģ.Nr.: {data['buyer']['reg']}" if data['buyer']['reg'] else "",
-        f"PVN Nr.: {data['buyer']['vat']}" if data['buyer']['vat'] else "",
-        f"{data['buyer']['addr']}" if data['buyer']['addr'] else "",
-        f"Banka: {data['buyer']['bank']}" if data['buyer']['bank'] else "",
-        f"Konts: {data['buyer']['account']}" if data['buyer']['account'] else "",
-    ]
-
-    party_data = [[
-        [Paragraph("PIEGĀDĀTĀJS", styles["section"])] +
-        [Paragraph(l, styles["normal"]) for l in supplier_lines if l],
-        [Paragraph("PIRCĒJS", styles["section"])] +
-        [Paragraph(l, styles["normal"]) for l in buyer_lines if l],
-    ]]
-    # Flatten into separate rows for proper rendering
-    max_rows = max(len([l for l in supplier_lines if l]), len([l for l in buyer_lines if l])) + 1
-    s_items = [Paragraph("PIEGĀDĀTĀJS", styles["section"])] + [Paragraph(l, styles["normal"]) for l in supplier_lines if l]
-    b_items = [Paragraph("PIRCĒJS", styles["section"])] + [Paragraph(l, styles["normal"]) for l in buyer_lines if l]
+    # Parties
+    s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", styles["section"])] + \
+              _party_lines(data['supplier'], FONT_BOLD, styles["normal"])
+    b_lines = [Paragraph("PIRCĒJS", styles["section"])] + \
+              _party_lines(data['buyer'], FONT_BOLD, styles["normal"])
 
     party_rows = []
-    for i in range(max(len(s_items), len(b_items))):
+    for i in range(max(len(s_lines), len(b_lines))):
         party_rows.append([
-            s_items[i] if i < len(s_items) else "",
-            b_items[i] if i < len(b_items) else "",
+            s_lines[i] if i < len(s_lines) else "",
+            b_lines[i] if i < len(b_lines) else "",
         ])
 
     party_table = Table(party_rows, colWidths=[87 * mm, 87 * mm])
@@ -434,18 +467,16 @@ def _generate_modern(doc_id):
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('TOPPADDING', (0, 0), (-1, -1), 1),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-        ('LEFTPADDING', (0, 0), (0, -1), 0),
         ('LEFTPADDING', (1, 0), (1, -1), 8 * mm),
-        ('LINEBELOW', (0, 0), (0, 0), 0.5, accent),
-        ('LINEBELOW', (1, 0), (1, 0), 0.5, accent),
     ]))
     elements.append(party_table)
-    elements.append(Spacer(1, 5 * mm))
+    elements.append(Spacer(1, 6 * mm))
 
-    # Items table - modern style
-    th = ParagraphStyle('TH', fontSize=8, fontName=FONT_BOLD, textColor=colors.white, leading=11)
-    td = ParagraphStyle('TD', fontSize=9, leading=12, fontName=FONT)
-    td_r = ParagraphStyle('TDR', fontSize=9, leading=12, fontName=FONT, alignment=TA_RIGHT)
+    # Items table
+    th = ParagraphStyle('TH', fontSize=8, fontName=FONT_BOLD, textColor=C_WHITE, leading=11)
+    td = ParagraphStyle('TD', fontSize=9, leading=13, fontName=FONT, textColor=C_BLACK)
+    td_r = ParagraphStyle('TDR', fontSize=9, leading=13, fontName=FONT,
+                          textColor=C_BLACK, alignment=TA_RIGHT)
 
     items_data = [[
         Paragraph("Nr.", th),
@@ -472,59 +503,56 @@ def _generate_modern(doc_id):
     items_table = Table(items_data, colWidths=col_widths)
 
     style_commands = [
-        ('BACKGROUND', (0, 0), (-1, 0), accent),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BACKGROUND', (0, 0), (-1, 0), C_DARK),
+        ('TEXTCOLOR', (0, 0), (-1, 0), C_WHITE),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('LINEBELOW', (0, 0), (-1, 0), 1, accent),
+        ('TOPPADDING', (0, 0), (-1, 0), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
+        ('TOPPADDING', (0, 1), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
     ]
     for row in range(1, num_items + 1):
         if row % 2 == 0:
-            style_commands.append(('BACKGROUND', (0, row), (-1, row), accent_light))
-        style_commands.append(('LINEBELOW', (0, row), (-1, row), 0.5, gray_line))
+            style_commands.append(('BACKGROUND', (0, row), (-1, row), C_LIGHT_BG))
+        style_commands.append(('LINEBELOW', (0, row), (-1, row), 0.25, C_BORDER))
 
     items_table.setStyle(TableStyle(style_commands))
     elements.append(items_table)
-    elements.append(Spacer(1, 4 * mm))
+    elements.append(Spacer(1, 5 * mm))
 
-    # Totals - right aligned
+    # Totals
     totals_data = [
         [Paragraph("Summa bez PVN:", styles["total_label"]),
-         Paragraph(f"EUR {data['subtotal']:.2f}", styles["total_value"])],
+         Paragraph(f"{data['subtotal']:.2f} EUR", styles["total_value"])],
         [Paragraph(f"PVN ({data['vat_rate']:.0f}%):", styles["total_label"]),
-         Paragraph(f"EUR {data['vat_amount']:.2f}", styles["total_value"])],
-        [Paragraph("KOPĀ AR PVN:", styles["total_label"]),
-         Paragraph(f"EUR {data['total']:.2f}", styles["grand_total"])],
+         Paragraph(f"{data['vat_amount']:.2f} EUR", styles["total_value"])],
+        [Paragraph("KOPĀ AR PVN:", styles["grand_label"]),
+         Paragraph(f"{data['total']:.2f} EUR", styles["grand_value"])],
     ]
-    totals_table = Table(totals_data, colWidths=[130 * mm, 40 * mm])
+    totals_table = Table(totals_data, colWidths=[128 * mm, 40 * mm])
     totals_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('LINEABOVE', (0, 2), (-1, 2), 1, accent),
+        ('LINEABOVE', (0, 2), (-1, 2), 1, C_BLACK),
     ]))
     elements.append(totals_table)
 
     if doc["notes"]:
         elements.append(Spacer(1, 5 * mm))
-        elements.append(Paragraph(f"<font name='{FONT_BOLD}'>Piezīmes:</font> {doc['notes']}",
-                                  styles["normal"]))
+        elements.append(Paragraph(
+            f"<font name='{FONT_BOLD}'>Piezīmes:</font> {doc['notes']}",
+            styles["normal"]
+        ))
 
-    elements.append(Spacer(1, 15 * mm))
+    elements.append(Spacer(1, 18 * mm))
+    sig = ParagraphStyle('Sig', fontSize=8.5, leading=12, fontName=FONT, textColor=C_MID)
     sig_data = [[
-        Paragraph(f"<font name='{FONT_BOLD}'>Izsniedza:</font>", styles["normal"]),
-        Paragraph("_________________________", styles["normal"]),
-        Paragraph(f"<font name='{FONT_BOLD}'>Saņēma:</font>", styles["normal"]),
-        Paragraph("_________________________", styles["normal"]),
+        Paragraph(f"<font name='{FONT_BOLD}'>Izsniedza:</font>  ________________________", sig),
+        Paragraph(f"<font name='{FONT_BOLD}'>Saņēma:</font>  ________________________", sig),
     ]]
-    sig_table = Table(sig_data, colWidths=[22 * mm, 60 * mm, 20 * mm, 60 * mm])
-    sig_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
-        ('ALIGN', (1, 0), (1, 0), 'LEFT'),
-        ('ALIGN', (3, 0), (3, 0), 'LEFT'),
-    ]))
+    sig_table = Table(sig_data, colWidths=[85 * mm, 85 * mm])
     elements.append(sig_table)
 
     pdf.build(elements)
@@ -532,7 +560,7 @@ def _generate_modern(doc_id):
 
 
 # =============================================================================
-# Template 3: Minimal — Clean and understated design
+# Template 3: Minimal — Ultra-clean, lots of whitespace, refined typography
 # =============================================================================
 
 def _generate_minimal(doc_id):
@@ -544,28 +572,23 @@ def _generate_minimal(doc_id):
     filename = f"{doc['doc_number']}.pdf"
     filepath = os.path.join(output_dir, filename)
 
-    dark = colors.Color(0.2, 0.2, 0.2)
-    mid = colors.Color(0.5, 0.5, 0.5)
-    light_bg = colors.Color(0.96, 0.96, 0.96)
-    border = colors.Color(0.85, 0.85, 0.85)
-
     pdf = SimpleDocTemplate(
         filepath, pagesize=A4,
-        leftMargin=25 * mm, rightMargin=25 * mm,
-        topMargin=20 * mm, bottomMargin=20 * mm
+        leftMargin=28 * mm, rightMargin=28 * mm,
+        topMargin=25 * mm, bottomMargin=20 * mm
     )
 
     styles = {
-        "title": ParagraphStyle('Title', fontSize=14, fontName=FONT_BOLD,
-                                textColor=dark, leading=18, spaceAfter=1 * mm),
-        "subtitle": ParagraphStyle('Sub', fontSize=10, fontName=FONT,
-                                   textColor=mid, leading=13, spaceAfter=6 * mm),
-        "label": ParagraphStyle('Label', fontSize=7.5, fontName=FONT_BOLD,
-                                textColor=mid, leading=10, spaceBefore=0),
+        "title": ParagraphStyle('Title', fontSize=13, fontName=FONT_BOLD,
+                                textColor=C_BLACK, leading=17, spaceAfter=1 * mm),
+        "subtitle": ParagraphStyle('Sub', fontSize=9.5, fontName=FONT,
+                                   textColor=C_SILVER, leading=13, spaceAfter=6 * mm),
+        "label": ParagraphStyle('Label', fontSize=7, fontName=FONT_BOLD,
+                                textColor=C_SILVER, leading=10,
+                                spaceBefore=0, spaceAfter=0.5 * mm),
         "value": ParagraphStyle('Value', fontSize=9, fontName=FONT,
-                                textColor=dark, leading=12),
-        "normal": ParagraphStyle('N', fontSize=9, leading=12, fontName=FONT, textColor=dark),
-        "bold": ParagraphStyle('B', fontSize=9, leading=12, fontName=FONT_BOLD, textColor=dark),
+                                textColor=C_BLACK, leading=12.5),
+        "normal": ParagraphStyle('N', fontSize=9, leading=12.5, fontName=FONT, textColor=C_BLACK),
     }
 
     elements = []
@@ -573,21 +596,23 @@ def _generate_minimal(doc_id):
     # Logo
     logo_path = _get_logo_path(doc.get("user_id", 0))
     if logo_path:
-        logo_el = _make_logo_element(logo_path, max_width=45*mm, max_height=22*mm)
+        logo_el = _make_logo_element(logo_path, max_width=40*mm, max_height=20*mm)
         if logo_el:
             elements.append(logo_el)
-            elements.append(Spacer(1, 3 * mm))
+            elements.append(Spacer(1, 5 * mm))
 
-    # Header
+    # Header — title and number on a single clean line
     elements.append(Paragraph(data["doc_type_label"], styles["title"]))
     elements.append(Paragraph(
-        f"Nr. {doc['doc_number']}  &nbsp;&nbsp;|&nbsp;&nbsp;  {data['display_date']}",
+        f"Nr. {doc['doc_number']}  &nbsp;&nbsp;&middot;&nbsp;&nbsp;  {data['display_date']}",
         styles["subtitle"]
     ))
-    elements.append(HRFlowable(width="100%", thickness=0.5, color=border, spaceAfter=5 * mm))
 
-    # Parties - compact two-column
-    def _party_block(title, info):
+    # Very thin divider
+    elements.append(HRFlowable(width="100%", thickness=0.25, color=C_BORDER, spaceAfter=6 * mm))
+
+    # Parties
+    def _min_party_block(title, info):
         lines = [Paragraph(title, styles["label"])]
         lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", styles["value"]))
         if info['reg']:
@@ -597,16 +622,16 @@ def _generate_minimal(doc_id):
         if info['addr']:
             lines.append(Paragraph(info['addr'], styles["value"]))
         if info['bank'] or info['account']:
-            bank_line = ""
+            parts = []
             if info['bank']:
-                bank_line += info['bank']
+                parts.append(info['bank'])
             if info['account']:
-                bank_line += f"  |  {info['account']}"
-            lines.append(Paragraph(bank_line, styles["value"]))
+                parts.append(info['account'])
+            lines.append(Paragraph("  &middot;  ".join(parts), styles["value"]))
         return lines
 
-    s_block = _party_block("PIEGĀDĀTĀJS", data["supplier"])
-    b_block = _party_block("PIRCĒJS", data["buyer"])
+    s_block = _min_party_block("PIEGĀDĀTĀJS", data["supplier"])
+    b_block = _min_party_block("PIRCĒJS", data["buyer"])
 
     party_rows = []
     for i in range(max(len(s_block), len(b_block))):
@@ -615,7 +640,7 @@ def _generate_minimal(doc_id):
             b_block[i] if i < len(b_block) else "",
         ])
 
-    party_table = Table(party_rows, colWidths=[80 * mm, 80 * mm])
+    party_table = Table(party_rows, colWidths=[77 * mm, 77 * mm])
     party_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('TOPPADDING', (0, 0), (-1, -1), 0.5),
@@ -623,17 +648,17 @@ def _generate_minimal(doc_id):
         ('LEFTPADDING', (1, 0), (1, -1), 10 * mm),
     ]))
     elements.append(party_table)
-    elements.append(Spacer(1, 6 * mm))
+    elements.append(Spacer(1, 8 * mm))
 
-    # Items table - minimal borders
-    th = ParagraphStyle('TH', fontSize=7.5, fontName=FONT_BOLD, textColor=mid, leading=10)
-    td = ParagraphStyle('TD', fontSize=9, leading=12, fontName=FONT, textColor=dark)
-    td_r = ParagraphStyle('TDR', fontSize=9, leading=12, fontName=FONT,
-                          textColor=dark, alignment=TA_RIGHT)
+    # Items table — hairline borders, generous padding
+    th = ParagraphStyle('TH', fontSize=7, fontName=FONT_BOLD, textColor=C_SILVER, leading=10)
+    td = ParagraphStyle('TD', fontSize=9, leading=13, fontName=FONT, textColor=C_BLACK)
+    td_r = ParagraphStyle('TDR', fontSize=9, leading=13, fontName=FONT,
+                          textColor=C_BLACK, alignment=TA_RIGHT)
 
     items_data = [[
         Paragraph("#", th),
-        Paragraph("PRECE", th),
+        Paragraph("PRECE / PAKALPOJUMS", th),
         Paragraph("MĒRV.", th),
         Paragraph("DAUDZ.", th),
         Paragraph("CENA", th),
@@ -652,28 +677,32 @@ def _generate_minimal(doc_id):
         ])
 
     num_items = len(data["items"])
-    col_widths = [8 * mm, 62 * mm, 16 * mm, 20 * mm, 25 * mm, 25 * mm]
+    col_widths = [8 * mm, 58 * mm, 16 * mm, 20 * mm, 25 * mm, 27 * mm]
     items_table = Table(items_data, colWidths=col_widths)
 
     style_cmds = [
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('LINEBELOW', (0, 0), (-1, 0), 0.5, mid),
-        ('LINEBELOW', (0, num_items), (-1, num_items), 0.5, mid),
+        ('TOPPADDING', (0, 0), (-1, 0), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+        ('TOPPADDING', (0, 1), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+        ('LINEBELOW', (0, 0), (-1, 0), 0.5, C_MID),
     ]
     for row in range(1, num_items + 1):
-        style_cmds.append(('LINEBELOW', (0, row), (-1, row), 0.25, border))
+        style_cmds.append(('LINEBELOW', (0, row), (-1, row), 0.15, C_BORDER))
+    # Stronger line after last item
+    if num_items > 0:
+        style_cmds.append(('LINEBELOW', (0, num_items), (-1, num_items), 0.5, C_MID))
 
     items_table.setStyle(TableStyle(style_cmds))
     elements.append(items_table)
-    elements.append(Spacer(1, 4 * mm))
+    elements.append(Spacer(1, 5 * mm))
 
-    # Totals - right-aligned, minimal
-    tr = ParagraphStyle('TR', fontSize=9, leading=12, fontName=FONT,
-                        textColor=mid, alignment=TA_RIGHT)
-    tr_bold = ParagraphStyle('TRB', fontSize=10, leading=14, fontName=FONT_BOLD,
-                             textColor=dark, alignment=TA_RIGHT)
+    # Totals
+    tr = ParagraphStyle('TR', fontSize=9, leading=13, fontName=FONT,
+                        textColor=C_SILVER, alignment=TA_RIGHT)
+    tr_bold = ParagraphStyle('TRB', fontSize=10.5, leading=15, fontName=FONT_BOLD,
+                             textColor=C_BLACK, alignment=TA_RIGHT)
 
     totals_data = [
         [Paragraph("Bez PVN", tr), Paragraph(f"{data['subtotal']:.2f} EUR", tr)],
@@ -681,27 +710,28 @@ def _generate_minimal(doc_id):
          Paragraph(f"{data['vat_amount']:.2f} EUR", tr)],
         [Paragraph("Kopā", tr_bold), Paragraph(f"{data['total']:.2f} EUR", tr_bold)],
     ]
-    totals_table = Table(totals_data, colWidths=[120 * mm, 36 * mm])
+    totals_table = Table(totals_data, colWidths=[118 * mm, 36 * mm])
     totals_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-        ('LINEABOVE', (1, 2), (1, 2), 0.5, dark),
+        ('TOPPADDING', (0, 0), (-1, -1), 1.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
+        ('LINEABOVE', (1, 2), (1, 2), 0.5, C_BLACK),
     ]))
     elements.append(totals_table)
 
     if doc["notes"]:
-        elements.append(Spacer(1, 5 * mm))
-        elements.append(HRFlowable(width="100%", thickness=0.25, color=border, spaceAfter=2 * mm))
-        elements.append(Paragraph(f"Piezīmes: {doc['notes']}", styles["normal"]))
+        elements.append(Spacer(1, 6 * mm))
+        elements.append(HRFlowable(width="100%", thickness=0.15, color=C_BORDER, spaceAfter=2 * mm))
+        elements.append(Paragraph(f"<font name='{FONT_BOLD}'>Piezīmes:</font> {doc['notes']}",
+                                  styles["normal"]))
 
-    elements.append(Spacer(1, 18 * mm))
-    sig = ParagraphStyle('Sig', fontSize=8, leading=11, fontName=FONT, textColor=mid)
+    elements.append(Spacer(1, 22 * mm))
+    sig = ParagraphStyle('Sig', fontSize=8, leading=11, fontName=FONT, textColor=C_SILVER)
     sig_data = [[
         Paragraph("Izsniedza  ________________________", sig),
         Paragraph("Saņēma  ________________________", sig),
     ]]
-    elements.append(Table(sig_data, colWidths=[80 * mm, 80 * mm]))
+    elements.append(Table(sig_data, colWidths=[77 * mm, 77 * mm]))
 
     pdf.build(elements)
     return filepath
