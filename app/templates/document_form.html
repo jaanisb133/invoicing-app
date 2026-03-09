@@ -3,13 +3,26 @@
 {% block content %}
 <div class="page-header">
     <h2>
-        {% if doc_type == 'buy' %}Jauns iegādes dokuments{% else %}Jauns pārdošanas dokuments{% endif %}
+        {% if edit_mode %}
+            {% if doc_type == 'buy' %}
+            <span class="badge badge-buy">Iegāde</span>
+            {% else %}
+            <span class="badge badge-sell">Pārdošana</span>
+            {% endif %}
+            Rediģēt {{ doc.doc_number }}
+        {% else %}
+            {% if doc_type == 'buy' %}Jauns iegādes dokuments{% else %}Jauns pārdošanas dokuments{% endif %}
+        {% endif %}
     </h2>
     <div class="btn-group">
+        {% if edit_mode %}
+        <a href="/documents/{{ doc.id }}" class="btn btn-outline">Atcelt</a>
+        {% else %}
         <a href="/documents/new?doc_type=buy"
            class="btn {% if doc_type == 'buy' %}btn-success{% else %}btn-outline{% endif %}">Iegāde</a>
         <a href="/documents/new?doc_type=sell"
            class="btn {% if doc_type == 'sell' %}btn-primary{% else %}btn-outline{% endif %}">Pārdošana</a>
+        {% endif %}
     </div>
 </div>
 
@@ -18,115 +31,123 @@
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
 
-    <form method="post" action="/documents/create" id="docForm">
+    <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm">
         <input type="hidden" name="doc_type" value="{{ doc_type }}">
 
-        <div class="card">
-            <div class="card-header">Dokumenta informācija</div>
-            <div class="card-body">
-                <div class="form-row-3">
-                    <div class="form-group">
-                        <label>Klients *</label>
-                        <div style="display:flex;gap:8px">
-                            <select name="client_id" id="clientSelect" class="form-control" required onchange="updatePreview()">
-                                <option value="">— Izvēlieties klientu —</option>
-                                {% for c in clients %}
-                                <option value="{{ c.id }}">{{ c.name }}</option>
-                                {% endfor %}
-                            </select>
-                            <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddClient()" title="Ātri pievienot klientu" style="font-size:16px;padding:6px 12px">+</button>
+        <div class="doc-editor-layout">
+            <!-- LEFT COLUMN: Form -->
+            <div class="doc-editor-form">
+                <div class="card">
+                    <div class="card-header">Dokumenta informācija</div>
+                    <div class="card-body">
+                        <div class="form-row-3">
+                            <div class="form-group">
+                                <label>Klients *</label>
+                                <div style="display:flex;gap:8px">
+                                    <select name="client_id" id="clientSelect" class="form-control" required onchange="updatePreview()">
+                                        <option value="">— Izvēlieties klientu —</option>
+                                        {% for c in clients %}
+                                        <option value="{{ c.id }}" {% if edit_mode and doc.client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddClient()" title="Ātri pievienot klientu" style="font-size:16px;padding:6px 12px">+</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Datums</label>
+                                <input type="date" name="doc_date" class="form-control"
+                                       value="{{ doc.doc_date if edit_mode else (today if today else '') }}"
+                                       id="docDate" onchange="updatePreview()">
+                            </div>
+                            <div class="form-group">
+                                <label>PVN likme (%)</label>
+                                <input type="number" name="vat_rate" id="vatRate" class="form-control"
+                                       value="{{ doc.vat_rate if edit_mode else settings.get('default_vat_rate', '21') }}" step="0.1" min="0" onchange="updatePreview()" oninput="updatePreview()">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>PDF veidne</label>
+                                <select name="template" id="templateSelect" class="form-control" onchange="updatePreview()">
+                                    {% for key, label in templates.items() %}
+                                    <option value="{{ key }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Piezīmes</label>
+                                <input type="text" name="notes" class="form-control" id="notesInput"
+                                       value="{{ doc.notes if edit_mode and doc.notes else '' }}" oninput="updatePreview()">
+                            </div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Datums</label>
-                        <input type="date" name="doc_date" class="form-control"
-                               value="{{ today if today else '' }}"
-                               id="docDate" onchange="updatePreview()">
+                </div>
+
+                <div class="card">
+                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                        <span>Preces / Pakalpojumi</span>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-outline btn-sm" onclick="showQuickAddProduct()">+ Jauns produkts</button>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="addItemRow()">+ Pievienot rindu</button>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>PVN likme (%)</label>
-                        <input type="number" name="vat_rate" id="vatRate" class="form-control"
-                               value="{{ settings.get('default_vat_rate', '21') }}" step="0.1" min="0" onchange="updatePreview()" oninput="updatePreview()">
+                    <div class="card-body">
+                        <div class="table-wrapper">
+                            <table class="doc-items-table">
+                                <thead>
+                                    <tr>
+                                        <th>Produkts / Pakalpojums</th>
+                                        <th style="width:100px">Mērvienība</th>
+                                        <th style="width:100px">Daudzums</th>
+                                        <th style="width:100px">Cena</th>
+                                        <th style="width:100px">Summa</th>
+                                        <th style="width:40px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="itemsBody">
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="4" class="text-right" style="font-weight:600">Summa bez PVN:</td>
+                                        <td id="subtotalDisplay" style="font-weight:600">0.00</td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="4" class="text-right">PVN:</td>
+                                        <td id="vatDisplay">0.00</td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="4" class="text-right" style="font-weight:700;font-size:16px">Kopā ar PVN:</td>
+                                        <td id="totalDisplay" style="font-weight:700;font-size:16px">0.00</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>PDF veidne</label>
-                        <select name="template" class="form-control">
-                            {% for key, label in templates.items() %}
-                            <option value="{{ key }}">{{ label }}</option>
-                            {% endfor %}
-                        </select>
+
+                <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 32px">
+                    {% if edit_mode %}Saglabāt izmaiņas{% else %}Izveidot dokumentu{% endif %}
+                </button>
+            </div>
+
+            <!-- RIGHT COLUMN: Live Preview -->
+            <div class="doc-editor-preview">
+                <div class="card" style="position:sticky;top:20px">
+                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                        <span>Priekšskatījums</span>
+                        <span class="text-muted" style="font-size:11px" id="previewTemplateLabel">Klasiskā</span>
                     </div>
-                    <div class="form-group">
-                        <label>Piezīmes</label>
-                        <input type="text" name="notes" class="form-control" id="notesInput" oninput="updatePreview()">
+                    <div class="card-body" style="padding:0">
+                        <div class="invoice-preview-wrapper" id="invoicePreview">
+                            <p class="text-muted text-center" style="padding:24px">Aizpildiet dokumenta datus, lai redzētu priekšskatījumu</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <div class="card">
-            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-                <span>Preces / Pakalpojumi</span>
-                <div class="btn-group">
-                    <button type="button" class="btn btn-outline btn-sm" onclick="showQuickAddProduct()">+ Jauns produkts</button>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="addItemRow()">+ Pievienot rindu</button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="table-wrapper">
-                    <table class="doc-items-table">
-                        <thead>
-                            <tr>
-                                <th>Produkts / Pakalpojums</th>
-                                <th style="width:100px">Mērvienība</th>
-                                <th style="width:100px">Daudzums</th>
-                                <th style="width:100px">Cena</th>
-                                <th style="width:100px">Summa</th>
-                                <th style="width:40px"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="itemsBody">
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="4" class="text-right" style="font-weight:600">Summa bez PVN:</td>
-                                <td id="subtotalDisplay" style="font-weight:600">0.00</td>
-                                <td></td>
-                            </tr>
-                            <tr>
-                                <td colspan="4" class="text-right">PVN:</td>
-                                <td id="vatDisplay">0.00</td>
-                                <td></td>
-                            </tr>
-                            <tr>
-                                <td colspan="4" class="text-right" style="font-weight:700;font-size:16px">Kopā ar PVN:</td>
-                                <td id="totalDisplay" style="font-weight:700;font-size:16px">0.00</td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Invoice Preview -->
-        <div class="card">
-            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-                <span>Priekšskatījums</span>
-                <button type="button" class="btn btn-outline btn-sm" onclick="togglePreview()">Rādīt / Slēpt</button>
-            </div>
-            <div class="card-body" id="previewBody">
-                <div class="invoice-preview-wrapper" id="invoicePreview">
-                    <p class="text-muted text-center">Aizpildiet dokumenta datus, lai redzētu priekšskatījumu</p>
-                </div>
-            </div>
-        </div>
-
-        <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 32px">
-            Izveidot dokumentu
-        </button>
     </form>
 </div>
 
@@ -204,15 +225,19 @@ const units = {{ units | tojson }};
 const docType = "{{ doc_type }}";
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
 const companySettings = {{ settings | tojson }};
+const editMode = {{ 'true' if edit_mode else 'false' }};
+const editItems = {{ edit_items | tojson if edit_mode else '[]' }};
+const editDocNumber = "{{ doc.doc_number if edit_mode else '' }}";
 let itemIndex = 0;
-let previewVisible = true;
 
 const dateInput = document.getElementById('docDate');
 if (!dateInput.value) {
     dateInput.value = new Date().toISOString().slice(0, 10);
 }
 
-function addItemRow() {
+const templateLabels = {{ templates | tojson }};
+
+function addItemRow(presetProduct, presetUnit, presetQty, presetPrice) {
     const idx = itemIndex++;
     const tbody = document.getElementById('itemsBody');
     const tr = document.createElement('tr');
@@ -222,18 +247,18 @@ function addItemRow() {
     let productOptions = '<option value="">— Produkts —</option>';
     products.forEach(p => {
         const stockInfo = (stockEnabled && docType === 'sell') ? ' (atl: ' + (stockMap[p.id] || 0).toFixed(2) + ')' : '';
-        productOptions += '<option value="' + p.id + '" data-unit="' + p.unit + '">' + p.name + stockInfo + '</option>';
+        const selected = presetProduct && p.id == presetProduct ? ' selected' : '';
+        productOptions += '<option value="' + p.id + '" data-unit="' + p.unit + '"' + selected + '>' + p.name + stockInfo + '</option>';
     });
 
     let unitOptions = '';
     units.forEach(u => {
-        unitOptions += '<option value="' + u + '">' + u + '</option>';
+        const selected = presetUnit && u === presetUnit ? ' selected' : '';
+        unitOptions += '<option value="' + u + '"' + selected + '>' + u + '</option>';
     });
 
-    // Only show remove button if not the first row (idx > 0)
-    const removeBtn = idx > 0
-        ? '<button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(' + idx + ')">X</button>'
-        : '';
+    const qty = presetQty || 1;
+    const price = presetPrice || 0;
 
     tr.innerHTML = `
         <td>
@@ -246,10 +271,10 @@ function addItemRow() {
             <div class="stock-hint" id="stock-hint-${idx}"></div>
         </td>
         <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control">${unitOptions}</select></td>
-        <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="1" onchange="recalculate()" oninput="recalculate()" required></td>
-        <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="0" onchange="recalculate()" oninput="recalculate()" required></td>
+        <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" onchange="recalculate()" oninput="recalculate()" required></td>
+        <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" onchange="recalculate()" oninput="recalculate()" required></td>
         <td class="item-total text-right" id="total-${idx}">0.00</td>
-        <td>${removeBtn}</td>
+        <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
     `;
     tbody.appendChild(tr);
     recalculate();
@@ -258,6 +283,10 @@ function addItemRow() {
 function removeItemRow(idx) {
     const row = document.getElementById('item-' + idx);
     if (row) row.remove();
+    // Ensure at least one row remains
+    if (document.querySelectorAll('.item-row').length === 0) {
+        addItemRow();
+    }
     recalculate();
 }
 
@@ -298,42 +327,30 @@ function recalculate() {
 
 document.getElementById('vatRate').addEventListener('input', recalculate);
 
-function togglePreview() {
-    const body = document.getElementById('previewBody');
-    previewVisible = !previewVisible;
-    body.style.display = previewVisible ? '' : 'none';
-}
+// =========================================================================
+// TEMPLATE-STYLED PREVIEW
+// =========================================================================
 
-function updatePreview() {
-    if (!previewVisible) return;
-    const preview = document.getElementById('invoicePreview');
-
-    // Read form data
+function getPreviewData() {
     const clientId = document.getElementById('clientSelect').value;
-    const clientSelect = document.getElementById('clientSelect');
     const docDate = document.getElementById('docDate').value;
     const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
     const notes = document.getElementById('notesInput').value;
+    const template = document.getElementById('templateSelect').value;
 
-    // Get client details
     let clientInfo = null;
-    if (clientId) {
-        clientInfo = clientsData.find(c => c.id == clientId);
-    }
+    if (clientId) clientInfo = clientsData.find(c => c.id == clientId);
 
-    // Document type labels
     const docTypeName = docType === 'buy'
         ? (companySettings.buy_doc_name || 'PIRKUMA PAVADZĪME')
         : (companySettings.sell_doc_name || 'PĀRDOŠANAS PAVADZĪME');
 
-    // Format date
     let displayDate = docDate;
     if (docDate) {
         const parts = docDate.split('-');
         if (parts.length === 3) displayDate = parts[2] + '.' + parts[1] + '.' + parts[0];
     }
 
-    // Supplier/Buyer
     const company = {
         name: companySettings.company_name || '(Jūsu uzņēmums)',
         reg: companySettings.reg_number || '',
@@ -354,10 +371,8 @@ function updatePreview() {
     const supplier = docType === 'buy' ? client : company;
     const buyer = docType === 'buy' ? company : client;
 
-    // Read items
-    let itemsHtml = '';
+    let items = [];
     let subtotal = 0;
-    let rowNum = 1;
     document.querySelectorAll('.item-row').forEach(row => {
         const productSelect = row.querySelector('select[name*="product_id"]');
         const productName = productSelect.selectedOptions[0].text.split(' (atl:')[0];
@@ -366,67 +381,193 @@ function updatePreview() {
         const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
         const lineTotal = qty * price;
         subtotal += lineTotal;
-
         if (productSelect.value) {
-            itemsHtml += `<tr>
-                <td>${rowNum++}</td>
-                <td>${productName}</td>
-                <td>${unit}</td>
-                <td class="text-right">${qty.toFixed(2)}</td>
-                <td class="text-right">${price.toFixed(2)}</td>
-                <td class="text-right">${lineTotal.toFixed(2)}</td>
-            </tr>`;
+            items.push({ name: productName, unit, qty, price, total: lineTotal });
         }
     });
 
     const vatAmount = subtotal * (vatRate / 100);
     const total = subtotal + vatAmount;
+    const docNumber = editMode ? editDocNumber : '(automātiski)';
 
-    function partyHtml(info) {
-        let html = '<strong>' + info.name + '</strong>';
-        if (info.reg) html += '<br>Reģ.Nr.: ' + info.reg;
-        if (info.vat) html += '<br>PVN Nr.: ' + info.vat;
-        if (info.addr) html += '<br>' + info.addr;
-        if (info.bank) html += '<br>Banka: ' + info.bank;
-        if (info.account) html += '<br>Konts: ' + info.account;
-        return html;
+    return { template, docTypeName, docNumber, displayDate, supplier, buyer, items, subtotal, vatRate, vatAmount, total, notes };
+}
+
+function partyLines(info) {
+    let html = '<strong>' + info.name + '</strong>';
+    if (info.reg) html += '<br>Reģ.Nr.: ' + info.reg;
+    if (info.vat) html += '<br>PVN Nr.: ' + info.vat;
+    if (info.addr) html += '<br>' + info.addr;
+    if (info.bank) html += '<br>Banka: ' + info.bank;
+    if (info.account) html += '<br>Konts: ' + info.account;
+    return html;
+}
+
+function itemsTableHtml(items, style) {
+    if (!items.length) {
+        return '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:12px">Nav pievienotu preču</td></tr>';
     }
+    return items.map((item, i) => {
+        const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
+        return `<tr style="${bg}">
+            <td style="padding:5px 8px">${i + 1}</td>
+            <td style="padding:5px 8px">${item.name}</td>
+            <td style="padding:5px 8px">${item.unit}</td>
+            <td style="padding:5px 8px;text-align:right">${item.qty.toFixed(2)}</td>
+            <td style="padding:5px 8px;text-align:right">${item.price.toFixed(2)}</td>
+            <td style="padding:5px 8px;text-align:right">${item.total.toFixed(2)}</td>
+        </tr>`;
+    }).join('');
+}
 
-    preview.innerHTML = `
-        <div class="inv-title">${docTypeName}</div>
-        <div class="inv-number">Nr. (automātiski) &nbsp;&nbsp;|&nbsp;&nbsp; ${displayDate || '—'}</div>
-        <div class="inv-parties">
-            <div class="inv-party">
-                <h4>Piegādātājs</h4>
-                <p>${partyHtml(supplier)}</p>
+function renderClassicPreview(d) {
+    return `
+        <div style="text-align:center;margin-bottom:2px">
+            <div style="font-size:15px;font-weight:700;color:#111827">${d.docTypeName}</div>
+            <div style="font-size:11px;color:#374151;margin-top:2px">Nr. ${d.docNumber}</div>
+            <div style="font-size:10px;color:#6b7280;margin-top:1px">Datums: ${d.displayDate || '—'}</div>
+        </div>
+        <hr style="border:none;border-top:0.5px solid #e5e7eb;margin:8px 0 10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+            <div>
+                <div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
+                <div style="font-size:10px;line-height:1.5">${partyLines(d.supplier)}</div>
             </div>
-            <div class="inv-party">
-                <h4>Pircējs</h4>
-                <p>${partyHtml(buyer)}</p>
+            <div>
+                <div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">PIRCĒJS</div>
+                <div style="font-size:10px;line-height:1.5">${partyLines(d.buyer)}</div>
             </div>
         </div>
-        <table>
+        <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
             <thead>
-                <tr>
-                    <th>Nr.</th>
-                    <th>Nosaukums</th>
-                    <th>Mērvienība</th>
-                    <th class="text-right">Daudzums</th>
-                    <th class="text-right">Cena</th>
-                    <th class="text-right">Summa</th>
+                <tr style="background:#f9fafb">
+                    <th style="padding:5px 8px;text-align:left;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Nr.</th>
+                    <th style="padding:5px 8px;text-align:left;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Nosaukums</th>
+                    <th style="padding:5px 8px;text-align:left;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Mērv.</th>
+                    <th style="padding:5px 8px;text-align:right;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Daudz.</th>
+                    <th style="padding:5px 8px;text-align:right;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Cena</th>
+                    <th style="padding:5px 8px;text-align:right;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Summa</th>
                 </tr>
             </thead>
-            <tbody>
-                ${itemsHtml || '<tr><td colspan="6" class="text-center text-muted">Nav pievienotu preču</td></tr>'}
-            </tbody>
+            <tbody>${itemsTableHtml(d.items, 'classic')}</tbody>
         </table>
-        <div class="inv-totals">
-            <div>Summa bez PVN: <strong>${subtotal.toFixed(2)} EUR</strong></div>
-            <div>PVN (${vatRate}%): <strong>${vatAmount.toFixed(2)} EUR</strong></div>
-            <div class="grand">Kopā: ${total.toFixed(2)} EUR</div>
+        <div style="text-align:right;font-size:10px">
+            <div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
+            <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>
+            <div style="font-size:12px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
-        ${notes ? '<div style="margin-top:12px;font-size:11px;color:var(--text-light)"><strong>Piezīmes:</strong> ' + notes + '</div>' : ''}
+        ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:9px;color:#6b7280">
+            <div><strong>Izsniedza:</strong> ________________________</div>
+            <div><strong>Saņēma:</strong> ________________________</div>
+        </div>
     `;
+}
+
+function renderModernPreview(d) {
+    return `
+        <div style="background:#111827;color:white;padding:14px 16px;border-radius:4px;margin:-1px -1px 12px -1px;display:flex;justify-content:space-between;align-items:center">
+            <div style="font-size:16px;font-weight:700">${d.docTypeName}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.7);text-align:right">
+                Nr. ${d.docNumber}<br>Datums: ${d.displayDate || '—'}
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;padding:0 4px">
+            <div>
+                <div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
+                <div style="font-size:10px;line-height:1.5">${partyLines(d.supplier)}</div>
+            </div>
+            <div>
+                <div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">PIRCĒJS</div>
+                <div style="font-size:10px;line-height:1.5">${partyLines(d.buyer)}</div>
+            </div>
+        </div>
+        <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
+            <thead>
+                <tr style="background:#1f2937">
+                    <th style="padding:6px 8px;text-align:left;font-size:8px;color:white">Nr.</th>
+                    <th style="padding:6px 8px;text-align:left;font-size:8px;color:white">Nosaukums</th>
+                    <th style="padding:6px 8px;text-align:left;font-size:8px;color:white">Mērv.</th>
+                    <th style="padding:6px 8px;text-align:right;font-size:8px;color:white">Daudz.</th>
+                    <th style="padding:6px 8px;text-align:right;font-size:8px;color:white">Cena</th>
+                    <th style="padding:6px 8px;text-align:right;font-size:8px;color:white">Summa</th>
+                </tr>
+            </thead>
+            <tbody>${itemsTableHtml(d.items, 'modern')}</tbody>
+        </table>
+        <div style="text-align:right;font-size:10px;padding:0 4px">
+            <div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
+            <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>
+            <div style="font-size:13px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${d.total.toFixed(2)} EUR</div>
+        </div>
+        ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280;padding:0 4px"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:9px;color:#6b7280;padding:0 4px">
+            <div><strong>Izsniedza:</strong> ________________________</div>
+            <div><strong>Saņēma:</strong> ________________________</div>
+        </div>
+    `;
+}
+
+function renderMinimalPreview(d) {
+    return `
+        <div style="padding:0 8px">
+            <div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:2px">${d.docTypeName}</div>
+            <div style="font-size:10px;color:#9ca3af;margin-bottom:10px">Nr. ${d.docNumber} &nbsp;&middot;&nbsp; ${d.displayDate || '—'}</div>
+            <hr style="border:none;border-top:0.25px solid #e5e7eb;margin:0 0 10px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px">
+                <div>
+                    <div style="font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">PIEGĀDĀTĀJS</div>
+                    <div style="font-size:9.5px;line-height:1.5">${partyLines(d.supplier)}</div>
+                </div>
+                <div>
+                    <div style="font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">PIRCĒJS</div>
+                    <div style="font-size:9.5px;line-height:1.5">${partyLines(d.buyer)}</div>
+                </div>
+            </div>
+            <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
+                <thead>
+                    <tr>
+                        <th style="padding:5px 8px;text-align:left;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">#</th>
+                        <th style="padding:5px 8px;text-align:left;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">PRECE</th>
+                        <th style="padding:5px 8px;text-align:left;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">MĒRV.</th>
+                        <th style="padding:5px 8px;text-align:right;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">DAUDZ.</th>
+                        <th style="padding:5px 8px;text-align:right;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">CENA</th>
+                        <th style="padding:5px 8px;text-align:right;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">SUMMA</th>
+                    </tr>
+                </thead>
+                <tbody>${itemsTableHtml(d.items, 'minimal')}</tbody>
+            </table>
+            <div style="text-align:right;font-size:10px">
+                <div style="color:#9ca3af">Bez PVN: <span style="color:#9ca3af">${d.subtotal.toFixed(2)} EUR</span></div>
+                <div style="color:#9ca3af">PVN ${d.vatRate}%: <span style="color:#9ca3af">${d.vatAmount.toFixed(2)} EUR</span></div>
+                <div style="font-size:11px;font-weight:800;color:#111827;margin-top:3px;padding-top:3px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
+            </div>
+            ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:8px 0 4px"><div style="font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:8px;color:#9ca3af">
+                <div>Izsniedza ________________________</div>
+                <div>Saņēma ________________________</div>
+            </div>
+        </div>
+    `;
+}
+
+function updatePreview() {
+    const preview = document.getElementById('invoicePreview');
+    const d = getPreviewData();
+
+    // Update template label
+    document.getElementById('previewTemplateLabel').textContent = templateLabels[d.template] || d.template;
+
+    // Set wrapper style based on template
+    preview.className = 'invoice-preview-wrapper preview-' + d.template;
+
+    if (d.template === 'modern') {
+        preview.innerHTML = renderModernPreview(d);
+    } else if (d.template === 'minimal') {
+        preview.innerHTML = renderMinimalPreview(d);
+    } else {
+        preview.innerHTML = renderClassicPreview(d);
+    }
 }
 
 function showQuickAddClient() {
@@ -457,7 +598,6 @@ async function quickAddClient() {
     });
     const client = await resp.json();
 
-    // Add to clientsData for preview
     clientsData.push(client);
 
     const select = document.getElementById('clientSelect');
@@ -486,7 +626,6 @@ async function quickAddProduct() {
     products.push(product);
     stockMap[product.id] = 0;
 
-    // Refresh all product dropdowns in existing rows
     document.querySelectorAll('.item-row select[name*="product_id"]').forEach(select => {
         const stockInfo = (stockEnabled && docType === 'sell') ? ' (atl: 0.00)' : '';
         const opt = new Option(product.name + stockInfo, product.id);
@@ -498,9 +637,14 @@ async function quickAddProduct() {
     document.getElementById('qp_name').value = '';
 }
 
-// Start with one empty row
-addItemRow();
-// Initial preview
+// Initialize
+if (editMode && editItems.length > 0) {
+    editItems.forEach(item => {
+        addItemRow(item.product_id, item.unit, item.quantity, item.price_per_unit);
+    });
+} else {
+    addItemRow();
+}
 setTimeout(updatePreview, 100);
 </script>
 {% endblock %}

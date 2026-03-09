@@ -588,6 +588,67 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         conn.close()
 
 
+def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes=""):
+    """
+    Update an existing document and its line items.
+    items: list of dicts with keys: product_id, quantity, unit, price_per_unit
+    """
+    conn = get_connection()
+    try:
+        # Verify ownership
+        doc = conn.execute(
+            "SELECT * FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id)
+        ).fetchone()
+        if not doc:
+            raise ValueError("Dokuments nav atrasts")
+
+        stock_on = get_user_setting(user_id, "stock_enabled", "0") == "1"
+        if stock_on and doc["doc_type"] == "sell":
+            for item in items:
+                # Get current stock, but add back what this document previously sold
+                available = _get_product_stock(conn, item["product_id"], user_id)
+                # Add back quantities from existing document items for this product
+                existing = conn.execute(
+                    "SELECT COALESCE(SUM(quantity), 0) as qty FROM document_items "
+                    "WHERE document_id = ? AND product_id = ?",
+                    (doc_id, item["product_id"])
+                ).fetchone()
+                available += existing["qty"]
+                product = get_product(item["product_id"])
+                if item["quantity"] > available:
+                    product_name = product["name"] if product else f"ID:{item['product_id']}"
+                    raise ValueError(
+                        f"Nepietiekams daudzums: {product_name}. "
+                        f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
+                    )
+
+        # Update document fields
+        conn.execute(
+            """UPDATE documents SET client_id = ?, doc_date = ?, vat_rate = ?, notes = ?
+               WHERE id = ? AND user_id = ?""",
+            (client_id, doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
+             vat_rate, notes, doc_id, user_id)
+        )
+
+        # Delete old items and insert new ones
+        conn.execute("DELETE FROM document_items WHERE document_id = ?", (doc_id,))
+        for item in items:
+            total = item["quantity"] * item["price_per_unit"]
+            conn.execute(
+                """INSERT INTO document_items (document_id, product_id, quantity, unit, price_per_unit, total)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (doc_id, item["product_id"], item["quantity"], item["unit"],
+                 item["price_per_unit"], total)
+            )
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def get_document(doc_id):
     conn = get_connection()
     doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()

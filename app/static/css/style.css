@@ -969,3 +969,49 @@ select.form-control { cursor: pointer; }
     gap: 16px;
     flex-wrap: wrap;
 }
+
+/* --- Document editor 2-column layout --- */
+.doc-editor-layout {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 24px;
+    align-items: start;
+}
+
+.doc-editor-form { min-width: 0; }
+
+.doc-editor-preview { min-width: 0; }
+
+.doc-editor-preview .invoice-preview-wrapper {
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 20px;
+    font-size: 11px;
+    line-height: 1.45;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.doc-editor-preview .preview-modern {
+    padding: 0 0 20px 0;
+}
+
+.doc-editor-preview .preview-minimal {
+    padding: 28px 24px;
+}
+
+[data-theme="dark"] .doc-editor-preview .invoice-preview-wrapper {
+    background: #1a1f2e;
+    border-color: var(--border);
+}
+
+@media (max-width: 1100px) {
+    .doc-editor-layout {
+        grid-template-columns: 1fr;
+    }
+    .doc-editor-preview {
+        order: -1;
+    }
+}

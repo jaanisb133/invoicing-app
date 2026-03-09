@@ -610,7 +610,7 @@ async def save_settings(
         "invoice_number_type": invoice_number_type,
         "invoice_number_separator": invoice_number_separator,
         "invoice_number_digits": invoice_number_digits,
-    }
+    })
     db.save_all_user_settings(user["id"], settings_dict)
     return RedirectResponse("/settings?saved=1", status_code=303)
 
@@ -859,6 +859,79 @@ async def create_document(request: Request):
         logger.exception("PDF generation failed for doc %s", doc_id)
 
     return RedirectResponse(f"/documents/{doc_id}?created=1", status_code=303)
+
+
+@app.get("/documents/{doc_id}/edit", response_class=HTMLResponse)
+async def edit_document_page(request: Request, doc_id: int):
+    ctx = _base_context(request)
+    user = request.state.user
+    uid = user["id"]
+    doc, items = db.get_document(doc_id)
+    if not doc or doc.get("user_id") != uid:
+        raise HTTPException(status_code=404, detail="Dokuments nav atrasts")
+    clients = db.get_all_clients(uid)
+    products = db.get_all_products(uid)
+    settings = _user_settings(uid)
+    stock_on = _stock_enabled(uid)
+    stock_data = db.get_stock(uid) if stock_on else []
+    stock_map = {s["id"]: s["stock"] for s in stock_data}
+    ctx.update({
+        "clients": clients,
+        "products": products,
+        "units": UNITS,
+        "settings": settings,
+        "doc_type": doc["doc_type"],
+        "stock_map": stock_map,
+        "templates": TEMPLATES,
+        "today": datetime.date.today().isoformat(),
+        "page": "documents",
+        "edit_mode": True,
+        "doc": doc,
+        "edit_items": items,
+    })
+    return templates.TemplateResponse("document_form.html", ctx)
+
+
+@app.post("/documents/{doc_id}/update")
+async def update_document(request: Request, doc_id: int):
+    user = request.state.user
+    form = await request.form()
+    doc_type = form.get("doc_type", "buy")
+    client_id = int(form.get("client_id", 0))
+    doc_date = form.get("doc_date", datetime.date.today().isoformat())
+    vat_rate = float(form.get("vat_rate", 21.0))
+    notes = form.get("notes", "")
+    template = form.get("template", "classic")
+
+    items = []
+    i = 0
+    while f"items[{i}][product_id]" in form:
+        product_id = int(form[f"items[{i}][product_id]"])
+        quantity = float(form[f"items[{i}][quantity]"])
+        unit = form[f"items[{i}][unit]"]
+        price_per_unit = float(form[f"items[{i}][price_per_unit]"])
+        items.append({
+            "product_id": product_id,
+            "quantity": quantity,
+            "unit": unit,
+            "price_per_unit": price_per_unit,
+        })
+        i += 1
+
+    if not items:
+        return RedirectResponse(f"/documents/{doc_id}/edit?error=no_items", status_code=303)
+
+    try:
+        db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes)
+    except ValueError as e:
+        return RedirectResponse(f"/documents/{doc_id}/edit?error={str(e)}", status_code=303)
+
+    try:
+        generate_invoice_pdf(doc_id, template=template)
+    except Exception as e:
+        logger.exception("PDF generation failed for doc %s", doc_id)
+
+    return RedirectResponse(f"/documents/{doc_id}?updated=1", status_code=303)
 
 
 @app.get("/documents/{doc_id}", response_class=HTMLResponse)
