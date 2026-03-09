@@ -1,7 +1,6 @@
 """
 Database module for Pavadzīmju Pārvaldnieks (Web).
-Adapted from desktop/database.py for the FastAPI web application.
-Handles SQLite database creation, migrations, and all CRUD operations.
+Multi-tenant SaaS architecture: all business data is isolated per user.
 """
 
 import sqlite3
@@ -18,14 +17,12 @@ _db_path = os.path.join(os.path.dirname(_db_dir), "data", DB_NAME)
 
 
 def get_db_path():
-    """Get the database path in the data/ directory."""
     data_dir = os.path.dirname(_db_path)
     os.makedirs(data_dir, exist_ok=True)
     return _db_path
 
 
 def get_connection():
-    """Get a database connection with foreign keys enabled."""
     conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
@@ -33,26 +30,51 @@ def get_connection():
 
 
 def init_db():
-    """Initialize the database schema."""
+    """Initialize the database schema with multi-tenant support."""
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.executescript("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL DEFAULT '',
+            password_hash TEXT NOT NULL,
+            display_name TEXT NOT NULL DEFAULT '',
+            must_change_password INTEGER NOT NULL DEFAULT 0,
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            tier TEXT NOT NULL DEFAULT 'free',
+            subscription_status TEXT NOT NULL DEFAULT 'active',
+            subscription_start DATE,
+            subscription_end DATE,
+            max_documents INTEGER NOT NULL DEFAULT 50,
+            max_clients INTEGER NOT NULL DEFAULT 20,
+            max_products INTEGER NOT NULL DEFAULT 50,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, key)
         );
 
         CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             unit TEXT NOT NULL DEFAULT 'kg',
             active INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             reg_number TEXT,
             vat_number TEXT,
@@ -63,11 +85,13 @@ def init_db():
             phone TEXT,
             email TEXT,
             active INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             doc_type TEXT NOT NULL CHECK(doc_type IN ('buy', 'sell')),
             doc_number TEXT NOT NULL,
             client_id INTEGER NOT NULL,
@@ -75,6 +99,7 @@ def init_db():
             vat_rate REAL NOT NULL DEFAULT 21.0,
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (client_id) REFERENCES clients(id)
         );
 
@@ -91,35 +116,80 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS doc_sequences (
-            prefix TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            prefix TEXT NOT NULL,
             last_number INTEGER NOT NULL DEFAULT 0,
-            year INTEGER NOT NULL
+            year INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, prefix, year)
         );
 
         CREATE TABLE IF NOT EXISTS recycled_numbers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             doc_type TEXT NOT NULL,
             year INTEGER NOT NULL,
             number INTEGER NOT NULL,
-            recycled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            recycled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            display_name TEXT NOT NULL DEFAULT '',
-            must_change_password INTEGER NOT NULL DEFAULT 0,
-            is_admin INTEGER NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );
+    """)
+
+    conn.commit()
+    conn.close()
+    _run_migrations()
+
+
+def _run_migrations():
+    """Add columns to existing tables if they don't exist yet."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Check users table columns
+    cols = {row[1] for row in cursor.execute("PRAGMA table_info(users)").fetchall()}
+    migrations = {
+        "email": "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
+        "tier": "ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'",
+        "subscription_status": "ALTER TABLE users ADD COLUMN subscription_status TEXT NOT NULL DEFAULT 'active'",
+        "subscription_start": "ALTER TABLE users ADD COLUMN subscription_start DATE",
+        "subscription_end": "ALTER TABLE users ADD COLUMN subscription_end DATE",
+        "max_documents": "ALTER TABLE users ADD COLUMN max_documents INTEGER NOT NULL DEFAULT 50",
+        "max_clients": "ALTER TABLE users ADD COLUMN max_clients INTEGER NOT NULL DEFAULT 20",
+        "max_products": "ALTER TABLE users ADD COLUMN max_products INTEGER NOT NULL DEFAULT 50",
+    }
+    for col, sql in migrations.items():
+        if col not in cols:
+            cursor.execute(sql)
+
+    # Check if user_id exists in business tables, add if not
+    for table in ["products", "clients", "documents", "doc_sequences", "recycled_numbers"]:
+        table_cols = {row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "user_id" not in table_cols:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0")
+
+    # Create user_settings table if not exists
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, key)
+        )
     """)
 
     conn.commit()
     conn.close()
 
 
-# --- Settings ---
+# --- Global Settings (system-level) ---
 
 def get_setting(key, default=""):
     conn = get_connection()
@@ -138,8 +208,52 @@ def set_setting(key, value):
     conn.close()
 
 
+# --- Per-User Settings ---
+
+def get_user_setting(user_id, key, default=""):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT value FROM user_settings WHERE user_id = ? AND key = ?",
+        (user_id, key)
+    ).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_user_setting(user_id, key, value):
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id, key) DO UPDATE SET value = ?",
+        (user_id, key, value, value)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_user_settings(user_id):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT key, value FROM user_settings WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    conn.close()
+    return {row["key"]: row["value"] for row in rows}
+
+
+def save_all_user_settings(user_id, settings_dict):
+    conn = get_connection()
+    for key, value in settings_dict.items():
+        conn.execute(
+            "INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id, key) DO UPDATE SET value = ?",
+            (user_id, key, value, value)
+        )
+    conn.commit()
+    conn.close()
+
+
+# Legacy compatibility
 def get_all_settings():
-    """Get all settings as a dictionary."""
     conn = get_connection()
     rows = conn.execute("SELECT key, value FROM settings").fetchall()
     conn.close()
@@ -147,7 +261,6 @@ def get_all_settings():
 
 
 def save_all_settings(settings_dict):
-    """Save multiple settings at once."""
     conn = get_connection()
     for key, value in settings_dict.items():
         conn.execute(
@@ -158,13 +271,13 @@ def save_all_settings(settings_dict):
     conn.close()
 
 
-# --- Products ---
+# --- Products (per-user) ---
 
-def add_product(name, unit):
+def add_product(user_id, name, unit):
     conn = get_connection()
     cursor = conn.execute(
-        "INSERT INTO products (name, unit) VALUES (?, ?)",
-        (name, unit)
+        "INSERT INTO products (user_id, name, unit) VALUES (?, ?, ?)",
+        (user_id, name, unit)
     )
     product_id = cursor.lastrowid
     conn.commit()
@@ -172,32 +285,36 @@ def add_product(name, unit):
     return product_id
 
 
-def update_product(product_id, name, unit):
+def update_product(user_id, product_id, name, unit):
     conn = get_connection()
     conn.execute(
-        "UPDATE products SET name = ?, unit = ? WHERE id = ?",
-        (name, unit, product_id)
+        "UPDATE products SET name = ?, unit = ? WHERE id = ? AND user_id = ?",
+        (name, unit, product_id, user_id)
     )
     conn.commit()
     conn.close()
 
 
-def delete_product(product_id):
-    """Soft delete - mark as inactive."""
+def delete_product(user_id, product_id):
     conn = get_connection()
-    conn.execute("UPDATE products SET active = 0 WHERE id = ?", (product_id,))
+    conn.execute("UPDATE products SET active = 0 WHERE id = ? AND user_id = ?",
+                 (product_id, user_id))
     conn.commit()
     conn.close()
 
 
-def get_all_products(active_only=True):
+def get_all_products(user_id, active_only=True):
     conn = get_connection()
     if active_only:
         rows = conn.execute(
-            "SELECT * FROM products WHERE active = 1 ORDER BY name"
+            "SELECT * FROM products WHERE user_id = ? AND active = 1 ORDER BY name",
+            (user_id,)
         ).fetchall()
     else:
-        rows = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM products WHERE user_id = ? ORDER BY name",
+            (user_id,)
+        ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -209,16 +326,16 @@ def get_product(product_id):
     return dict(row) if row else None
 
 
-# --- Clients ---
+# --- Clients (per-user) ---
 
-def add_client(name, reg_number="", vat_number="", legal_address="",
+def add_client(user_id, name, reg_number="", vat_number="", legal_address="",
                bank_name="", bank_account="", contact_person="", phone="", email=""):
     conn = get_connection()
     cursor = conn.execute(
-        """INSERT INTO clients (name, reg_number, vat_number, legal_address,
+        """INSERT INTO clients (user_id, name, reg_number, vat_number, legal_address,
            bank_name, bank_account, contact_person, phone, email)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (name, reg_number, vat_number, legal_address,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, name, reg_number, vat_number, legal_address,
          bank_name, bank_account, contact_person, phone, email)
     )
     client_id = cursor.lastrowid
@@ -227,33 +344,38 @@ def add_client(name, reg_number="", vat_number="", legal_address="",
     return client_id
 
 
-def update_client(client_id, **kwargs):
+def update_client(user_id, client_id, **kwargs):
     allowed_fields = {"name", "reg_number", "vat_number", "legal_address",
                       "bank_name", "bank_account", "contact_person", "phone", "email"}
     conn = get_connection()
     for key, value in kwargs.items():
         if key in allowed_fields:
-            conn.execute(f"UPDATE clients SET {key} = ? WHERE id = ?", (value, client_id))
+            conn.execute(f"UPDATE clients SET {key} = ? WHERE id = ? AND user_id = ?",
+                         (value, client_id, user_id))
     conn.commit()
     conn.close()
 
 
-def delete_client(client_id):
-    """Soft delete - mark as inactive."""
+def delete_client(user_id, client_id):
     conn = get_connection()
-    conn.execute("UPDATE clients SET active = 0 WHERE id = ?", (client_id,))
+    conn.execute("UPDATE clients SET active = 0 WHERE id = ? AND user_id = ?",
+                 (client_id, user_id))
     conn.commit()
     conn.close()
 
 
-def get_all_clients(active_only=True):
+def get_all_clients(user_id, active_only=True):
     conn = get_connection()
     if active_only:
         rows = conn.execute(
-            "SELECT * FROM clients WHERE active = 1 ORDER BY name"
+            "SELECT * FROM clients WHERE user_id = ? AND active = 1 ORDER BY name",
+            (user_id,)
         ).fetchall()
     else:
-        rows = conn.execute("SELECT * FROM clients ORDER BY name").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM clients WHERE user_id = ? ORDER BY name",
+            (user_id,)
+        ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -265,73 +387,152 @@ def get_client(client_id):
     return dict(row) if row else None
 
 
-# --- Documents ---
+# --- Documents (per-user) ---
 
-def get_next_doc_number(doc_type, year, conn=None):
+def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     """
-    Get next sequential document number.
-    Uses recycled numbers first, then increments sequence.
+    Get next document number based on user's invoice_number_type setting.
+
+    Types:
+    - type1: YEAR + sequential (e.g., 26-001, 26-002)
+    - type2: SEQ/DAY-MONTH, resets daily (e.g., 01/09-03)
+    - type3: Simple sequential (e.g., 001, 002)
     """
     close_conn = False
     if conn is None:
         conn = get_connection()
         close_conn = True
 
-    if doc_type == "buy":
-        prefix = get_setting("buy_doc_prefix", "PIR")
+    # Get user's numbering settings
+    settings = {}
+    rows = conn.execute(
+        "SELECT key, value FROM user_settings WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    for r in rows:
+        settings[r["key"]] = r["value"]
+
+    number_type = settings.get("invoice_number_type", "type1")
+    separator = settings.get("invoice_number_separator", "-")
+    min_digits = int(settings.get("invoice_number_digits", "3"))
+
+    if isinstance(doc_date, str):
+        doc_date_obj = datetime.date.fromisoformat(doc_date)
     else:
-        prefix = get_setting("sell_doc_prefix", "PAR")
+        doc_date_obj = doc_date
 
-    seq_key = f"{doc_type}-{year}"
+    year = doc_date_obj.year
+    year_short = year % 100
 
-    recycled = conn.execute(
-        "SELECT id, number FROM recycled_numbers WHERE doc_type = ? AND year = ? ORDER BY number ASC LIMIT 1",
-        (doc_type, year)
-    ).fetchone()
+    if number_type == "type2":
+        # Type 2: SEQ/DAY-MONTH, resets daily
+        day = doc_date_obj.day
+        month = doc_date_obj.month
+        date_str = doc_date_obj.isoformat()
 
-    if recycled:
-        next_num = recycled["number"]
-        conn.execute("DELETE FROM recycled_numbers WHERE id = ?", (recycled["id"],))
-    else:
+        # Count documents already created for this date
         row = conn.execute(
-            "SELECT last_number FROM doc_sequences WHERE prefix = ? AND year = ?",
-            (seq_key, year)
+            "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_type = ? AND doc_date = ?",
+            (user_id, doc_type, date_str)
+        ).fetchone()
+        next_num = (row["cnt"] if row else 0) + 1
+
+        doc_number = f"{next_num:02d}/{day:02d}-{month:02d}"
+
+        if close_conn:
+            conn.commit()
+            conn.close()
+        return doc_number, next_num
+
+    elif number_type == "type3":
+        # Type 3: Simple sequential from 001
+        seq_key = f"{doc_type}-all"
+
+        recycled = conn.execute(
+            "SELECT id, number FROM recycled_numbers WHERE user_id = ? AND doc_type = ? ORDER BY number ASC LIMIT 1",
+            (user_id, doc_type)
         ).fetchone()
 
-        if row:
-            next_num = row["last_number"] + 1
-            conn.execute(
-                "UPDATE doc_sequences SET last_number = ? WHERE prefix = ?",
-                (next_num, seq_key)
-            )
+        if recycled:
+            next_num = recycled["number"]
+            conn.execute("DELETE FROM recycled_numbers WHERE id = ?", (recycled["id"],))
         else:
-            next_num = 1
-            conn.execute(
-                "INSERT INTO doc_sequences (prefix, last_number, year) VALUES (?, ?, ?)",
-                (seq_key, next_num, year)
-            )
+            row = conn.execute(
+                "SELECT last_number FROM doc_sequences WHERE user_id = ? AND prefix = ?",
+                (user_id, seq_key)
+            ).fetchone()
 
-    if close_conn:
-        conn.commit()
-        conn.close()
+            if row:
+                next_num = row["last_number"] + 1
+                conn.execute(
+                    "UPDATE doc_sequences SET last_number = ? WHERE user_id = ? AND prefix = ?",
+                    (next_num, user_id, seq_key)
+                )
+            else:
+                next_num = 1
+                conn.execute(
+                    "INSERT INTO doc_sequences (user_id, prefix, last_number, year) VALUES (?, ?, ?, ?)",
+                    (user_id, seq_key, next_num, year)
+                )
 
-    return f"{prefix}-{year}-{next_num:04d}", next_num
+        doc_number = str(next_num).zfill(min_digits)
+
+        if close_conn:
+            conn.commit()
+            conn.close()
+        return doc_number, next_num
+
+    else:
+        # Type 1 (default): YEAR + sequential (e.g., 26-001)
+        seq_key = f"{doc_type}-{year}"
+
+        recycled = conn.execute(
+            "SELECT id, number FROM recycled_numbers WHERE user_id = ? AND doc_type = ? AND year = ? ORDER BY number ASC LIMIT 1",
+            (user_id, doc_type, year)
+        ).fetchone()
+
+        if recycled:
+            next_num = recycled["number"]
+            conn.execute("DELETE FROM recycled_numbers WHERE id = ?", (recycled["id"],))
+        else:
+            row = conn.execute(
+                "SELECT last_number FROM doc_sequences WHERE user_id = ? AND prefix = ? AND year = ?",
+                (user_id, seq_key, year)
+            ).fetchone()
+
+            if row:
+                next_num = row["last_number"] + 1
+                conn.execute(
+                    "UPDATE doc_sequences SET last_number = ? WHERE user_id = ? AND prefix = ?",
+                    (next_num, user_id, seq_key)
+                )
+            else:
+                next_num = 1
+                conn.execute(
+                    "INSERT INTO doc_sequences (user_id, prefix, last_number, year) VALUES (?, ?, ?, ?)",
+                    (user_id, seq_key, next_num, year)
+                )
+
+        num_str = str(next_num).zfill(min_digits)
+        doc_number = f"{year_short}{separator}{num_str}"
+
+        if close_conn:
+            conn.commit()
+            conn.close()
+        return doc_number, next_num
 
 
-def create_document(doc_type, client_id, doc_date, items, vat_rate=21.0, notes=""):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes=""):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
-    Returns (document_id, doc_number) or raises ValueError if stock insufficient.
+    Returns (document_id, doc_number) or raises ValueError.
     """
-    year = doc_date.year if isinstance(doc_date, datetime.date) else int(doc_date[:4])
-
     conn = get_connection()
     try:
-        stock_on = get_setting("stock_enabled", "1") == "1"
+        stock_on = get_user_setting(user_id, "stock_enabled", "1") == "1"
         if stock_on and doc_type == "sell":
             for item in items:
-                available = _get_product_stock(conn, item["product_id"])
+                available = _get_product_stock(conn, item["product_id"], user_id)
                 product = get_product(item["product_id"])
                 if item["quantity"] > available:
                     product_name = product["name"] if product else f"ID:{item['product_id']}"
@@ -340,12 +541,12 @@ def create_document(doc_type, client_id, doc_date, items, vat_rate=21.0, notes="
                         f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
                     )
 
-        doc_number, seq_num = get_next_doc_number(doc_type, year, conn)
+        doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
 
         cursor = conn.execute(
-            """INSERT INTO documents (doc_type, doc_number, client_id, doc_date, vat_rate, notes)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (doc_type, doc_number, client_id,
+            """INSERT INTO documents (user_id, doc_type, doc_number, client_id, doc_date, vat_rate, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, doc_type, doc_number, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
              vat_rate, notes)
         )
@@ -383,14 +584,13 @@ def get_document(doc_id):
     return (dict(doc) if doc else None, [dict(i) for i in items])
 
 
-def get_documents(doc_type=None, client_id=None, date_from=None, date_to=None):
-    """Get documents with optional filters."""
+def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_to=None):
     conn = get_connection()
     query = """SELECT d.*, c.name as client_name
                FROM documents d
                JOIN clients c ON d.client_id = c.id
-               WHERE 1=1"""
-    params = []
+               WHERE d.user_id = ?"""
+    params = [user_id]
 
     if doc_type:
         query += " AND d.doc_type = ?"
@@ -411,55 +611,62 @@ def get_documents(doc_type=None, client_id=None, date_from=None, date_to=None):
     return [dict(r) for r in rows]
 
 
-def delete_document(doc_id):
-    """Delete a document, its items, and recycle the document number."""
+def delete_document(user_id, doc_id):
     conn = get_connection()
-    doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    doc = conn.execute("SELECT * FROM documents WHERE id = ? AND user_id = ?",
+                       (doc_id, user_id)).fetchone()
     if doc:
-        parts = doc["doc_number"].rsplit("-", 1)
-        if len(parts) == 2:
+        # Try to recycle the number
+        number_type = get_user_setting(user_id, "invoice_number_type", "type1")
+        if number_type != "type2":
+            # For type2 (daily reset) recycling doesn't make sense
             try:
-                seq_num = int(parts[1])
+                doc_number = doc["doc_number"]
                 year = int(doc["doc_date"][:4])
+                # Extract the sequence number from the doc_number
+                if number_type == "type3":
+                    seq_num = int(doc_number)
+                else:
+                    # type1: "26-001" -> 1
+                    parts = doc_number.split(get_user_setting(user_id, "invoice_number_separator", "-"), 1)
+                    seq_num = int(parts[-1]) if len(parts) > 1 else int(doc_number)
                 conn.execute(
-                    "INSERT INTO recycled_numbers (doc_type, year, number) VALUES (?, ?, ?)",
-                    (doc["doc_type"], year, seq_num)
+                    "INSERT INTO recycled_numbers (user_id, doc_type, year, number) VALUES (?, ?, ?, ?)",
+                    (user_id, doc["doc_type"], year, seq_num)
                 )
             except (ValueError, IndexError):
                 pass
 
-    conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+    conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
     conn.commit()
     conn.close()
 
 
-# --- Stock ---
+# --- Stock (per-user) ---
 
-def _get_product_stock(conn, product_id):
-    """Get current stock for a product (internal, uses existing connection)."""
+def _get_product_stock(conn, product_id, user_id):
     row = conn.execute("""
         SELECT
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = ? AND d.doc_type = 'buy'), 0
+                 WHERE di.product_id = ? AND d.doc_type = 'buy' AND d.user_id = ?), 0
             ) -
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = ? AND d.doc_type = 'sell'), 0
+                 WHERE di.product_id = ? AND d.doc_type = 'sell' AND d.user_id = ?), 0
             ) as stock
-    """, (product_id, product_id)).fetchone()
+    """, (product_id, user_id, product_id, user_id)).fetchone()
     return row["stock"] if row else 0
 
 
-def get_stock(date_from=None, date_to=None):
-    """Get stock levels for all active products, optionally filtered by date range."""
+def get_stock(user_id, date_from=None, date_to=None):
     conn = get_connection()
 
     date_filter = ""
-    params_buy = []
-    params_sell = []
+    params_buy = [user_id]
+    params_sell = [user_id]
 
     if date_from:
         date_filter += " AND d.doc_date >= ?"
@@ -475,27 +682,26 @@ def get_stock(date_from=None, date_to=None):
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = p.id AND d.doc_type = 'buy'{date_filter}), 0
+                 WHERE di.product_id = p.id AND d.doc_type = 'buy' AND d.user_id = ?{date_filter}), 0
             ) as bought,
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = p.id AND d.doc_type = 'sell'{date_filter}), 0
+                 WHERE di.product_id = p.id AND d.doc_type = 'sell' AND d.user_id = ?{date_filter}), 0
             ) as sold
         FROM products p
-        WHERE p.active = 1
+        WHERE p.user_id = ? AND p.active = 1
         ORDER BY p.name
-    """, params_buy + params_sell).fetchall()
+    """, params_buy + params_sell + [user_id]).fetchall()
     conn.close()
     return [{"id": r["id"], "name": r["name"], "unit": r["unit"],
              "bought": r["bought"], "sold": r["sold"],
              "stock": r["bought"] - r["sold"]} for r in rows]
 
 
-def get_product_stock(product_id):
-    """Get current stock for a single product."""
+def get_product_stock(user_id, product_id):
     conn = get_connection()
-    stock = _get_product_stock(conn, product_id)
+    stock = _get_product_stock(conn, product_id, user_id)
     conn.close()
     return stock
 
@@ -511,13 +717,17 @@ def _check_password(password: str, password_hash: str) -> bool:
 
 
 def create_user(username: str, password: str, display_name: str = "",
-                is_admin: bool = False, must_change_password: bool = False) -> int:
+                email: str = "", is_admin: bool = False,
+                must_change_password: bool = False,
+                tier: str = "free") -> int:
     conn = get_connection()
     cursor = conn.execute(
-        """INSERT INTO users (username, password_hash, display_name, is_admin, must_change_password)
-           VALUES (?, ?, ?, ?, ?)""",
-        (username.lower().strip(), _hash_password(password), display_name,
-         1 if is_admin else 0, 1 if must_change_password else 0)
+        """INSERT INTO users (username, email, password_hash, display_name,
+           is_admin, must_change_password, tier, subscription_status, subscription_start)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)""",
+        (username.lower().strip(), email.strip(), _hash_password(password),
+         display_name, 1 if is_admin else 0, 1 if must_change_password else 0,
+         tier, datetime.date.today().isoformat())
     )
     user_id = cursor.lastrowid
     conn.commit()
@@ -526,7 +736,6 @@ def create_user(username: str, password: str, display_name: str = "",
 
 
 def authenticate_user(username: str, password: str):
-    """Returns user dict if credentials valid, else None."""
     conn = get_connection()
     row = conn.execute("SELECT * FROM users WHERE username = ?",
                        (username.lower().strip(),)).fetchone()
@@ -551,9 +760,20 @@ def get_user_by_username(username: str):
     return dict(row) if row else None
 
 
+def get_user_by_email(email: str):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM users WHERE email = ?",
+                       (email.strip().lower(),)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def get_all_users():
     conn = get_connection()
-    rows = conn.execute("SELECT id, username, display_name, is_admin, created_at FROM users ORDER BY username").fetchall()
+    rows = conn.execute(
+        "SELECT id, username, email, display_name, is_admin, tier, subscription_status, created_at "
+        "FROM users ORDER BY username"
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -562,6 +782,16 @@ def update_user_password(user_id: int, new_password: str):
     conn = get_connection()
     conn.execute("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
                  (_hash_password(new_password), user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_user_profile(user_id: int, display_name: str = None, email: str = None):
+    conn = get_connection()
+    if display_name is not None:
+        conn.execute("UPDATE users SET display_name = ? WHERE id = ?", (display_name, user_id))
+    if email is not None:
+        conn.execute("UPDATE users SET email = ? WHERE id = ?", (email.strip(), user_id))
     conn.commit()
     conn.close()
 
@@ -580,16 +810,38 @@ def user_count() -> int:
     return row["cnt"]
 
 
+def get_user_document_count(user_id: int) -> int:
+    conn = get_connection()
+    row = conn.execute("SELECT COUNT(*) as cnt FROM documents WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row["cnt"]
+
+
 def ensure_default_admin():
     """Create default admin account if no users exist."""
     if user_count() == 0:
         temp_password = secrets.token_urlsafe(12)
         create_user(
-            username="janis",
+            username="admin",
             password=temp_password,
-            display_name="Jānis",
+            display_name="Administrators",
             is_admin=True,
             must_change_password=True,
+            tier="admin",
         )
         return temp_password
     return None
+
+
+# --- Tier limits ---
+
+TIER_LIMITS = {
+    "free": {"max_documents": 50, "max_clients": 20, "max_products": 50, "label": "Bezmaksas"},
+    "starter": {"max_documents": 500, "max_clients": 100, "max_products": 200, "label": "Sākums"},
+    "business": {"max_documents": 5000, "max_clients": 500, "max_products": 1000, "label": "Bizness"},
+    "admin": {"max_documents": 999999, "max_clients": 999999, "max_products": 999999, "label": "Administrators"},
+}
+
+
+def get_tier_limits(tier):
+    return TIER_LIMITS.get(tier, TIER_LIMITS["free"])

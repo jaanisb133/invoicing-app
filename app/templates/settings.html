@@ -92,7 +92,7 @@
                             <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
                                 <input type="hidden" name="stock_enabled" value="0">
                                 <input type="checkbox" name="stock_enabled" value="1"
-                                       {% if settings.get('stock_enabled', '1') == '1' %}checked{% endif %}
+                                       {% if settings.get('stock_enabled', '0') == '1' %}checked{% endif %}
                                        style="width:18px;height:18px;cursor:pointer">
                                 Ieslēgt noliktavas uzskaiti
                             </label>
@@ -105,7 +105,113 @@
             </div>
         </div>
 
-        <button type="submit" class="btn btn-primary">Saglabāt iestatījumus</button>
+        <div class="card">
+            <div class="card-header">Rēķinu numerācija</div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label>Numerācijas tips</label>
+                    <div class="number-type-options">
+                        <label class="radio-card {% if settings.get('invoice_number_type', 'type1') == 'type1' %}selected{% endif %}">
+                            <input type="radio" name="invoice_number_type" value="type1"
+                                   {% if settings.get('invoice_number_type', 'type1') == 'type1' %}checked{% endif %}
+                                   onchange="updateNumberPreview()">
+                            <div class="radio-card-content">
+                                <strong>Tips 1 — Gads + numurs</strong>
+                                <span class="radio-card-example" id="type1Example">26-001, 26-002, ...</span>
+                                <span class="radio-card-desc">Piemēram: 26-001 ir pirmais rēķins 2026. gadā</span>
+                            </div>
+                        </label>
+                        <label class="radio-card {% if settings.get('invoice_number_type') == 'type2' %}selected{% endif %}">
+                            <input type="radio" name="invoice_number_type" value="type2"
+                                   {% if settings.get('invoice_number_type') == 'type2' %}checked{% endif %}
+                                   onchange="updateNumberPreview()">
+                            <div class="radio-card-content">
+                                <strong>Tips 2 — Numurs/diena-mēnesis</strong>
+                                <span class="radio-card-example">01/09-03, 02/09-03, ...</span>
+                                <span class="radio-card-desc">Katru dienu sākas no jauna. Piemērs: 01/09-03 ir pirmais rēķins 9. martā</span>
+                            </div>
+                        </label>
+                        <label class="radio-card {% if settings.get('invoice_number_type') == 'type3' %}selected{% endif %}">
+                            <input type="radio" name="invoice_number_type" value="type3"
+                                   {% if settings.get('invoice_number_type') == 'type3' %}checked{% endif %}
+                                   onchange="updateNumberPreview()">
+                            <div class="radio-card-content">
+                                <strong>Tips 3 — Vienkāršs numurs</strong>
+                                <span class="radio-card-example" id="type3Example">001, 002, 003, ...</span>
+                                <span class="radio-card-desc">Vienkāršs secīgs numurs bez gada</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-row" id="type1Options" style="{% if settings.get('invoice_number_type', 'type1') not in ('type1', 'type3', '') %}display:none{% endif %}">
+                    <div class="form-group">
+                        <label>Atdalītājs</label>
+                        <input type="text" name="invoice_number_separator" id="numSeparator" class="form-control"
+                               value="{{ settings.get('invoice_number_separator', '-') }}"
+                               maxlength="3" style="max-width:100px" oninput="updateNumberPreview()">
+                        <span style="font-size:12px;color:var(--text-light)">Piem.: "-" vai "/" vai tukšs</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Minimālais ciparu skaits</label>
+                        <select name="invoice_number_digits" id="numDigits" class="form-control"
+                                style="max-width:100px" onchange="updateNumberPreview()">
+                            <option value="2" {% if settings.get('invoice_number_digits') == '2' %}selected{% endif %}>2 (01)</option>
+                            <option value="3" {% if settings.get('invoice_number_digits', '3') == '3' %}selected{% endif %}>3 (001)</option>
+                            <option value="4" {% if settings.get('invoice_number_digits') == '4' %}selected{% endif %}>4 (0001)</option>
+                            <option value="5" {% if settings.get('invoice_number_digits') == '5' %}selected{% endif %}>5 (00001)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="preview-box" id="numberPreview">
+                    <strong>Piemērs:</strong> <span id="previewText">...</span>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 28px">Saglabāt iestatījumus</button>
     </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateNumberPreview() {
+    const type = document.querySelector('input[name="invoice_number_type"]:checked').value;
+    const separator = document.getElementById('numSeparator').value;
+    const digits = parseInt(document.getElementById('numDigits').value) || 3;
+
+    // Show/hide type1/type3 options
+    const opts = document.getElementById('type1Options');
+    opts.style.display = (type === 'type2') ? 'none' : '';
+
+    // Update radio card selection styling
+    document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected'));
+    document.querySelector('input[name="invoice_number_type"]:checked').closest('.radio-card').classList.add('selected');
+
+    const today = new Date();
+    const yearShort = today.getFullYear() % 100;
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+
+    let preview = '';
+    if (type === 'type1') {
+        const n1 = '1'.padStart(digits, '0');
+        const n2 = '2'.padStart(digits, '0');
+        const n42 = '42'.padStart(digits, '0');
+        preview = `${yearShort}${separator}${n1}, ${yearShort}${separator}${n2}, ... ${yearShort}${separator}${n42}`;
+    } else if (type === 'type2') {
+        preview = `01/${day}-${month}, 02/${day}-${month}, 03/${day}-${month} (katru dienu no jauna)`;
+    } else {
+        const n1 = '1'.padStart(digits, '0');
+        const n2 = '2'.padStart(digits, '0');
+        const n42 = '42'.padStart(digits, '0');
+        preview = `${n1}, ${n2}, ... ${n42}`;
+    }
+    document.getElementById('previewText').textContent = preview;
+}
+
+updateNumberPreview();
+</script>
 {% endblock %}

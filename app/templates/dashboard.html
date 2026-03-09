@@ -10,17 +10,22 @@
 </div>
 
 <div class="page-body">
-    {% if settings.get('company_name') %}
+    {% if not settings.get('company_name') %}
+    <div class="alert alert-info">
+        Sveicināti! Lai sāktu, lūdzu aizpildiet <a href="/settings">uzņēmuma iestatījumus</a>.
+    </div>
+    {% endif %}
+
     <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value">{{ stock | length }}</div>
-            <div class="stat-label">Aktīvi produkti</div>
-        </div>
         <div class="stat-card">
             <div class="stat-value">{{ recent_docs | length }}</div>
             <div class="stat-label">Pēdējie dokumenti</div>
         </div>
         {% if stock_enabled %}
+        <div class="stat-card">
+            <div class="stat-value">{{ stock | length }}</div>
+            <div class="stat-label">Aktīvi produkti</div>
+        </div>
         <div class="stat-card">
             <div class="stat-value">
                 {% set total_stock = stock | sum(attribute='stock') %}
@@ -30,14 +35,12 @@
         </div>
         {% endif %}
     </div>
-    {% else %}
-    <div class="alert alert-info">
-        Sveicināti! Lai sāktu, lūdzu aizpildiet <a href="/settings">uzņēmuma iestatījumus</a>.
-    </div>
-    {% endif %}
 
     <div class="card">
-        <div class="card-header">Pēdējie dokumenti</div>
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Pēdējie dokumenti</span>
+            <a href="/documents" class="btn btn-outline btn-sm">Visi dokumenti</a>
+        </div>
         <div class="card-body">
             {% if recent_docs %}
             <div class="table-wrapper">
@@ -54,7 +57,7 @@
                     <tbody>
                         {% for doc in recent_docs %}
                         <tr>
-                            <td>{{ doc.doc_number }}</td>
+                            <td><strong>{{ doc.doc_number }}</strong></td>
                             <td>
                                 {% if doc.doc_type == 'buy' %}
                                 <span class="badge badge-buy">Iegāde</span>
@@ -63,7 +66,7 @@
                                 {% endif %}
                             </td>
                             <td>{{ doc.client_name }}</td>
-                            <td>{{ doc.doc_date }}</td>
+                            <td class="text-muted">{{ doc.doc_date }}</td>
                             <td><a href="/documents/{{ doc.id }}" class="btn btn-outline btn-sm">Skatīt</a></td>
                         </tr>
                         {% endfor %}
@@ -78,7 +81,10 @@
 
     {% if stock_enabled and stock %}
     <div class="card">
-        <div class="card-header">Noliktavas atlikumi</div>
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Noliktavas atlikumi</span>
+            <a href="/stock" class="btn btn-outline btn-sm">Pilna noliktava</a>
+        </div>
         <div class="card-body">
             <div class="table-wrapper">
                 <table>

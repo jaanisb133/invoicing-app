@@ -83,7 +83,8 @@ def _get_doc_data(doc_id):
         raise ValueError(f"Dokuments ar ID {doc_id} nav atrasts")
 
     client = db.get_client(doc["client_id"])
-    settings = db.get_all_settings()
+    user_id = doc.get("user_id", 0)
+    settings = db.get_all_user_settings(user_id) if user_id else db.get_all_settings()
 
     # Format date
     raw_date = doc["doc_date"]

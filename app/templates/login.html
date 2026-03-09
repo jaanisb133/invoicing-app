@@ -13,34 +13,19 @@
             min-height: 100vh;
             background: var(--bg);
         }
-        .login-container {
-            width: 100%;
-            max-width: 400px;
-            padding: 20px;
-        }
+        .login-container { width: 100%; max-width: 400px; padding: 20px; }
         .login-card {
             background: var(--bg-card);
-            border-radius: var(--radius);
+            border-radius: var(--radius-lg);
             border: 1px solid var(--border);
             padding: 40px 32px;
+            box-shadow: var(--shadow-lg);
         }
-        .login-card h1 {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 4px;
-            color: var(--primary);
-        }
-        .login-card .subtitle {
-            font-size: 14px;
-            color: var(--text-light);
-            margin-bottom: 28px;
-        }
-        .login-card .btn-primary {
-            width: 100%;
-            padding: 10px 16px;
-            font-size: 14px;
-            margin-top: 8px;
-        }
+        .login-card h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; color: var(--primary); }
+        .login-card .subtitle { font-size: 14px; color: var(--text-light); margin-bottom: 28px; }
+        .login-card .btn-primary { width: 100%; padding: 10px 16px; font-size: 14px; margin-top: 8px; }
+        .login-footer { text-align: center; margin-top: 16px; font-size: 14px; color: var(--text-light); }
+        .login-footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -70,6 +55,9 @@
                 </div>
                 <button type="submit" class="btn btn-primary">Pieslēgties</button>
             </form>
+            <div class="login-footer">
+                Nav konta? <a href="/register">Reģistrēties</a>
+            </div>
         </div>
     </div>
 </body>

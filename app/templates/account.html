@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+    <h2>Konts</h2>
+</div>
+<div class="page-body">
+    {% if request.query_params.get('saved') == 'profile' %}
+    <div class="alert alert-success">Profils atjaunināts!</div>
+    {% endif %}
+    {% if request.query_params.get('saved') == 'password' %}
+    <div class="alert alert-success">Parole veiksmīgi nomainīta!</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'wrong_password' %}
+    <div class="alert alert-danger">Nepareiza pašreizējā parole.</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'mismatch' %}
+    <div class="alert alert-danger">Jaunās paroles nesakrīt.</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'too_short' %}
+    <div class="alert alert-danger">Parolei jābūt vismaz 6 simbolus garai.</div>
+    {% endif %}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+            <div class="card">
+                <div class="card-header">Profils</div>
+                <div class="card-body">
+                    <form method="post" action="/account/profile">
+                        <div class="form-group">
+                            <label>Lietotājvārds</label>
+                            <input type="text" class="form-control" value="{{ current_user.username }}" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>Vārds / Nosaukums</label>
+                            <input type="text" name="display_name" class="form-control"
+                                   value="{{ current_user.display_name }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>E-pasts</label>
+                            <input type="email" name="email" class="form-control"
+                                   value="{{ current_user.email or '' }}">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Saglabāt profilu</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Mainīt paroli</div>
+                <div class="card-body">
+                    <form method="post" action="/account/password">
+                        <div class="form-group">
+                            <label>Pašreizējā parole</label>
+                            <input type="password" name="current_password" class="form-control"
+                                   required autocomplete="current-password">
+                        </div>
+                        <div class="form-group">
+                            <label>Jaunā parole</label>
+                            <input type="password" name="new_password" class="form-control"
+                                   required minlength="6" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label>Apstiprināt jauno paroli</label>
+                            <input type="password" name="confirm_password" class="form-control"
+                                   required minlength="6" autocomplete="new-password">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Mainīt paroli</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="card">
+                <div class="card-header">Abonements</div>
+                <div class="card-body">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+                        <span class="tier-badge tier-{{ current_user.tier }}">{{ tier_label }}</span>
+                        {% if current_user.subscription_status == 'active' %}
+                        <span class="badge badge-buy">Aktīvs</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="usage-section">
+                        <div class="usage-item">
+                            <div class="usage-label">Dokumenti</div>
+                            <div class="usage-bar">
+                                <div class="usage-fill" style="width: {{ (doc_count / limits.max_documents * 100) | int }}%"></div>
+                            </div>
+                            <div class="usage-count">{{ doc_count }} / {{ limits.max_documents }}</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:var(--radius);font-size:13px;color:var(--text-light)">
+                        Konts izveidots: {{ current_user.created_at[:10] if current_user.created_at else 'N/A' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

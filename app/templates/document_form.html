@@ -34,7 +34,7 @@
                                 <option value="{{ c.id }}">{{ c.name }}</option>
                                 {% endfor %}
                             </select>
-                            <button type="button" class="btn btn-outline" onclick="showQuickAddClient()">+</button>
+                            <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddClient()" title="Ātri pievienot klientu" style="font-size:16px;padding:6px 12px">+</button>
                         </div>
                     </div>
                     <div class="form-group">
@@ -68,15 +68,18 @@
 
         <div class="card">
             <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-                <span>Preces</span>
-                <button type="button" class="btn btn-outline btn-sm" onclick="addItemRow()">+ Pievienot preci</button>
+                <span>Preces / Pakalpojumi</span>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="showQuickAddProduct()">+ Jauns produkts</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="addItemRow()">+ Pievienot rindu</button>
+                </div>
             </div>
             <div class="card-body">
                 <div class="table-wrapper">
                     <table class="doc-items-table">
                         <thead>
                             <tr>
-                                <th>Produkts</th>
+                                <th>Produkts / Pakalpojums</th>
                                 <th style="width:100px">Mērvienība</th>
                                 <th style="width:100px">Daudzums</th>
                                 <th style="width:100px">Cena</th>
@@ -157,7 +160,7 @@
 <!-- Quick Add Product Modal -->
 <div class="modal-overlay" id="quickAddProductModal">
     <div class="modal">
-        <div class="modal-title">Ātrā produkta pievienošana</div>
+        <div class="modal-title">Ātrā produkta / pakalpojuma pievienošana</div>
         <div class="form-group">
             <label>Nosaukums *</label>
             <input type="text" id="qp_name" class="form-control" required>
@@ -188,7 +191,6 @@ const docType = "{{ doc_type }}";
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
 let itemIndex = 0;
 
-// Set today's date if empty
 const dateInput = document.getElementById('docDate');
 if (!dateInput.value) {
     dateInput.value = new Date().toISOString().slice(0, 10);
@@ -218,7 +220,7 @@ function addItemRow() {
                 <select name="items[${idx}][product_id]" class="form-control" onchange="onProductChange(this, ${idx})" required>
                     ${productOptions}
                 </select>
-                <button type="button" class="btn btn-outline btn-sm" onclick="showQuickAddProduct()" style="flex-shrink:0">+</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddProduct()" style="flex-shrink:0;font-size:14px;padding:4px 8px">+</button>
             </div>
             <div class="stock-hint" id="stock-hint-${idx}"></div>
         </td>
@@ -243,7 +245,6 @@ function onProductChange(select, idx) {
     if (option && option.dataset.unit) {
         document.getElementById('unit-' + idx).value = option.dataset.unit;
     }
-    // Show stock hint for sell docs
     if (stockEnabled && docType === 'sell' && select.value) {
         const stock = stockMap[parseInt(select.value)] || 0;
         const hint = document.getElementById('stock-hint-' + idx);
@@ -274,13 +275,14 @@ function recalculate() {
 
 document.getElementById('vatRate').addEventListener('input', recalculate);
 
-// Quick-add modals
 function showQuickAddClient() {
     document.getElementById('quickAddClientModal').classList.add('active');
+    document.getElementById('qc_name').focus();
 }
 
 function showQuickAddProduct() {
     document.getElementById('quickAddProductModal').classList.add('active');
+    document.getElementById('qp_name').focus();
 }
 
 async function quickAddClient() {

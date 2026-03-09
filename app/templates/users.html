@@ -19,7 +19,7 @@
         <div class="card-header">Pievienot jaunu lietotāju</div>
         <div class="card-body">
             <form method="post" action="/users/add">
-                <div class="form-row-3">
+                <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr 1fr">
                     <div class="form-group">
                         <label for="username">Lietotājvārds</label>
                         <input type="text" id="username" name="username" class="form-control"
@@ -30,9 +30,13 @@
                         <input type="text" id="display_name" name="display_name" class="form-control" required>
                     </div>
                     <div class="form-group">
+                        <label for="email">E-pasts</label>
+                        <input type="email" id="email" name="email" class="form-control">
+                    </div>
+                    <div class="form-group">
                         <label for="password">Sākotnējā parole</label>
                         <input type="text" id="password" name="password" class="form-control"
-                               required minlength="6" placeholder="Lietotājs mainīs pie pirmās pieslēgšanās">
+                               required minlength="6" placeholder="Mainīs pie pieslēgšanās">
                     </div>
                 </div>
                 <button type="submit" class="btn btn-primary">Pievienot lietotāju</button>
@@ -41,7 +45,7 @@
     </div>
 
     <div class="card">
-        <div class="card-header">Reģistrētie lietotāji</div>
+        <div class="card-header">Reģistrētie lietotāji ({{ users | length }})</div>
         <div class="card-body">
             {% if users %}
             <div class="table-wrapper">
@@ -50,7 +54,9 @@
                         <tr>
                             <th>Lietotājvārds</th>
                             <th>Vārds</th>
+                            <th>E-pasts</th>
                             <th>Loma</th>
+                            <th>Abonements</th>
                             <th>Izveidots</th>
                             <th></th>
                         </tr>
@@ -58,14 +64,20 @@
                     <tbody>
                         {% for user in users %}
                         <tr>
-                            <td>{{ user.username }}</td>
+                            <td><strong>{{ user.username }}</strong></td>
                             <td>{{ user.display_name }}</td>
+                            <td class="text-muted">{{ user.email or '—' }}</td>
                             <td>
                                 {% if user.is_admin %}
-                                <span class="badge badge-sell">Administrators</span>
+                                <span class="badge badge-sell">Admin</span>
                                 {% else %}
                                 <span class="badge badge-buy">Lietotājs</span>
                                 {% endif %}
+                            </td>
+                            <td>
+                                <span class="tier-badge tier-{{ user.tier or 'free' }}">
+                                    {{ tiers.get(user.tier or 'free', {}).get('label', 'Bezmaksas') }}
+                                </span>
                             </td>
                             <td class="text-muted">{{ user.created_at[:10] if user.created_at else '' }}</td>
                             <td>
