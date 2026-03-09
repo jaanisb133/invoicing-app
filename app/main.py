@@ -33,6 +33,15 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 UNITS = ["kg", "gab", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
 
+# --- Centralised email configuration ---
+# Emails are sent from a single V-Rēķini address; Reply-To is set to
+# the user's own email so clients can reply directly to them.
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "rekini@v-rekini.lv")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "V-Rēķini <rekini@v-rekini.lv>")
+
 SESSION_COOKIE = "session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
@@ -191,39 +200,36 @@ async def _process_recurring_invoices():
                     filepath = generate_invoice_pdf(doc_id, template=template)
 
                     # Send email if enabled
-                    if rec["send_email"]:
+                    if rec["send_email"] and SMTP_PASS:
                         client = db.get_client(rec["client_id"])
                         if client and client.get("email"):
                             settings = db.get_all_user_settings(rec["user_id"])
-                            smtp_host = settings.get("smtp_host", "")
-                            smtp_port = int(settings.get("smtp_port", "587") or "587")
-                            smtp_user = settings.get("smtp_user", "")
-                            smtp_pass = settings.get("smtp_pass", "")
-                            smtp_from = settings.get("smtp_from", "") or smtp_user
+                            company_name = settings.get("company_name", "")
+                            doc_type_name = settings.get("sell_doc_name", "PAVADZĪME") if rec["doc_type"] == "sell" else settings.get("buy_doc_name", "PAVADZĪME")
+                            rec_user = db.get_user(rec["user_id"])
+                            user_email = rec_user.get("email", "") if rec_user else ""
 
-                            if smtp_host and smtp_user and smtp_pass:
-                                company_name = settings.get("company_name", "")
-                                doc_type_name = settings.get("sell_doc_name", "PAVADZĪME") if rec["doc_type"] == "sell" else settings.get("buy_doc_name", "PAVADZĪME")
+                            msg = MIMEMultipart()
+                            msg["From"] = SMTP_FROM
+                            msg["To"] = client["email"]
+                            msg["Subject"] = f"{doc_type_name} Nr. {doc_number} — {company_name}"
+                            if user_email:
+                                msg["Reply-To"] = user_email
 
-                                msg = MIMEMultipart()
-                                msg["From"] = smtp_from
-                                msg["To"] = client["email"]
-                                msg["Subject"] = f"{doc_type_name} Nr. {doc_number} — {company_name}"
+                            body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n"
+                            msg.attach(MIMEText(body, "plain", "utf-8"))
 
-                                body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n"
-                                msg.attach(MIMEText(body, "plain", "utf-8"))
+                            with open(filepath, "rb") as f:
+                                part = MIMEBase("application", "pdf")
+                                part.set_payload(f.read())
+                                encoders.encode_base64(part)
+                                part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(filepath)}")
+                                msg.attach(part)
 
-                                with open(filepath, "rb") as f:
-                                    part = MIMEBase("application", "pdf")
-                                    part.set_payload(f.read())
-                                    encoders.encode_base64(part)
-                                    part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(filepath)}")
-                                    msg.attach(part)
-
-                                with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
-                                    server.starttls()
-                                    server.login(smtp_user, smtp_pass)
-                                    server.send_message(msg)
+                            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+                                server.starttls()
+                                server.login(SMTP_USER, SMTP_PASS)
+                                server.send_message(msg)
 
                     # Calculate next run
                     next_run = _calc_next_run(rec["next_run"], rec["frequency"])
@@ -572,11 +578,6 @@ async def save_settings(
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form("-"),
     invoice_number_digits: str = Form("3"),
-    smtp_host: str = Form(""),
-    smtp_port: str = Form("587"),
-    smtp_user: str = Form(""),
-    smtp_pass: str = Form(""),
-    smtp_from: str = Form(""),
 ):
     user = request.state.user
     settings_dict = {
@@ -595,14 +596,7 @@ async def save_settings(
         "invoice_number_type": invoice_number_type,
         "invoice_number_separator": invoice_number_separator,
         "invoice_number_digits": invoice_number_digits,
-        "smtp_host": smtp_host,
-        "smtp_port": smtp_port,
-        "smtp_user": smtp_user,
-        "smtp_from": smtp_from,
     }
-    # Only update password if provided (don't overwrite with empty)
-    if smtp_pass:
-        settings_dict["smtp_pass"] = smtp_pass
     db.save_all_user_settings(user["id"], settings_dict)
     return RedirectResponse("/settings?saved=1", status_code=303)
 
@@ -912,17 +906,9 @@ async def send_document_email(request: Request, doc_id: int):
             status_code=303
         )
 
-    # Get SMTP settings
-    settings = _user_settings(user["id"])
-    smtp_host = settings.get("smtp_host", "")
-    smtp_port = int(settings.get("smtp_port", "587") or "587")
-    smtp_user = settings.get("smtp_user", "")
-    smtp_pass = settings.get("smtp_pass", "")
-    smtp_from = settings.get("smtp_from", "") or smtp_user
-
-    if not smtp_host or not smtp_user or not smtp_pass:
+    if not SMTP_PASS:
         return RedirectResponse(
-            f"/documents/{doc_id}?error=SMTP iestatījumi nav konfigurēti. Atveriet Iestatījumus.&template={template}",
+            f"/documents/{doc_id}?error=E-pasta serviss nav konfigurēts.&template={template}",
             status_code=303
         )
 
@@ -930,15 +916,19 @@ async def send_document_email(request: Request, doc_id: int):
     filepath = generate_invoice_pdf(doc_id, template=template)
 
     # Get client and company info for email
+    settings = _user_settings(user["id"])
     client = db.get_client(doc["client_id"])
     company_name = settings.get("company_name", "")
     doc_type_name = settings.get("sell_doc_name", "PAVADZĪME") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "PAVADZĪME")
+    user_email = user.get("email", "")
 
-    # Build email
+    # Build email — sent from central V-Rēķini address, Reply-To is the user
     msg = MIMEMultipart()
-    msg["From"] = smtp_from
+    msg["From"] = SMTP_FROM
     msg["To"] = recipient_email
     msg["Subject"] = f"{doc_type_name} Nr. {doc['doc_number']} — {company_name}"
+    if user_email:
+        msg["Reply-To"] = user_email
 
     body = f"""Labdien!
 
@@ -958,11 +948,11 @@ Ar cieņu,
         part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(filepath)}")
         msg.attach(part)
 
-    # Send
+    # Send via centralised SMTP
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
             server.starttls()
-            server.login(smtp_user, smtp_pass)
+            server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)
     except Exception as e:
         return RedirectResponse(

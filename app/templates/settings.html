@@ -209,44 +209,6 @@
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-header">E-pasta iestatījumi (SMTP)</div>
-            <div class="card-body">
-                <p style="font-size:12px;color:var(--text-light);margin-bottom:16px">
-                    Konfigurējiet SMTP, lai varētu sūtīt rēķinus pa e-pastu tieši no sistēmas.
-                </p>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>SMTP serveris</label>
-                        <input type="text" name="smtp_host" class="form-control"
-                               value="{{ settings.get('smtp_host', '') }}" placeholder="smtp.gmail.com">
-                    </div>
-                    <div class="form-group" style="max-width:120px">
-                        <label>Ports</label>
-                        <input type="text" name="smtp_port" class="form-control"
-                               value="{{ settings.get('smtp_port', '587') }}" placeholder="587">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Lietotājvārds / E-pasts</label>
-                        <input type="text" name="smtp_user" class="form-control"
-                               value="{{ settings.get('smtp_user', '') }}" placeholder="jusu@epasts.lv">
-                    </div>
-                    <div class="form-group">
-                        <label>Parole</label>
-                        <input type="password" name="smtp_pass" class="form-control"
-                               placeholder="{% if settings.get('smtp_pass') %}••••••••{% else %}SMTP parole{% endif %}">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Sūtītāja adrese (ja atšķiras)</label>
-                    <input type="text" name="smtp_from" class="form-control"
-                           value="{{ settings.get('smtp_from', '') }}" placeholder="Atstāt tukšu, lai lietotu SMTP lietotājvārdu">
-                </div>
-            </div>
-        </div>
-
         <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 28px">Saglabāt iestatījumus</button>
     </form>
 </div>
