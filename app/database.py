@@ -828,6 +828,80 @@ def user_count() -> int:
     return row["cnt"]
 
 
+def get_dashboard_stats(user_id: int) -> dict:
+    """Get dashboard statistics for a user."""
+    conn = get_connection()
+    today = datetime.date.today()
+    week_ago = (today - datetime.timedelta(days=7)).isoformat()
+    today_str = today.isoformat()
+
+    # Invoices in last 7 days
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date >= ?",
+        (user_id, week_ago)
+    ).fetchone()
+    docs_last_7_days = row["cnt"] if row else 0
+
+    # Total revenue (sum of sell document totals)
+    row = conn.execute("""
+        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
+        FROM documents d
+        JOIN document_items di ON di.document_id = d.id
+        WHERE d.user_id = ? AND d.doc_type = 'sell'
+    """, (user_id,)).fetchone()
+    total_revenue = row["total"] if row else 0
+
+    # Revenue last 7 days
+    row = conn.execute("""
+        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
+        FROM documents d
+        JOIN document_items di ON di.document_id = d.id
+        WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.doc_date >= ?
+    """, (user_id, week_ago)).fetchone()
+    revenue_last_7_days = row["total"] if row else 0
+
+    # Most used client (by document count)
+    row = conn.execute("""
+        SELECT c.name, COUNT(*) as cnt
+        FROM documents d
+        JOIN clients c ON d.client_id = c.id
+        WHERE d.user_id = ?
+        GROUP BY d.client_id
+        ORDER BY cnt DESC
+        LIMIT 1
+    """, (user_id,)).fetchone()
+    top_client = {"name": row["name"], "count": row["cnt"]} if row else None
+
+    # Most sold product/service (by total quantity in sell documents)
+    row = conn.execute("""
+        SELECT p.name, SUM(di.quantity) as total_qty, p.unit
+        FROM document_items di
+        JOIN documents d ON di.document_id = d.id
+        JOIN products p ON di.product_id = p.id
+        WHERE d.user_id = ? AND d.doc_type = 'sell'
+        GROUP BY di.product_id
+        ORDER BY total_qty DESC
+        LIMIT 1
+    """, (user_id,)).fetchone()
+    top_product = {"name": row["name"], "quantity": row["total_qty"], "unit": row["unit"]} if row else None
+
+    # Total documents
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    total_docs = row["cnt"] if row else 0
+
+    conn.close()
+    return {
+        "docs_last_7_days": docs_last_7_days,
+        "total_revenue": total_revenue,
+        "revenue_last_7_days": revenue_last_7_days,
+        "top_client": top_client,
+        "top_product": top_product,
+        "total_docs": total_docs,
+    }
+
+
 def get_user_document_count(user_id: int) -> int:
     conn = get_connection()
     row = conn.execute("SELECT COUNT(*) as cnt FROM documents WHERE user_id = ?", (user_id,)).fetchone()

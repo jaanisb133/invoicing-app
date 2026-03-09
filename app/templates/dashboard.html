@@ -18,10 +18,50 @@
 
     <div class="stats-grid">
         <div class="stat-card">
-            <div class="stat-value">{{ recent_docs | length }}</div>
-            <div class="stat-label">Pēdējie dokumenti</div>
+            <div class="stat-value">{{ stats.docs_last_7_days }}</div>
+            <div class="stat-label">Dokumenti (7 dienas)</div>
         </div>
-        {% if stock_enabled %}
+        <div class="stat-card">
+            <div class="stat-value">{{ "%.2f" | format(stats.revenue_last_7_days) }}</div>
+            <div class="stat-label">Apgrozījums 7d (EUR)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ "%.2f" | format(stats.total_revenue) }}</div>
+            <div class="stat-label">Kopējais apgrozījums (EUR)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total_docs }}</div>
+            <div class="stat-label">Kopā dokumenti</div>
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        <div class="card" style="margin-bottom:0">
+            <div class="card-header">Populārākais klients</div>
+            <div class="card-body">
+                {% if stats.top_client %}
+                <div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">{{ stats.top_client.name }}</div>
+                <div style="font-size:13px;color:var(--text-light);margin-top:4px">{{ stats.top_client.count }} dokumenti</div>
+                {% else %}
+                <div class="text-muted" style="font-size:13px">Nav datu</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card" style="margin-bottom:0">
+            <div class="card-header">Populārākais produkts</div>
+            <div class="card-body">
+                {% if stats.top_product %}
+                <div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">{{ stats.top_product.name }}</div>
+                <div style="font-size:13px;color:var(--text-light);margin-top:4px">{{ "%.2f" | format(stats.top_product.quantity) }} {{ stats.top_product.unit }} pārdots</div>
+                {% else %}
+                <div class="text-muted" style="font-size:13px">Nav datu</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if stock_enabled and stock %}
+    <div class="stats-grid" style="margin-bottom:20px">
         <div class="stat-card">
             <div class="stat-value">{{ stock | length }}</div>
             <div class="stat-label">Aktīvi produkti</div>
@@ -33,8 +73,8 @@
             </div>
             <div class="stat-label">Kopējais krājums</div>
         </div>
-        {% endif %}
     </div>
+    {% endif %}
 
     <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">

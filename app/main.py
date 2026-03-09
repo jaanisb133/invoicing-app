@@ -533,11 +533,13 @@ async def dashboard(request: Request):
     stock_on = _stock_enabled(uid)
     recent_docs = db.get_documents(uid)[:10]
     stock = db.get_stock(uid) if stock_on else []
+    stats = db.get_dashboard_stats(uid)
 
     ctx.update({
         "recent_docs": recent_docs,
         "stock": stock,
         "settings": settings,
+        "stats": stats,
         "page": "dashboard",
     })
     return templates.TemplateResponse("dashboard.html", ctx)
