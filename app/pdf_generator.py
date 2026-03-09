@@ -11,7 +11,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, Image
 )
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
@@ -74,6 +74,33 @@ def get_output_dir():
     output_dir = os.path.join(os.path.dirname(app_dir), "data", "dokumenti")
     os.makedirs(output_dir, exist_ok=True)
     return output_dir
+
+
+def _get_logo_path(user_id):
+    """Find logo file for a user."""
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_dir = os.path.join(os.path.dirname(app_dir), "data", "logos")
+    filename = db.get_user_setting(user_id, "logo_filename")
+    if filename:
+        path = os.path.join(logo_dir, filename)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _make_logo_element(logo_path, max_width=40*mm, max_height=20*mm):
+    """Create a reportlab Image element from a logo file, scaled to fit."""
+    try:
+        img = Image(logo_path)
+        # Scale to fit within max dimensions while maintaining aspect ratio
+        w, h = img.drawWidth, img.drawHeight
+        if w > 0 and h > 0:
+            ratio = min(max_width / w, max_height / h)
+            img.drawWidth = w * ratio
+            img.drawHeight = h * ratio
+        return img
+    except Exception:
+        return None
 
 
 def _get_doc_data(doc_id):
@@ -198,6 +225,14 @@ def _generate_classic(doc_id):
     bold = ParagraphStyle('B', fontSize=10, leading=14, fontName=FONT_BOLD)
 
     elements = []
+
+    # Logo
+    logo_path = _get_logo_path(doc.get("user_id", 0))
+    if logo_path:
+        logo_el = _make_logo_element(logo_path)
+        if logo_el:
+            elements.append(logo_el)
+            elements.append(Spacer(1, 3 * mm))
 
     # Title
     elements.append(Paragraph(data["doc_type_label"], title_style))
@@ -335,6 +370,14 @@ def _generate_modern(doc_id):
     }
 
     elements = []
+
+    # Logo
+    logo_path = _get_logo_path(doc.get("user_id", 0))
+    if logo_path:
+        logo_el = _make_logo_element(logo_path, max_width=50*mm, max_height=25*mm)
+        if logo_el:
+            elements.append(logo_el)
+            elements.append(Spacer(1, 3 * mm))
 
     # Header: Title + doc number + date on the right
     header_data = [[
@@ -526,6 +569,14 @@ def _generate_minimal(doc_id):
     }
 
     elements = []
+
+    # Logo
+    logo_path = _get_logo_path(doc.get("user_id", 0))
+    if logo_path:
+        logo_el = _make_logo_element(logo_path, max_width=45*mm, max_height=22*mm)
+        if logo_el:
+            elements.append(logo_el)
+            elements.append(Spacer(1, 3 * mm))
 
     # Header
     elements.append(Paragraph(data["doc_type_label"], styles["title"]))

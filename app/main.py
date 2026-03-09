@@ -5,7 +5,7 @@ Pavadzīmju Pārvaldnieks — Multi-tenant SaaS Invoice Manager (FastAPI)
 import os
 import secrets
 import datetime
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -72,7 +72,18 @@ def _base_context(request):
         "stock_enabled": _stock_enabled(user["id"]),
         "tier": user.get("tier", "free"),
         "tier_label": db.TIER_LIMITS.get(user.get("tier", "free"), {}).get("label", "Bezmaksas"),
+        "needs_setup": not db.get_user_setting(user["id"], "company_name"),
     }
+
+
+def _get_logo_path(user_id):
+    logo_dir = os.path.join(os.path.dirname(BASE_DIR), "data", "logos")
+    filename = db.get_user_setting(user_id, "logo_filename")
+    if filename:
+        path = os.path.join(logo_dir, filename)
+        if os.path.exists(path):
+            return path
+    return None
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -91,6 +102,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if user["must_change_password"] and path != "/set-password" and path != "/logout":
             return RedirectResponse("/set-password", status_code=303)
+
+        # Check if user needs to complete initial business setup
+        setup_exempt = {"/settings", "/logout", "/set-password"}
+        if path not in setup_exempt and not path.startswith("/static") and not path.startswith("/api/"):
+            if not db.get_user_setting(user["id"], "company_name"):
+                return RedirectResponse("/settings?setup=1", status_code=303)
 
         request.state.user = user
         return await call_next(request)
@@ -406,6 +423,7 @@ async def settings_page(request: Request):
     ctx.update({
         "settings": settings,
         "page": "settings",
+        "has_logo": _get_logo_path(user["id"]) is not None,
     })
     return templates.TemplateResponse("settings.html", ctx)
 
@@ -448,6 +466,53 @@ async def save_settings(
         "invoice_number_digits": invoice_number_digits,
     })
     return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@app.post("/settings/logo")
+async def upload_logo(request: Request, logo: UploadFile = File(...)):
+    user = request.state.user
+    uid = user["id"]
+    allowed = {".png", ".jpg", ".jpeg", ".gif"}
+    ext = os.path.splitext(logo.filename or "")[1].lower()
+    if ext not in allowed:
+        return RedirectResponse("/settings?error=logo_type", status_code=303)
+
+    logo_dir = os.path.join(os.path.dirname(BASE_DIR), "data", "logos")
+    os.makedirs(logo_dir, exist_ok=True)
+
+    # Remove old logo
+    old_path = _get_logo_path(uid)
+    if old_path and os.path.exists(old_path):
+        os.remove(old_path)
+
+    filename = f"{uid}_logo{ext}"
+    filepath = os.path.join(logo_dir, filename)
+    content = await logo.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    db.set_user_setting(uid, "logo_filename", filename)
+    return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@app.post("/settings/logo/delete")
+async def delete_logo(request: Request):
+    user = request.state.user
+    uid = user["id"]
+    path = _get_logo_path(uid)
+    if path and os.path.exists(path):
+        os.remove(path)
+    db.set_user_setting(uid, "logo_filename", "")
+    return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@app.get("/api/logo")
+async def get_user_logo(request: Request):
+    user = request.state.user
+    path = _get_logo_path(user["id"])
+    if path:
+        return FileResponse(path)
+    raise HTTPException(404)
 
 
 # =============================================================================
@@ -599,6 +664,7 @@ async def new_document_page(request: Request, doc_type: str = "buy"):
         "doc_type": doc_type,
         "stock_map": stock_map,
         "templates": TEMPLATES,
+        "today": datetime.date.today().isoformat(),
         "page": "new_document",
     })
     return templates.TemplateResponse("document_form.html", ctx)
@@ -646,7 +712,7 @@ async def create_document(request: Request):
 
 
 @app.get("/documents/{doc_id}", response_class=HTMLResponse)
-async def view_document(request: Request, doc_id: int):
+async def view_document(request: Request, doc_id: int, template: str = "classic"):
     ctx = _base_context(request)
     user = request.state.user
     doc, items = db.get_document(doc_id)
@@ -659,6 +725,9 @@ async def view_document(request: Request, doc_id: int):
     vat_amount = subtotal * (doc["vat_rate"] / 100)
     total = subtotal + vat_amount
 
+    if template not in TEMPLATES:
+        template = "classic"
+
     ctx.update({
         "doc": doc,
         "items": items,
@@ -668,6 +737,8 @@ async def view_document(request: Request, doc_id: int):
         "vat_amount": vat_amount,
         "total": total,
         "templates": TEMPLATES,
+        "selected_template": template,
+        "has_logo": _get_logo_path(user["id"]) is not None,
         "page": "documents",
     })
     return templates.TemplateResponse("document_view.html", ctx)

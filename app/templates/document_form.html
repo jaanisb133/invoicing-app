@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <h2>
-        {% if doc_type == 'buy' %}Jauna iegāde (pirkums){% else %}Jauna pārdošana{% endif %}
+        {% if doc_type == 'buy' %}Jauns iegādes dokuments{% else %}Jauns pārdošanas dokuments{% endif %}
     </h2>
     <div class="btn-group">
         <a href="/documents/new?doc_type=buy"
@@ -28,7 +28,7 @@
                     <div class="form-group">
                         <label>Klients *</label>
                         <div style="display:flex;gap:8px">
-                            <select name="client_id" id="clientSelect" class="form-control" required>
+                            <select name="client_id" id="clientSelect" class="form-control" required onchange="updatePreview()">
                                 <option value="">— Izvēlieties klientu —</option>
                                 {% for c in clients %}
                                 <option value="{{ c.id }}">{{ c.name }}</option>
@@ -41,12 +41,12 @@
                         <label>Datums</label>
                         <input type="date" name="doc_date" class="form-control"
                                value="{{ today if today else '' }}"
-                               id="docDate">
+                               id="docDate" onchange="updatePreview()">
                     </div>
                     <div class="form-group">
                         <label>PVN likme (%)</label>
                         <input type="number" name="vat_rate" id="vatRate" class="form-control"
-                               value="{{ settings.get('default_vat_rate', '21') }}" step="0.1" min="0">
+                               value="{{ settings.get('default_vat_rate', '21') }}" step="0.1" min="0" onchange="updatePreview()" oninput="updatePreview()">
                     </div>
                 </div>
                 <div class="form-row">
@@ -60,7 +60,7 @@
                     </div>
                     <div class="form-group">
                         <label>Piezīmes</label>
-                        <input type="text" name="notes" class="form-control">
+                        <input type="text" name="notes" class="form-control" id="notesInput" oninput="updatePreview()">
                     </div>
                 </div>
             </div>
@@ -107,6 +107,19 @@
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Invoice Preview -->
+        <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                <span>Priekšskatījums</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="togglePreview()">Rādīt / Slēpt</button>
+            </div>
+            <div class="card-body" id="previewBody">
+                <div class="invoice-preview-wrapper" id="invoicePreview">
+                    <p class="text-muted text-center">Aizpildiet dokumenta datus, lai redzētu priekšskatījumu</p>
                 </div>
             </div>
         </div>
@@ -185,11 +198,14 @@
 {% block scripts %}
 <script>
 const products = {{ products | tojson }};
+const clientsData = {{ clients | tojson }};
 const stockMap = {{ stock_map | tojson }};
 const units = {{ units | tojson }};
 const docType = "{{ doc_type }}";
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
+const companySettings = {{ settings | tojson }};
 let itemIndex = 0;
+let previewVisible = true;
 
 const dateInput = document.getElementById('docDate');
 if (!dateInput.value) {
@@ -214,6 +230,11 @@ function addItemRow() {
         unitOptions += '<option value="' + u + '">' + u + '</option>';
     });
 
+    // Only show remove button if not the first row (idx > 0)
+    const removeBtn = idx > 0
+        ? '<button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(' + idx + ')">X</button>'
+        : '';
+
     tr.innerHTML = `
         <td>
             <div style="display:flex;gap:4px">
@@ -228,7 +249,7 @@ function addItemRow() {
         <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="1" onchange="recalculate()" oninput="recalculate()" required></td>
         <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="0" onchange="recalculate()" oninput="recalculate()" required></td>
         <td class="item-total text-right" id="total-${idx}">0.00</td>
-        <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
+        <td>${removeBtn}</td>
     `;
     tbody.appendChild(tr);
     recalculate();
@@ -251,6 +272,7 @@ function onProductChange(select, idx) {
         hint.textContent = 'Pieejams: ' + stock.toFixed(2);
         hint.className = stock <= 0 ? 'stock-hint stock-warn' : 'stock-hint';
     }
+    updatePreview();
 }
 
 function recalculate() {
@@ -271,9 +293,141 @@ function recalculate() {
     document.getElementById('subtotalDisplay').textContent = subtotal.toFixed(2);
     document.getElementById('vatDisplay').textContent = vat.toFixed(2);
     document.getElementById('totalDisplay').textContent = total.toFixed(2);
+    updatePreview();
 }
 
 document.getElementById('vatRate').addEventListener('input', recalculate);
+
+function togglePreview() {
+    const body = document.getElementById('previewBody');
+    previewVisible = !previewVisible;
+    body.style.display = previewVisible ? '' : 'none';
+}
+
+function updatePreview() {
+    if (!previewVisible) return;
+    const preview = document.getElementById('invoicePreview');
+
+    // Read form data
+    const clientId = document.getElementById('clientSelect').value;
+    const clientSelect = document.getElementById('clientSelect');
+    const docDate = document.getElementById('docDate').value;
+    const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+    const notes = document.getElementById('notesInput').value;
+
+    // Get client details
+    let clientInfo = null;
+    if (clientId) {
+        clientInfo = clientsData.find(c => c.id == clientId);
+    }
+
+    // Document type labels
+    const docTypeName = docType === 'buy'
+        ? (companySettings.buy_doc_name || 'PIRKUMA PAVADZĪME')
+        : (companySettings.sell_doc_name || 'PĀRDOŠANAS PAVADZĪME');
+
+    // Format date
+    let displayDate = docDate;
+    if (docDate) {
+        const parts = docDate.split('-');
+        if (parts.length === 3) displayDate = parts[2] + '.' + parts[1] + '.' + parts[0];
+    }
+
+    // Supplier/Buyer
+    const company = {
+        name: companySettings.company_name || '(Jūsu uzņēmums)',
+        reg: companySettings.reg_number || '',
+        vat: companySettings.vat_number || '',
+        addr: companySettings.legal_address || '',
+        bank: companySettings.bank_name || '',
+        account: companySettings.bank_account || '',
+    };
+    const client = clientInfo ? {
+        name: clientInfo.name,
+        reg: clientInfo.reg_number || '',
+        vat: clientInfo.vat_number || '',
+        addr: clientInfo.legal_address || '',
+        bank: clientInfo.bank_name || '',
+        account: clientInfo.bank_account || '',
+    } : { name: '—', reg: '', vat: '', addr: '', bank: '', account: '' };
+
+    const supplier = docType === 'buy' ? client : company;
+    const buyer = docType === 'buy' ? company : client;
+
+    // Read items
+    let itemsHtml = '';
+    let subtotal = 0;
+    let rowNum = 1;
+    document.querySelectorAll('.item-row').forEach(row => {
+        const productSelect = row.querySelector('select[name*="product_id"]');
+        const productName = productSelect.selectedOptions[0].text.split(' (atl:')[0];
+        const unit = row.querySelector('select[name*="unit"]').value;
+        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
+        const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
+        const lineTotal = qty * price;
+        subtotal += lineTotal;
+
+        if (productSelect.value) {
+            itemsHtml += `<tr>
+                <td>${rowNum++}</td>
+                <td>${productName}</td>
+                <td>${unit}</td>
+                <td class="text-right">${qty.toFixed(2)}</td>
+                <td class="text-right">${price.toFixed(2)}</td>
+                <td class="text-right">${lineTotal.toFixed(2)}</td>
+            </tr>`;
+        }
+    });
+
+    const vatAmount = subtotal * (vatRate / 100);
+    const total = subtotal + vatAmount;
+
+    function partyHtml(info) {
+        let html = '<strong>' + info.name + '</strong>';
+        if (info.reg) html += '<br>Reģ.Nr.: ' + info.reg;
+        if (info.vat) html += '<br>PVN Nr.: ' + info.vat;
+        if (info.addr) html += '<br>' + info.addr;
+        if (info.bank) html += '<br>Banka: ' + info.bank;
+        if (info.account) html += '<br>Konts: ' + info.account;
+        return html;
+    }
+
+    preview.innerHTML = `
+        <div class="inv-title">${docTypeName}</div>
+        <div class="inv-number">Nr. (automātiski) &nbsp;&nbsp;|&nbsp;&nbsp; ${displayDate || '—'}</div>
+        <div class="inv-parties">
+            <div class="inv-party">
+                <h4>Piegādātājs</h4>
+                <p>${partyHtml(supplier)}</p>
+            </div>
+            <div class="inv-party">
+                <h4>Pircējs</h4>
+                <p>${partyHtml(buyer)}</p>
+            </div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Nr.</th>
+                    <th>Nosaukums</th>
+                    <th>Mērvienība</th>
+                    <th class="text-right">Daudzums</th>
+                    <th class="text-right">Cena</th>
+                    <th class="text-right">Summa</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${itemsHtml || '<tr><td colspan="6" class="text-center text-muted">Nav pievienotu preču</td></tr>'}
+            </tbody>
+        </table>
+        <div class="inv-totals">
+            <div>Summa bez PVN: <strong>${subtotal.toFixed(2)} EUR</strong></div>
+            <div>PVN (${vatRate}%): <strong>${vatAmount.toFixed(2)} EUR</strong></div>
+            <div class="grand">Kopā: ${total.toFixed(2)} EUR</div>
+        </div>
+        ${notes ? '<div style="margin-top:12px;font-size:11px;color:var(--text-light)"><strong>Piezīmes:</strong> ' + notes + '</div>' : ''}
+    `;
+}
 
 function showQuickAddClient() {
     document.getElementById('quickAddClientModal').classList.add('active');
@@ -303,6 +457,9 @@ async function quickAddClient() {
     });
     const client = await resp.json();
 
+    // Add to clientsData for preview
+    clientsData.push(client);
+
     const select = document.getElementById('clientSelect');
     const opt = new Option(client.name, client.id, true, true);
     select.add(opt);
@@ -311,6 +468,7 @@ async function quickAddClient() {
     ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_bank_name', 'qc_bank_account'].forEach(
         id => document.getElementById(id).value = ''
     );
+    updatePreview();
 }
 
 async function quickAddProduct() {
@@ -342,5 +500,7 @@ async function quickAddProduct() {
 
 // Start with one empty row
 addItemRow();
+// Initial preview
+setTimeout(updatePreview, 100);
 </script>
 {% endblock %}

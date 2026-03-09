@@ -6,8 +6,18 @@
 </div>
 
 <div class="page-body">
+    {% if request.query_params.get('setup') %}
+    <div class="alert alert-info" style="font-size:15px;padding:16px 20px">
+        <strong>Laipni lūdzam!</strong> Lai sāktu lietot sistēmu, lūdzu aizpildiet uzņēmuma informāciju zemāk un saglabājiet iestatījumus.
+    </div>
+    {% endif %}
+
     {% if request.query_params.get('saved') %}
     <div class="alert alert-success">Iestatījumi saglabāti!</div>
+    {% endif %}
+
+    {% if request.query_params.get('error') == 'logo_type' %}
+    <div class="alert alert-danger">Neatbalstīts faila formāts. Atļautie formāti: PNG, JPG, GIF.</div>
     {% endif %}
 
     <form method="post" action="/settings">
@@ -16,9 +26,9 @@
             <div class="card-body">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Uzņēmuma nosaukums</label>
+                        <label>Uzņēmuma nosaukums *</label>
                         <input type="text" name="company_name" class="form-control"
-                               value="{{ settings.get('company_name', '') }}">
+                               value="{{ settings.get('company_name', '') }}" required>
                     </div>
                     <div class="form-group">
                         <label>Reģistrācijas numurs</label>
@@ -48,6 +58,33 @@
                         <label>Bankas konts</label>
                         <input type="text" name="bank_account" class="form-control"
                                value="{{ settings.get('bank_account', '') }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logo upload (separate form) -->
+        <div class="card">
+            <div class="card-header">Uzņēmuma logotips</div>
+            <div class="card-body">
+                <div class="logo-upload-area">
+                    {% if has_logo %}
+                    <img src="/api/logo" alt="Logo" class="logo-preview">
+                    {% else %}
+                    <div style="width:120px;height:60px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--text-lighter);font-size:12px">
+                        Nav logotipa
+                    </div>
+                    {% endif %}
+                    <div>
+                        <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">PNG, JPG vai GIF. Ieteicamais izmērs: 300x150px.</p>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('logoFileInput').click()">
+                                {% if has_logo %}Mainīt logotipu{% else %}Augšupielādēt logotipu{% endif %}
+                            </button>
+                            {% if has_logo %}
+                            <button type="button" class="btn btn-danger btn-sm" onclick="deleteLogo()">Dzēst</button>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -144,23 +181,25 @@
                     </div>
                 </div>
 
-                <div class="form-row" id="type1Options" style="{% if settings.get('invoice_number_type', 'type1') not in ('type1', 'type3', '') %}display:none{% endif %}">
-                    <div class="form-group">
-                        <label>Atdalītājs</label>
-                        <input type="text" name="invoice_number_separator" id="numSeparator" class="form-control"
-                               value="{{ settings.get('invoice_number_separator', '-') }}"
-                               maxlength="3" style="max-width:100px" oninput="updateNumberPreview()">
-                        <span style="font-size:12px;color:var(--text-light)">Piem.: "-" vai "/" vai tukšs</span>
-                    </div>
-                    <div class="form-group">
-                        <label>Minimālais ciparu skaits</label>
-                        <select name="invoice_number_digits" id="numDigits" class="form-control"
-                                style="max-width:100px" onchange="updateNumberPreview()">
-                            <option value="2" {% if settings.get('invoice_number_digits') == '2' %}selected{% endif %}>2 (01)</option>
-                            <option value="3" {% if settings.get('invoice_number_digits', '3') == '3' %}selected{% endif %}>3 (001)</option>
-                            <option value="4" {% if settings.get('invoice_number_digits') == '4' %}selected{% endif %}>4 (0001)</option>
-                            <option value="5" {% if settings.get('invoice_number_digits') == '5' %}selected{% endif %}>5 (00001)</option>
-                        </select>
+                <div id="type1Options" style="{% if settings.get('invoice_number_type', 'type1') == 'type2' %}display:none{% endif %}">
+                    <div class="form-row">
+                        <div class="form-group" id="separatorGroup" style="{% if settings.get('invoice_number_type') == 'type3' %}display:none{% endif %}">
+                            <label>Atdalītājs</label>
+                            <input type="text" name="invoice_number_separator" id="numSeparator" class="form-control"
+                                   value="{{ settings.get('invoice_number_separator', '-') }}"
+                                   maxlength="3" style="max-width:100px" oninput="updateNumberPreview()">
+                            <span style="font-size:12px;color:var(--text-light)">Piem.: "-" vai "/" vai tukšs</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Minimālais ciparu skaits</label>
+                            <select name="invoice_number_digits" id="numDigits" class="form-control"
+                                    style="max-width:100px" onchange="updateNumberPreview()">
+                                <option value="2" {% if settings.get('invoice_number_digits') == '2' %}selected{% endif %}>2 (01)</option>
+                                <option value="3" {% if settings.get('invoice_number_digits', '3') == '3' %}selected{% endif %}>3 (001)</option>
+                                <option value="4" {% if settings.get('invoice_number_digits') == '4' %}selected{% endif %}>4 (0001)</option>
+                                <option value="5" {% if settings.get('invoice_number_digits') == '5' %}selected{% endif %}>5 (00001)</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
@@ -173,6 +212,12 @@
         <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 28px">Saglabāt iestatījumus</button>
     </form>
 </div>
+
+<!-- Hidden logo upload form -->
+<form id="logoUploadForm" method="post" action="/settings/logo" enctype="multipart/form-data" style="display:none">
+    <input type="file" id="logoFileInput" name="logo" accept="image/png,image/jpeg,image/gif" onchange="this.form.submit()">
+</form>
+<form id="logoDeleteForm" method="post" action="/settings/logo/delete" style="display:none"></form>
 {% endblock %}
 
 {% block scripts %}
@@ -182,9 +227,11 @@ function updateNumberPreview() {
     const separator = document.getElementById('numSeparator').value;
     const digits = parseInt(document.getElementById('numDigits').value) || 3;
 
-    // Show/hide type1/type3 options
+    // Show/hide options based on type
     const opts = document.getElementById('type1Options');
+    const sepGroup = document.getElementById('separatorGroup');
     opts.style.display = (type === 'type2') ? 'none' : '';
+    sepGroup.style.display = (type === 'type3') ? 'none' : '';
 
     // Update radio card selection styling
     document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected'));
@@ -210,6 +257,12 @@ function updateNumberPreview() {
         preview = `${n1}, ${n2}, ... ${n42}`;
     }
     document.getElementById('previewText').textContent = preview;
+}
+
+function deleteLogo() {
+    if (confirm('Vai tiešām dzēst logotipu?')) {
+        document.getElementById('logoDeleteForm').submit();
+    }
 }
 
 updateNumberPreview();

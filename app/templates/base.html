@@ -81,6 +81,16 @@
         {% block content %}{% endblock %}
     </main>
 
+    {% if needs_setup and page != 'settings' %}
+    <div class="setup-overlay">
+        <div class="setup-card">
+            <h2>Iestatiet savu uzņēmumu</h2>
+            <p>Lai sāktu lietot Pavadzīmju Pārvaldnieku, lūdzu aizpildiet uzņēmuma informāciju iestatījumos.</p>
+            <a href="/settings?setup=1" class="btn btn-primary" style="padding:10px 28px;font-size:14px">Aizpildīt iestatījumus</a>
+        </div>
+    </div>
+    {% endif %}
+
     {% block scripts %}{% endblock %}
     <script>
         function toggleAccountMenu(e) {
