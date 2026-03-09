@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+    <h2>Lietotāji</h2>
+</div>
+<div class="page-body">
+    {% if not current_user.is_admin %}
+    <div class="alert alert-danger">Tikai administratori var pārvaldīt lietotājus.</div>
+    {% else %}
+
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    {% if success %}
+    <div class="alert alert-success">{{ success }}</div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header">Pievienot jaunu lietotāju</div>
+        <div class="card-body">
+            <form method="post" action="/users/add">
+                <div class="form-row-3">
+                    <div class="form-group">
+                        <label for="username">Lietotājvārds</label>
+                        <input type="text" id="username" name="username" class="form-control"
+                               required pattern="[a-zA-Z0-9_.]+" title="Tikai burti, cipari, _ un .">
+                    </div>
+                    <div class="form-group">
+                        <label for="display_name">Vārds</label>
+                        <input type="text" id="display_name" name="display_name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Sākotnējā parole</label>
+                        <input type="text" id="password" name="password" class="form-control"
+                               required minlength="6" placeholder="Lietotājs mainīs pie pirmās pieslēgšanās">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Pievienot lietotāju</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Reģistrētie lietotāji</div>
+        <div class="card-body">
+            {% if users %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Lietotājvārds</th>
+                            <th>Vārds</th>
+                            <th>Loma</th>
+                            <th>Izveidots</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.display_name }}</td>
+                            <td>
+                                {% if user.is_admin %}
+                                <span class="badge badge-sell">Administrators</span>
+                                {% else %}
+                                <span class="badge badge-buy">Lietotājs</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted">{{ user.created_at[:10] if user.created_at else '' }}</td>
+                            <td>
+                                {% if user.id != current_user.id %}
+                                <form method="post" action="/users/{{ user.id }}/delete"
+                                      onsubmit="return confirm('Dzēst lietotāju {{ user.username }}?')"
+                                      style="display:inline">
+                                    <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">Nav lietotāju.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% endif %}
+</div>
+{% endblock %}

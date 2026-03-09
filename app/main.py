@@ -4,11 +4,14 @@ Main application entry point with all routes.
 """
 
 import os
+import secrets
 import datetime
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
+from itsdangerous import URLSafeTimedSerializer
 
 from app import database as db
 from app.pdf_generator import generate_invoice_pdf, TEMPLATES
@@ -21,14 +24,216 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 UNITS = ["kg", "gab", "kaste", "iepak.", "l"]
 
+# Session secret — generated once and stored in settings
+SESSION_COOKIE = "session"
+SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+
+def _get_serializer():
+    secret = db.get_setting("session_secret", "")
+    if not secret:
+        secret = secrets.token_urlsafe(32)
+        db.set_setting("session_secret", secret)
+    return URLSafeTimedSerializer(secret)
+
 
 def _stock_enabled():
     return db.get_setting("stock_enabled", "1") == "1"
 
 
+def _get_current_user(request: Request):
+    """Get current user from session cookie. Returns user dict or None."""
+    cookie = request.cookies.get(SESSION_COOKIE)
+    if not cookie:
+        return None
+    try:
+        s = _get_serializer()
+        user_id = s.loads(cookie, max_age=SESSION_MAX_AGE)
+        return db.get_user(user_id)
+    except Exception:
+        return None
+
+
+def _set_session_cookie(response, user_id):
+    s = _get_serializer()
+    token = s.dumps(user_id)
+    response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_MAX_AGE,
+                        httponly=True, samesite="lax")
+    return response
+
+
+# Public routes that don't require login
+PUBLIC_PATHS = {"/login", "/static"}
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # Allow static files and login page
+        if path.startswith("/static") or path == "/login":
+            return await call_next(request)
+
+        user = _get_current_user(request)
+
+        if not user:
+            # Not logged in — redirect to login
+            if path.startswith("/api/"):
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            return RedirectResponse("/login", status_code=303)
+
+        if user["must_change_password"] and path != "/set-password" and path != "/logout":
+            return RedirectResponse("/set-password", status_code=303)
+
+        # Store user in request state for route handlers
+        request.state.user = user
+        return await call_next(request)
+
+
+app.add_middleware(AuthMiddleware)
+
+
 @app.on_event("startup")
 def startup():
     db.init_db()
+    temp_pw = db.ensure_default_admin()
+    if temp_pw:
+        print(f"\n{'='*60}")
+        print(f"  Izveidots noklusējuma administrators:")
+        print(f"  Lietotājvārds: janis")
+        print(f"  Parole: {temp_pw}")
+        print(f"  (Parole jāmaina pie pirmās pieslēgšanās)")
+        print(f"{'='*60}\n")
+
+
+# =============================================================================
+# Auth routes
+# =============================================================================
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, error: str = "", message: str = ""):
+    # If already logged in, redirect to dashboard
+    user = _get_current_user(request)
+    if user and not user["must_change_password"]:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "error": error,
+        "message": message,
+    })
+
+
+@app.post("/login")
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    user = db.authenticate_user(username, password)
+    if not user:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Nepareizs lietotājvārds vai parole.",
+            "username": username,
+        })
+
+    if user["must_change_password"]:
+        response = RedirectResponse("/set-password", status_code=303)
+    else:
+        response = RedirectResponse("/", status_code=303)
+
+    return _set_session_cookie(response, user["id"])
+
+
+@app.get("/set-password", response_class=HTMLResponse)
+async def set_password_page(request: Request, error: str = ""):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("set_password.html", {
+        "request": request,
+        "display_name": user["display_name"] or user["username"],
+        "error": error,
+    })
+
+
+@app.post("/set-password")
+async def set_password(request: Request,
+                       new_password: str = Form(...),
+                       confirm_password: str = Form(...)):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    if new_password != confirm_password:
+        return templates.TemplateResponse("set_password.html", {
+            "request": request,
+            "display_name": user["display_name"] or user["username"],
+            "error": "Paroles nesakrīt.",
+        })
+
+    if len(new_password) < 6:
+        return templates.TemplateResponse("set_password.html", {
+            "request": request,
+            "display_name": user["display_name"] or user["username"],
+            "error": "Parolei jābūt vismaz 6 simbolus garai.",
+        })
+
+    db.update_user_password(user["id"], new_password)
+    response = RedirectResponse("/", status_code=303)
+    return _set_session_cookie(response, user["id"])
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE)
+    return response
+
+
+# =============================================================================
+# User management (admin only)
+# =============================================================================
+
+@app.get("/users", response_class=HTMLResponse)
+async def users_page(request: Request, error: str = "", success: str = ""):
+    user = request.state.user
+    users = db.get_all_users() if user["is_admin"] else []
+    return templates.TemplateResponse("users.html", {
+        "request": request,
+        "users": users,
+        "current_user": user,
+        "error": error,
+        "success": success,
+        "stock_enabled": _stock_enabled(),
+        "page": "users",
+    })
+
+
+@app.post("/users/add")
+async def add_user(request: Request,
+                   username: str = Form(...),
+                   display_name: str = Form(...),
+                   password: str = Form(...)):
+    user = request.state.user
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403)
+
+    if db.get_user_by_username(username):
+        return RedirectResponse("/users?error=Lietotājvārds jau aizņemts", status_code=303)
+
+    if len(password) < 6:
+        return RedirectResponse("/users?error=Parolei jābūt vismaz 6 simbolus garai", status_code=303)
+
+    db.create_user(username, password, display_name, must_change_password=True)
+    return RedirectResponse("/users?success=Lietotājs izveidots", status_code=303)
+
+
+@app.post("/users/{user_id}/delete")
+async def delete_user(request: Request, user_id: int):
+    user = request.state.user
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403)
+    if user_id == user["id"]:
+        return RedirectResponse("/users?error=Nevar dzēst sevi", status_code=303)
+    db.delete_user(user_id)
+    return RedirectResponse("/users?success=Lietotājs dzēsts", status_code=303)
 
 
 # =============================================================================

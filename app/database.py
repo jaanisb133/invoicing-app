@@ -7,6 +7,9 @@ Handles SQLite database creation, migrations, and all CRUD operations.
 import sqlite3
 import os
 import datetime
+import secrets
+
+import bcrypt
 
 DB_NAME = "veggie_invoices.db"
 
@@ -99,6 +102,16 @@ def init_db():
             year INTEGER NOT NULL,
             number INTEGER NOT NULL,
             recycled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            display_name TEXT NOT NULL DEFAULT '',
+            must_change_password INTEGER NOT NULL DEFAULT 0,
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
 
@@ -485,3 +498,98 @@ def get_product_stock(product_id):
     stock = _get_product_stock(conn, product_id)
     conn.close()
     return stock
+
+
+# --- Users / Auth ---
+
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _check_password(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+
+
+def create_user(username: str, password: str, display_name: str = "",
+                is_admin: bool = False, must_change_password: bool = False) -> int:
+    conn = get_connection()
+    cursor = conn.execute(
+        """INSERT INTO users (username, password_hash, display_name, is_admin, must_change_password)
+           VALUES (?, ?, ?, ?, ?)""",
+        (username.lower().strip(), _hash_password(password), display_name,
+         1 if is_admin else 0, 1 if must_change_password else 0)
+    )
+    user_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return user_id
+
+
+def authenticate_user(username: str, password: str):
+    """Returns user dict if credentials valid, else None."""
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM users WHERE username = ?",
+                       (username.lower().strip(),)).fetchone()
+    conn.close()
+    if row and _check_password(password, row["password_hash"]):
+        return dict(row)
+    return None
+
+
+def get_user(user_id: int):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_username(username: str):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM users WHERE username = ?",
+                       (username.lower().strip(),)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_users():
+    conn = get_connection()
+    rows = conn.execute("SELECT id, username, display_name, is_admin, created_at FROM users ORDER BY username").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_user_password(user_id: int, new_password: str):
+    conn = get_connection()
+    conn.execute("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+                 (_hash_password(new_password), user_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_user(user_id: int):
+    conn = get_connection()
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def user_count() -> int:
+    conn = get_connection()
+    row = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()
+    conn.close()
+    return row["cnt"]
+
+
+def ensure_default_admin():
+    """Create default admin account if no users exist."""
+    if user_count() == 0:
+        temp_password = secrets.token_urlsafe(12)
+        create_user(
+            username="janis",
+            password=temp_password,
+            display_name="Jānis",
+            is_admin=True,
+            must_change_password=True,
+        )
+        return temp_password
+    return None
