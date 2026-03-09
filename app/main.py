@@ -180,6 +180,57 @@ async def set_password(request: Request,
     return _set_session_cookie(response, user["id"])
 
 
+@app.get("/change-password", response_class=HTMLResponse)
+async def change_password_page(request: Request, error: str = "", success: str = ""):
+    return templates.TemplateResponse("change_password.html", {
+        "request": request,
+        "stock_enabled": _stock_enabled(),
+        "error": error,
+        "success": success,
+        "page": "",
+    })
+
+
+@app.post("/change-password")
+async def change_password(request: Request,
+                          current_password: str = Form(...),
+                          new_password: str = Form(...),
+                          confirm_password: str = Form(...)):
+    user = request.state.user
+
+    if not db.authenticate_user(user["username"], current_password):
+        return templates.TemplateResponse("change_password.html", {
+            "request": request,
+            "stock_enabled": _stock_enabled(),
+            "error": "Nepareiza pašreizējā parole.",
+            "page": "",
+        })
+
+    if new_password != confirm_password:
+        return templates.TemplateResponse("change_password.html", {
+            "request": request,
+            "stock_enabled": _stock_enabled(),
+            "error": "Jaunās paroles nesakrīt.",
+            "page": "",
+        })
+
+    if len(new_password) < 6:
+        return templates.TemplateResponse("change_password.html", {
+            "request": request,
+            "stock_enabled": _stock_enabled(),
+            "error": "Parolei jābūt vismaz 6 simbolus garai.",
+            "page": "",
+        })
+
+    db.update_user_password(user["id"], new_password)
+    return templates.TemplateResponse("change_password.html", {
+        "request": request,
+        "stock_enabled": _stock_enabled(),
+        "success": "Parole veiksmīgi nomainīta!",
+        "page": "",
+    })
+
+
 @app.get("/logout")
 async def logout(request: Request):
     response = RedirectResponse("/login", status_code=303)
