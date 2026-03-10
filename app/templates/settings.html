@@ -114,7 +114,7 @@
                     <div class="form-group">
                         <label>Pārdošanas dokumenta prefikss</label>
                         <input type="text" name="sell_doc_prefix" class="form-control"
-                               value="{{ settings.get('sell_doc_prefix', 'PAR') }}">
+                               value="{{ settings.get('sell_doc_prefix', 'PAR') }}" oninput="updateNumberPreview()">
                     </div>
                 </div>
                 <div class="form-row">
@@ -134,6 +134,14 @@
                         <label>PVN likme (%)</label>
                         <input type="text" name="default_vat_rate" class="form-control"
                                value="{{ settings.get('default_vat_rate', '21') }}">
+                    </div>
+                    <div class="form-group" style="max-width:200px">
+                        <label>Noklusējuma šablons</label>
+                        <select name="default_template" class="form-control">
+                            <option value="classic" {% if settings.get('default_template', 'classic') == 'classic' %}selected{% endif %}>Klasiskā</option>
+                            <option value="modern" {% if settings.get('default_template') == 'modern' %}selected{% endif %}>Modernā</option>
+                            <option value="minimal" {% if settings.get('default_template') == 'minimal' %}selected{% endif %}>Minimālā</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>Noliktavas pārvaldība</label>
@@ -271,19 +279,22 @@ function updateNumberPreview() {
     const day = String(today.getDate()).padStart(2, '0');
     const month = String(today.getMonth() + 1).padStart(2, '0');
 
+    const sellPrefix = document.querySelector('input[name="sell_doc_prefix"]').value;
+    const pfx = sellPrefix ? sellPrefix + '-' : '';
+
     let preview = '';
     if (type === 'type1') {
         const n1 = '1'.padStart(digits, '0');
         const n2 = '2'.padStart(digits, '0');
         const n42 = '42'.padStart(digits, '0');
-        preview = `${yearShort}${separator}${n1}, ${yearShort}${separator}${n2}, ... ${yearShort}${separator}${n42}`;
+        preview = `${pfx}${yearShort}${separator}${n1}, ${pfx}${yearShort}${separator}${n2}, ... ${pfx}${yearShort}${separator}${n42}`;
     } else if (type === 'type2') {
-        preview = `01/${day}-${month}, 02/${day}-${month}, 03/${day}-${month} (katru dienu no jauna)`;
+        preview = `${pfx}01/${day}-${month}, ${pfx}02/${day}-${month}, ${pfx}03/${day}-${month} (katru dienu no jauna)`;
     } else {
         const n1 = '1'.padStart(digits, '0');
         const n2 = '2'.padStart(digits, '0');
         const n42 = '42'.padStart(digits, '0');
-        preview = `${n1}, ${n2}, ... ${n42}`;
+        preview = `${pfx}${n1}, ${pfx}${n2}, ... ${pfx}${n42}`;
     }
     document.getElementById('previewText').textContent = preview;
 }

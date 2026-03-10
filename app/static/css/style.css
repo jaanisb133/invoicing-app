@@ -837,6 +837,7 @@ select.form-control { cursor: pointer; }
     line-height: 1.5;
     max-height: 600px;
     overflow-y: auto;
+    font-family: 'DM Sans', sans-serif;
 }
 
 .invoice-preview-wrapper .inv-title {

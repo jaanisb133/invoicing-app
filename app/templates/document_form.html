@@ -70,7 +70,7 @@
                                 <label>PDF veidne</label>
                                 <select name="template" id="templateSelect" class="form-control" onchange="updatePreview()">
                                     {% for key, label in templates.items() %}
-                                    <option value="{{ key }}">{{ label }}</option>
+                                    <option value="{{ key }}" {% if key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
                                     {% endfor %}
                                 </select>
                             </div>

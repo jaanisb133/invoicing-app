@@ -579,6 +579,7 @@ async def save_settings(
     stock_enabled: str = Form("0"),
     electronic_doc: str = Form("0"),
     logo_width: str = Form("100"),
+    default_template: str = Form("classic"),
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form("-"),
     invoice_number_digits: str = Form("3"),
@@ -599,6 +600,7 @@ async def save_settings(
         "stock_enabled": stock_enabled,
         "electronic_doc": electronic_doc,
         "logo_width": logo_width,
+        "default_template": default_template,
     }
 
     # When stock is first enabled, record the date so stock counts from 0
@@ -939,7 +941,7 @@ async def update_document(request: Request, doc_id: int):
 
 
 @app.get("/documents/{doc_id}", response_class=HTMLResponse)
-async def view_document(request: Request, doc_id: int, template: str = "classic"):
+async def view_document(request: Request, doc_id: int, template: str = ""):
     ctx = _base_context(request)
     user = request.state.user
     doc, items = db.get_document(doc_id)
@@ -952,6 +954,8 @@ async def view_document(request: Request, doc_id: int, template: str = "classic"
     vat_amount = subtotal * (doc["vat_rate"] / 100)
     total = subtotal + vat_amount
 
+    if not template or template not in TEMPLATES:
+        template = settings.get("default_template", "classic")
     if template not in TEMPLATES:
         template = "classic"
 
@@ -1215,10 +1219,11 @@ async def export_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
     docs = db.get_documents(user["id"])
+    settings = _user_settings(user["id"])
     ctx.update({
         "documents": docs,
         "templates": TEMPLATES,
-        "selected_template": "classic",
+        "selected_template": settings.get("default_template", "classic"),
         "page": "export",
     })
     return templates.TemplateResponse("export.html", ctx)

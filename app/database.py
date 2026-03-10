@@ -432,6 +432,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     number_type = settings.get("invoice_number_type", "type1")
     separator = settings.get("invoice_number_separator", "-")
     min_digits = int(settings.get("invoice_number_digits", "3"))
+    prefix = settings.get("sell_doc_prefix", "PAR") if doc_type == "sell" else settings.get("buy_doc_prefix", "PIR")
 
     if isinstance(doc_date, str):
         doc_date_obj = datetime.date.fromisoformat(doc_date)
@@ -455,6 +456,8 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         next_num = (row["cnt"] if row else 0) + 1
 
         doc_number = f"{next_num:02d}/{day:02d}-{month:02d}"
+        if prefix:
+            doc_number = f"{prefix}-{doc_number}"
 
         if close_conn:
             conn.commit()
@@ -493,6 +496,8 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
                 )
 
         doc_number = str(next_num).zfill(min_digits)
+        if prefix:
+            doc_number = f"{prefix}-{doc_number}"
 
         if close_conn:
             conn.commit()
@@ -532,6 +537,8 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
 
         num_str = str(next_num).zfill(min_digits)
         doc_number = f"{year_short}{separator}{num_str}"
+        if prefix:
+            doc_number = f"{prefix}-{doc_number}"
 
         if close_conn:
             conn.commit()
@@ -702,6 +709,11 @@ def delete_document(user_id, doc_id):
             try:
                 doc_number = doc["doc_number"]
                 year = int(doc["doc_date"][:4])
+                # Strip prefix if present (e.g., "PAR-26-001" -> "26-001")
+                doc_type = doc["doc_type"]
+                prefix = get_user_setting(user_id, "sell_doc_prefix" if doc_type == "sell" else "buy_doc_prefix", "")
+                if prefix and doc_number.startswith(prefix + "-"):
+                    doc_number = doc_number[len(prefix) + 1:]
                 # Extract the sequence number from the doc_number
                 if number_type == "type3":
                     seq_num = int(doc_number)
