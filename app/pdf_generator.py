@@ -369,11 +369,14 @@ def _generate_classic(doc_id):
 
     elements.append(Spacer(1, 18 * mm))
     sig_style = ParagraphStyle('Sig', fontSize=9, leading=12, fontName=FONT, textColor=C_MID)
-    sig_data = [[
-        Paragraph(f"<font name='{FONT_BOLD}'>Izsniedza:</font>  ________________________", sig_style),
-        Paragraph(f"<font name='{FONT_BOLD}'>Saņēma:</font>  ________________________", sig_style),
-    ]]
-    elements.append(Table(sig_data, colWidths=[85 * mm, 85 * mm]))
+    if data["settings"].get("electronic_doc") == "1":
+        elements.append(Paragraph("Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.", sig_style))
+    else:
+        sig_data = [[
+            Paragraph(f"<font name='{FONT_BOLD}'>Izsniedza:</font>  ________________________", sig_style),
+            Paragraph(f"<font name='{FONT_BOLD}'>Saņēma:</font>  ________________________", sig_style),
+        ]]
+        elements.append(Table(sig_data, colWidths=[85 * mm, 85 * mm]))
 
     pdf.build(elements)
     return filepath
@@ -547,12 +550,15 @@ def _generate_modern(doc_id):
 
     elements.append(Spacer(1, 18 * mm))
     sig = ParagraphStyle('Sig', fontSize=8.5, leading=12, fontName=FONT, textColor=C_MID)
-    sig_data = [[
-        Paragraph(f"<font name='{FONT_BOLD}'>Izsniedza:</font>  ________________________", sig),
-        Paragraph(f"<font name='{FONT_BOLD}'>Saņēma:</font>  ________________________", sig),
-    ]]
-    sig_table = Table(sig_data, colWidths=[85 * mm, 85 * mm])
-    elements.append(sig_table)
+    if data["settings"].get("electronic_doc") == "1":
+        elements.append(Paragraph("Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.", sig))
+    else:
+        sig_data = [[
+            Paragraph(f"<font name='{FONT_BOLD}'>Izsniedza:</font>  ________________________", sig),
+            Paragraph(f"<font name='{FONT_BOLD}'>Saņēma:</font>  ________________________", sig),
+        ]]
+        sig_table = Table(sig_data, colWidths=[85 * mm, 85 * mm])
+        elements.append(sig_table)
 
     pdf.build(elements)
     return filepath
@@ -726,11 +732,14 @@ def _generate_minimal(doc_id):
 
     elements.append(Spacer(1, 22 * mm))
     sig = ParagraphStyle('Sig', fontSize=8, leading=11, fontName=FONT, textColor=C_SILVER)
-    sig_data = [[
-        Paragraph("Izsniedza  ________________________", sig),
-        Paragraph("Saņēma  ________________________", sig),
-    ]]
-    elements.append(Table(sig_data, colWidths=[77 * mm, 77 * mm]))
+    if data["settings"].get("electronic_doc") == "1":
+        elements.append(Paragraph("Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.", sig))
+    else:
+        sig_data = [[
+            Paragraph("Izsniedza  ________________________", sig),
+            Paragraph("Saņēma  ________________________", sig),
+        ]]
+        elements.append(Table(sig_data, colWidths=[77 * mm, 77 * mm]))
 
     pdf.build(elements)
     return filepath

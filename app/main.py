@@ -577,6 +577,7 @@ async def save_settings(
     sell_doc_name: str = Form("PĀRDOŠANAS PAVADZĪME"),
     default_vat_rate: str = Form("21"),
     stock_enabled: str = Form("0"),
+    electronic_doc: str = Form("0"),
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form("-"),
     invoice_number_digits: str = Form("3"),
@@ -595,6 +596,7 @@ async def save_settings(
         "sell_doc_name": sell_doc_name,
         "default_vat_rate": default_vat_rate,
         "stock_enabled": stock_enabled,
+        "electronic_doc": electronic_doc,
     }
 
     # When stock is first enabled, record the date so stock counts from 0

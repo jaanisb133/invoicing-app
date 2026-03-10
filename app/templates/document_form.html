@@ -420,6 +420,24 @@ function itemsTableHtml(items, style) {
     }).join('');
 }
 
+function previewSignatureHtml(style) {
+    if (companySettings.electronic_doc === '1') {
+        const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
+        const size = style === 'minimal' ? '8px' : '9px';
+        return `<div style="margin-top:20px;font-size:${size};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
+    }
+    if (style === 'minimal') {
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:8px;color:#9ca3af">
+            <div>Izsniedza ________________________</div>
+            <div>Saņēma ________________________</div>
+        </div>`;
+    }
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:9px;color:#6b7280">
+        <div><strong>Izsniedza:</strong> ________________________</div>
+        <div><strong>Saņēma:</strong> ________________________</div>
+    </div>`;
+}
+
 function renderClassicPreview(d) {
     return `
         <div style="text-align:center;margin-bottom:2px">
@@ -457,10 +475,7 @@ function renderClassicPreview(d) {
             <div style="font-size:12px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:9px;color:#6b7280">
-            <div><strong>Izsniedza:</strong> ________________________</div>
-            <div><strong>Saņēma:</strong> ________________________</div>
-        </div>
+        ${previewSignatureHtml('classic')}
     `;
 }
 
@@ -501,10 +516,7 @@ function renderModernPreview(d) {
             <div style="font-size:13px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280;padding:0 4px"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:9px;color:#6b7280;padding:0 4px">
-            <div><strong>Izsniedza:</strong> ________________________</div>
-            <div><strong>Saņēma:</strong> ________________________</div>
-        </div>
+        ${previewSignatureHtml('modern')}
     `;
 }
 
@@ -543,10 +555,7 @@ function renderMinimalPreview(d) {
                 <div style="font-size:11px;font-weight:800;color:#111827;margin-top:3px;padding-top:3px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
             </div>
             ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:8px 0 4px"><div style="font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:8px;color:#9ca3af">
-                <div>Izsniedza ________________________</div>
-                <div>Saņēma ________________________</div>
-            </div>
+            ${previewSignatureHtml('minimal')}
         </div>
     `;
 }

@@ -141,6 +141,7 @@ const docData = {
     displayDate: "{{ doc.doc_date.split('-')[2] }}.{{ doc.doc_date.split('-')[1] }}.{{ doc.doc_date.split('-')[0] }}",
     notes: {{ (doc.notes or '') | tojson }},
     hasLogo: {{ 'true' if has_logo else 'false' }},
+    electronicDoc: {{ 'true' if settings.get('electronic_doc', '0') == '1' else 'false' }},
     supplier: {
         {% if doc.doc_type == 'buy' %}
         name: {{ client.name | tojson }},
@@ -204,6 +205,24 @@ function partyLines(info) {
     return html;
 }
 
+function signatureHtml(style) {
+    if (docData.electronicDoc) {
+        const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
+        const size = style === 'minimal' ? '11px' : '12px';
+        return `<div style="margin-top:32px;font-size:${size};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
+    }
+    if (style === 'minimal') {
+        return `<div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:11px;color:#9ca3af">
+            <div>Izsniedza ________________________</div>
+            <div>Saņēma ________________________</div>
+        </div>`;
+    }
+    return `<div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:12px;color:#6b7280">
+        <div><strong>Izsniedza:</strong> ________________________</div>
+        <div><strong>Saņēma:</strong> ________________________</div>
+    </div>`;
+}
+
 function itemsTableHtml(items, style) {
     return items.map((item, i) => {
         const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
@@ -257,10 +276,7 @@ function renderClassic(d) {
             <div style="font-size:16px;font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        <div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:12px;color:#6b7280">
-            <div><strong>Izsniedza:</strong> ________________________</div>
-            <div><strong>Saņēma:</strong> ________________________</div>
-        </div>
+        ${signatureHtml('classic')}
     `;
 }
 
@@ -304,10 +320,7 @@ function renderModern(d) {
                 <div style="font-size:17px;font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${d.total.toFixed(2)} EUR</div>
             </div>
             ${d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-            <div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:12px;color:#6b7280">
-                <div><strong>Izsniedza:</strong> ________________________</div>
-                <div><strong>Saņēma:</strong> ________________________</div>
-            </div>
+            ${signatureHtml('modern')}
         </div>
     `;
 }
@@ -348,10 +361,7 @@ function renderMinimal(d) {
             <div style="font-size:15px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:12px 0 6px"><div style="font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        <div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:11px;color:#9ca3af">
-            <div>Izsniedza ________________________</div>
-            <div>Saņēma ________________________</div>
-        </div>
+        ${signatureHtml('minimal')}
     `;
 }
 
