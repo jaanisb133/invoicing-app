@@ -581,7 +581,7 @@ async def save_settings(
     logo_width: str = Form("100"),
     default_template: str = Form("classic"),
     invoice_number_type: str = Form("type1"),
-    invoice_number_separator: str = Form("-"),
+    invoice_number_separator: str = Form(""),
     invoice_number_digits: str = Form("3"),
 ):
     user = request.state.user
