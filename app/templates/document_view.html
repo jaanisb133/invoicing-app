@@ -142,6 +142,7 @@ const docData = {
     notes: {{ (doc.notes or '') | tojson }},
     hasLogo: {{ 'true' if has_logo else 'false' }},
     electronicDoc: {{ 'true' if settings.get('electronic_doc', '0') == '1' else 'false' }},
+    logoWidth: {{ settings.get('logo_width', '100') }},
     supplier: {
         {% if doc.doc_type == 'buy' %}
         name: {{ client.name | tojson }},
@@ -191,9 +192,12 @@ const docData = {
     total: Number({{ "%.2f" | format(total) }})
 };
 
-function logoHtml() {
+function logoHtml(invert) {
     if (!docData.hasLogo) return '';
-    return '<img src="/api/logo" alt="Logo" style="max-height:50px;max-width:160px;display:block">';
+    const w = Math.round(160 * docData.logoWidth / 100);
+    const h = Math.round(50 * docData.logoWidth / 100);
+    const filter = invert ? 'filter:brightness(0) invert(1);' : '';
+    return `<img src="/api/logo" alt="Logo" style="max-height:${h}px;max-width:${w}px;display:block;${filter}">`;
 }
 
 function partyLines(info) {
@@ -241,7 +245,7 @@ function itemsTableHtml(items, style) {
 
 function renderClassic(d) {
     return `
-        ${logoHtml() ? '<div style="margin-bottom:12px">' + logoHtml() + '</div>' : ''}
+        ${logoHtml() ? '<div style="text-align:center;margin-bottom:12px">' + logoHtml().replace('display:block', 'display:inline-block') + '</div>' : ''}
         <div style="text-align:center;margin-bottom:4px">
             <div style="font-size:20px;font-weight:700;color:#111827">${d.docTypeName}</div>
             <div style="font-size:14px;color:#374151;margin-top:3px">Nr. ${d.docNumber}</div>
@@ -259,15 +263,16 @@ function renderClassic(d) {
             </div>
         </div>
         <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
+            <colgroup><col style="width:6%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
             <thead>
                 <tr style="background:#f9fafb">
                     <th style="padding:8px 12px;text-align:left;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Nr.</th>
                     <th style="padding:8px 12px;text-align:left;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Nosaukums</th>
-                    <th style="padding:8px 12px;text-align:left;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Mērvienība</th>
-                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Daudzums</th>
-                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Cena (EUR)</th>
-                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Summa (EUR)</th>
+                    <th style="padding:8px 12px;text-align:left;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Mērv.</th>
+                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Daudz.</th>
+                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Cena</th>
+                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Summa</th>
                 </tr>
             </thead>
             <tbody style="font-size:13px">${itemsTableHtml(d.items, 'classic')}</tbody>
@@ -287,7 +292,7 @@ function renderModern(d) {
     return `
         <div class="preview-modern-header" style="background:#111827;color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
             <div>
-                ${docData.hasLogo ? '<img src="/api/logo" alt="Logo" style="max-height:40px;max-width:140px;display:block;margin-bottom:8px;filter:brightness(0) invert(1)">' : ''}
+                ${docData.hasLogo ? logoHtml(true).replace('display:block;', 'display:block;margin-bottom:8px;') : ''}
                 <div style="font-size:22px;font-weight:700">${d.docTypeName}</div>
             </div>
             <div style="font-size:13px;color:rgba(255,255,255,0.7);text-align:right">
@@ -306,15 +311,16 @@ function renderModern(d) {
                 </div>
             </div>
             <div style="overflow-x:auto">
-            <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px">
+            <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
+                <colgroup><col style="width:6%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
                 <thead>
                     <tr style="background:#1f2937">
                         <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Nr.</th>
                         <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Nosaukums</th>
-                        <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Mērvienība</th>
-                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Daudzums</th>
-                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Cena (EUR)</th>
-                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Summa (EUR)</th>
+                        <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Mērv.</th>
+                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Daudz.</th>
+                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Cena</th>
+                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Summa</th>
                     </tr>
                 </thead>
                 <tbody style="font-size:13px">${itemsTableHtml(d.items, 'modern')}</tbody>
@@ -348,7 +354,8 @@ function renderMinimal(d) {
             </div>
         </div>
         <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
+            <colgroup><col style="width:5%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
             <thead>
                 <tr>
                     <th style="padding:7px 12px;text-align:left;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">#</th>

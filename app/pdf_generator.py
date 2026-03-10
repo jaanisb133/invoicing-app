@@ -101,9 +101,33 @@ def _get_logo_path(user_id):
     return None
 
 
-def _make_logo_element(logo_path, max_width=40*mm, max_height=20*mm):
+def _make_logo_element(logo_path, max_width=40*mm, max_height=20*mm, invert=False, settings=None):
     try:
-        img = Image(logo_path)
+        # Apply logo_width setting if available
+        if settings:
+            logo_width_pct = int(settings.get("logo_width", "100"))
+            max_width = max_width * logo_width_pct / 100
+            max_height = max_height * logo_width_pct / 100
+
+        if invert:
+            from PIL import Image as PILImage, ImageOps
+            import io
+            pil_img = PILImage.open(logo_path)
+            if pil_img.mode == 'RGBA':
+                r, g, b, a = pil_img.split()
+                rgb = PILImage.merge('RGB', (r, g, b))
+                rgb = ImageOps.invert(rgb)
+                pil_img = PILImage.merge('RGBA', (*rgb.split(), a))
+            else:
+                pil_img = pil_img.convert('RGB')
+                pil_img = ImageOps.invert(pil_img)
+            buf = io.BytesIO()
+            pil_img.save(buf, format='PNG')
+            buf.seek(0)
+            img = Image(buf)
+        else:
+            img = Image(logo_path)
+
         w, h = img.drawWidth, img.drawHeight
         if w > 0 and h > 0:
             ratio = min(max_width / w, max_height / h)
@@ -252,12 +276,18 @@ def _generate_classic(doc_id):
 
     elements = []
 
-    # Logo
+    # Logo (centered)
     logo_path = _get_logo_path(doc.get("user_id", 0))
     if logo_path:
-        logo_el = _make_logo_element(logo_path, max_width=42*mm, max_height=21*mm)
+        logo_el = _make_logo_element(logo_path, max_width=42*mm, max_height=21*mm, settings=data["settings"])
         if logo_el:
-            elements.append(logo_el)
+            logo_table = Table([[logo_el]], colWidths=[170 * mm])
+            logo_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                ('TOPPADDING', (0, 0), (0, 0), 0),
+                ('BOTTOMPADDING', (0, 0), (0, 0), 0),
+            ]))
+            elements.append(logo_table)
             elements.append(Spacer(1, 4 * mm))
 
     # Title block
@@ -297,13 +327,15 @@ def _generate_classic(doc_id):
     td_r = ParagraphStyle('TDR', fontSize=9.5, leading=13, fontName=FONT,
                           textColor=C_BLACK, alignment=TA_RIGHT)
 
+    th_r = ParagraphStyle('THR', fontSize=8.5, fontName=FONT_BOLD, textColor=C_DARK, leading=11, alignment=TA_RIGHT)
+
     items_data = [[
         Paragraph("Nr.", th),
         Paragraph("Nosaukums", th),
-        Paragraph("Mērvienība", th),
-        Paragraph("Daudzums", th),
-        Paragraph("Cena (EUR)", th),
-        Paragraph("Summa (EUR)", th),
+        Paragraph("Mērv.", th),
+        Paragraph("Daudz.", th_r),
+        Paragraph("Cena", th_r),
+        Paragraph("Summa", th_r),
     ]]
 
     for i, item in enumerate(data["items"], 1):
@@ -318,7 +350,7 @@ def _generate_classic(doc_id):
         ])
 
     num_items = len(data["items"])
-    col_widths = [10 * mm, 62 * mm, 18 * mm, 22 * mm, 28 * mm, 30 * mm]
+    col_widths = [10 * mm, 68 * mm, 16 * mm, 20 * mm, 26 * mm, 30 * mm]
     items_table = Table(items_data, colWidths=col_widths)
 
     style_cmds = [
@@ -427,7 +459,7 @@ def _generate_modern(doc_id):
     logo_path = _get_logo_path(doc.get("user_id", 0))
     header_left = []
     if logo_path:
-        logo_el = _make_logo_element(logo_path, max_width=45*mm, max_height=20*mm)
+        logo_el = _make_logo_element(logo_path, max_width=45*mm, max_height=20*mm, invert=True, settings=data["settings"])
         if logo_el:
             header_left.append(logo_el)
             header_left.append(Spacer(1, 2 * mm))
@@ -481,13 +513,15 @@ def _generate_modern(doc_id):
     td_r = ParagraphStyle('TDR', fontSize=9, leading=13, fontName=FONT,
                           textColor=C_BLACK, alignment=TA_RIGHT)
 
+    th_r = ParagraphStyle('THR', fontSize=8, fontName=FONT_BOLD, textColor=C_WHITE, leading=11, alignment=TA_RIGHT)
+
     items_data = [[
         Paragraph("Nr.", th),
         Paragraph("Nosaukums", th),
-        Paragraph("Mērvienība", th),
-        Paragraph("Daudzums", th),
-        Paragraph("Cena (EUR)", th),
-        Paragraph("Summa (EUR)", th),
+        Paragraph("Mērv.", th),
+        Paragraph("Daudz.", th_r),
+        Paragraph("Cena", th_r),
+        Paragraph("Summa", th_r),
     ]]
 
     for i, item in enumerate(data["items"], 1):
@@ -502,7 +536,7 @@ def _generate_modern(doc_id):
         ])
 
     num_items = len(data["items"])
-    col_widths = [10 * mm, 62 * mm, 18 * mm, 22 * mm, 28 * mm, 28 * mm]
+    col_widths = [10 * mm, 68 * mm, 16 * mm, 20 * mm, 26 * mm, 28 * mm]
     items_table = Table(items_data, colWidths=col_widths)
 
     style_commands = [
@@ -602,7 +636,7 @@ def _generate_minimal(doc_id):
     # Logo
     logo_path = _get_logo_path(doc.get("user_id", 0))
     if logo_path:
-        logo_el = _make_logo_element(logo_path, max_width=40*mm, max_height=20*mm)
+        logo_el = _make_logo_element(logo_path, max_width=40*mm, max_height=20*mm, settings=data["settings"])
         if logo_el:
             elements.append(logo_el)
             elements.append(Spacer(1, 5 * mm))
@@ -658,6 +692,7 @@ def _generate_minimal(doc_id):
 
     # Items table — hairline borders, generous padding
     th = ParagraphStyle('TH', fontSize=7, fontName=FONT_BOLD, textColor=C_SILVER, leading=10)
+    th_r = ParagraphStyle('THR', fontSize=7, fontName=FONT_BOLD, textColor=C_SILVER, leading=10, alignment=TA_RIGHT)
     td = ParagraphStyle('TD', fontSize=9, leading=13, fontName=FONT, textColor=C_BLACK)
     td_r = ParagraphStyle('TDR', fontSize=9, leading=13, fontName=FONT,
                           textColor=C_BLACK, alignment=TA_RIGHT)
@@ -666,9 +701,9 @@ def _generate_minimal(doc_id):
         Paragraph("#", th),
         Paragraph("PRECE / PAKALPOJUMS", th),
         Paragraph("MĒRV.", th),
-        Paragraph("DAUDZ.", th),
-        Paragraph("CENA", th),
-        Paragraph("SUMMA", th),
+        Paragraph("DAUDZ.", th_r),
+        Paragraph("CENA", th_r),
+        Paragraph("SUMMA", th_r),
     ]]
 
     for i, item in enumerate(data["items"], 1):
