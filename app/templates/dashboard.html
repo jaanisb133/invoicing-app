@@ -106,7 +106,7 @@
                                 {% endif %}
                             </td>
                             <td>{{ doc.client_name }}</td>
-                            <td class="text-muted">{{ doc.doc_date }}</td>
+                            <td class="text-muted">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
                             <td><a href="/documents/{{ doc.id }}" class="btn btn-outline btn-sm">Skatīt</a></td>
                         </tr>
                         {% endfor %}

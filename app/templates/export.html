@@ -72,12 +72,19 @@
 <script>
 const allDocs = {{ documents | tojson }};
 
+function localDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 function setPreviousMonth() {
     const now = new Date();
     const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const last = new Date(now.getFullYear(), now.getMonth(), 0);
-    document.getElementById('dateFrom').value = first.toISOString().slice(0, 10);
-    document.getElementById('dateTo').value = last.toISOString().slice(0, 10);
+    document.getElementById('dateFrom').value = localDateStr(first);
+    document.getElementById('dateTo').value = localDateStr(last);
     updatePreview();
 }
 
@@ -85,8 +92,8 @@ function setCurrentMonth() {
     const now = new Date();
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    document.getElementById('dateFrom').value = first.toISOString().slice(0, 10);
-    document.getElementById('dateTo').value = last.toISOString().slice(0, 10);
+    document.getElementById('dateFrom').value = localDateStr(first);
+    document.getElementById('dateTo').value = localDateStr(last);
     updatePreview();
 }
 
@@ -126,8 +133,9 @@ function updatePreview() {
         btn.disabled = true;
     } else {
         const lines = filtered.map(d => {
-            const typeLabel = d.doc_type === 'sell' ? 'PAR' : 'PIR';
-            return `<div style="padding:2px 0">${d.doc_number} &mdash; ${d.client_name} &mdash; ${d.doc_date}</div>`;
+            const parts = d.doc_date.split('-');
+            const displayDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d.doc_date;
+            return `<div style="padding:2px 0">${d.doc_number} &mdash; ${d.client_name} &mdash; ${displayDate}</div>`;
         }).join('');
         document.getElementById('previewList').innerHTML = lines;
         btn.disabled = false;

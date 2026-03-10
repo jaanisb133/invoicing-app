@@ -1258,7 +1258,7 @@ async def export_pdf_bulk(
     with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
         for doc in docs:
             filepath = generate_invoice_pdf(doc["id"], template=template)
-            arcname = f"{doc['doc_number']}.pdf"
+            arcname = f"{doc['doc_number'].replace('/', '_')}.pdf"
             zf.write(filepath, arcname)
 
     filename = f"dokumenti_{date_from}_{date_to}.zip"

@@ -90,6 +90,11 @@ def get_output_dir():
     return output_dir
 
 
+def _safe_filename(doc_number):
+    """Sanitize doc_number for use as a filename (replace / with _)."""
+    return doc_number.replace("/", "_")
+
+
 def _get_logo_path(user_id):
     app_dir = os.path.dirname(os.path.abspath(__file__))
     logo_dir = os.path.join(os.path.dirname(app_dir), "data", "logos")
@@ -248,7 +253,7 @@ def _generate_classic(doc_id):
     doc = data["doc"]
 
     output_dir = get_output_dir()
-    filename = f"{doc['doc_number']}.pdf"
+    filename = f"{_safe_filename(doc['doc_number'])}.pdf"
     filepath = os.path.join(output_dir, filename)
 
     pdf = SimpleDocTemplate(
@@ -425,7 +430,7 @@ def _generate_modern(doc_id):
     doc = data["doc"]
 
     output_dir = get_output_dir()
-    filename = f"{doc['doc_number']}.pdf"
+    filename = f"{_safe_filename(doc['doc_number'])}.pdf"
     filepath = os.path.join(output_dir, filename)
 
     pdf = SimpleDocTemplate(
@@ -609,7 +614,7 @@ def _generate_minimal(doc_id):
     doc = data["doc"]
 
     output_dir = get_output_dir()
-    filename = f"{doc['doc_number']}.pdf"
+    filename = f"{_safe_filename(doc['doc_number'])}.pdf"
     filepath = os.path.join(output_dir, filename)
 
     pdf = SimpleDocTemplate(
