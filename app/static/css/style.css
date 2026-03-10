@@ -775,9 +775,9 @@ select.form-control { cursor: pointer; }
     .doc-actions-bar .btn-download,
     .doc-actions-bar .btn,
     .doc-actions-bar a.btn-outline { font-size: 12px; padding: 8px 12px; }
-    .doc-view-preview { padding: 16px; overflow-x: auto; }
-    .doc-view-preview.doc-view-modern > div:last-child { padding: 16px; }
-    .doc-view-preview.doc-view-minimal { padding: 20px 16px; }
+    .doc-view-preview { padding: 24px; overflow-x: auto; }
+    .doc-view-preview.doc-view-modern > div:last-child { padding: 24px; }
+    .doc-view-preview.doc-view-minimal { padding: 28px 24px; }
     .doc-view-preview .preview-parties { grid-template-columns: 1fr !important; gap: 16px !important; }
     .doc-view-preview .preview-signatures { grid-template-columns: 1fr !important; gap: 12px !important; }
     .doc-view-preview table { font-size: 11px; }
@@ -969,11 +969,12 @@ select.form-control { cursor: pointer; }
 
 /* --- Document view preview --- */
 .doc-view-preview {
-    padding: 32px;
+    padding: 48px 56px;
     font-size: 13px;
     line-height: 1.5;
     background: white;
     min-height: 200px;
+    font-family: 'DM Sans', sans-serif;
 }
 
 .doc-view-preview.doc-view-modern {
@@ -981,11 +982,11 @@ select.form-control { cursor: pointer; }
 }
 
 .doc-view-preview.doc-view-modern > div:last-child {
-    padding: 24px 32px;
+    padding: 32px 56px 48px;
 }
 
 .doc-view-preview.doc-view-minimal {
-    padding: 36px 32px;
+    padding: 56px;
 }
 
 [data-theme="dark"] .doc-view-preview {

@@ -191,11 +191,13 @@ const docData = {
     total: Number({{ "%.2f" | format(total) }})
 };
 
+function logoHtml() {
+    if (!docData.hasLogo) return '';
+    return '<img src="/api/logo" alt="Logo" style="max-height:50px;max-width:160px;display:block">';
+}
+
 function partyLines(info) {
     let html = '';
-    if (info.isCompany && docData.hasLogo) {
-        html += '<img src="/api/logo" alt="Logo" style="max-height:40px;max-width:120px;margin-bottom:8px;display:block">';
-    }
     html += '<strong>' + info.name + '</strong>';
     if (info.reg) html += '<br>Reģ.Nr.: ' + info.reg;
     if (info.vat) html += '<br>PVN Nr.: ' + info.vat;
@@ -239,6 +241,7 @@ function itemsTableHtml(items, style) {
 
 function renderClassic(d) {
     return `
+        ${logoHtml() ? '<div style="margin-bottom:12px">' + logoHtml() + '</div>' : ''}
         <div style="text-align:center;margin-bottom:4px">
             <div style="font-size:20px;font-weight:700;color:#111827">${d.docTypeName}</div>
             <div style="font-size:14px;color:#374151;margin-top:3px">Nr. ${d.docNumber}</div>
@@ -283,7 +286,10 @@ function renderClassic(d) {
 function renderModern(d) {
     return `
         <div class="preview-modern-header" style="background:#111827;color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
-            <div style="font-size:22px;font-weight:700">${d.docTypeName}</div>
+            <div>
+                ${docData.hasLogo ? '<img src="/api/logo" alt="Logo" style="max-height:40px;max-width:140px;display:block;margin-bottom:8px;filter:brightness(0) invert(1)">' : ''}
+                <div style="font-size:22px;font-weight:700">${d.docTypeName}</div>
+            </div>
             <div style="font-size:13px;color:rgba(255,255,255,0.7);text-align:right">
                 Nr. ${d.docNumber}<br>Datums: ${d.displayDate}
             </div>
@@ -327,6 +333,7 @@ function renderModern(d) {
 
 function renderMinimal(d) {
     return `
+        ${logoHtml() ? '<div style="margin-bottom:16px">' + logoHtml() + '</div>' : ''}
         <div style="font-size:18px;font-weight:700;color:#111827;margin-bottom:3px">${d.docTypeName}</div>
         <div style="font-size:13px;color:#9ca3af;margin-bottom:14px">Nr. ${d.docNumber} &nbsp;&middot;&nbsp; ${d.displayDate}</div>
         <hr style="border:none;border-top:0.25px solid #e5e7eb;margin:0 0 16px">
