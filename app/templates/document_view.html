@@ -34,7 +34,7 @@
         <div class="template-tabs">
             {% for key, label in templates.items() %}
             <button type="button" class="template-tab {% if key == selected_template %}active{% endif %}"
-                    onclick="selectTemplate('{{ key }}')">{{ label }}</button>
+                    onclick="selectTemplate('{{ key }}', this)">{{ label }}</button>
             {% endfor %}
         </div>
         <a href="/documents/{{ doc.id }}/pdf?template={{ selected_template }}" id="downloadBtn" class="btn-download" target="_blank">
@@ -136,10 +136,11 @@ let currentTemplate = "{{ selected_template }}";
 
 // Document data from server
 const docData = {
-    docTypeName: "{{ settings.get('sell_doc_name', 'PĀRDOŠANAS PAVADZĪME') if doc.doc_type == 'sell' else settings.get('buy_doc_name', 'PIRKUMA PAVADZĪME') }}",
-    docNumber: "{{ doc.doc_number }}",
-    displayDate: "{{ doc.doc_date.split('-')[2] }}.{{ doc.doc_date.split('-')[1] }}.{{ doc.doc_date.split('-')[0] }}" ,
-    notes: {{ doc.notes | tojson if doc.notes else '""' }},
+    docTypeName: {{ (settings.get('sell_doc_name', 'PĀRDOŠANAS PAVADZĪME') if doc.doc_type == 'sell' else settings.get('buy_doc_name', 'PIRKUMA PAVADZĪME')) | tojson }},
+    docNumber: {{ doc.doc_number | tojson }},
+    displayDate: "{{ doc.doc_date.split('-')[2] }}.{{ doc.doc_date.split('-')[1] }}.{{ doc.doc_date.split('-')[0] }}",
+    notes: {{ (doc.notes or '') | tojson }},
+    hasLogo: {{ 'true' if has_logo else 'false' }},
     supplier: {
         {% if doc.doc_type == 'buy' %}
         name: {{ client.name | tojson }},
@@ -148,6 +149,7 @@ const docData = {
         addr: {{ (client.legal_address or '') | tojson }},
         bank: {{ (client.bank_name or '') | tojson }},
         account: {{ (client.bank_account or '') | tojson }},
+        isCompany: false
         {% else %}
         name: {{ settings.get('company_name', '') | tojson }},
         reg: {{ settings.get('reg_number', '') | tojson }},
@@ -155,6 +157,7 @@ const docData = {
         addr: {{ settings.get('legal_address', '') | tojson }},
         bank: {{ settings.get('bank_name', '') | tojson }},
         account: {{ settings.get('bank_account', '') | tojson }},
+        isCompany: true
         {% endif %}
     },
     buyer: {
@@ -165,6 +168,7 @@ const docData = {
         addr: {{ (client.legal_address or '') | tojson }},
         bank: {{ (client.bank_name or '') | tojson }},
         account: {{ (client.bank_account or '') | tojson }},
+        isCompany: false
         {% else %}
         name: {{ settings.get('company_name', '') | tojson }},
         reg: {{ settings.get('reg_number', '') | tojson }},
@@ -172,21 +176,26 @@ const docData = {
         addr: {{ settings.get('legal_address', '') | tojson }},
         bank: {{ settings.get('bank_name', '') | tojson }},
         account: {{ settings.get('bank_account', '') | tojson }},
+        isCompany: true
         {% endif %}
     },
     items: [
         {% for item in items %}
-        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: {{ item.quantity }}, price: {{ item.price_per_unit }}, total: {{ "%.2f" | format(item.quantity * item.price_per_unit) }} * 1 },
+        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: Number({{ item.quantity | tojson }}), price: Number({{ item.price_per_unit | tojson }}), total: Number({{ "%.2f" | format(item.quantity * item.price_per_unit) }}) },
         {% endfor %}
     ],
-    subtotal: {{ "%.2f" | format(subtotal) }} * 1,
+    subtotal: Number({{ "%.2f" | format(subtotal) }}),
     vatRate: {{ doc.vat_rate }},
-    vatAmount: {{ "%.2f" | format(vat_amount) }} * 1,
-    total: {{ "%.2f" | format(total) }} * 1,
+    vatAmount: Number({{ "%.2f" | format(vat_amount) }}),
+    total: Number({{ "%.2f" | format(total) }})
 };
 
 function partyLines(info) {
-    let html = '<strong>' + info.name + '</strong>';
+    let html = '';
+    if (info.isCompany && docData.hasLogo) {
+        html += '<img src="/api/logo" alt="Logo" style="max-height:40px;max-width:120px;margin-bottom:8px;display:block">';
+    }
+    html += '<strong>' + info.name + '</strong>';
     if (info.reg) html += '<br>Reģ.Nr.: ' + info.reg;
     if (info.vat) html += '<br>PVN Nr.: ' + info.vat;
     if (info.addr) html += '<br>' + info.addr;
@@ -199,12 +208,12 @@ function itemsTableHtml(items, style) {
     return items.map((item, i) => {
         const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
         return `<tr style="${bg}">
-            <td>${i + 1}</td>
-            <td>${item.name}</td>
-            <td>${item.unit}</td>
-            <td style="text-align:right">${item.qty.toFixed(2)}</td>
-            <td style="text-align:right">${item.price.toFixed(2)}</td>
-            <td style="text-align:right">${item.total.toFixed(2)}</td>
+            <td style="padding:8px 12px">${i + 1}</td>
+            <td style="padding:8px 12px">${item.name}</td>
+            <td style="padding:8px 12px">${item.unit}</td>
+            <td style="padding:8px 12px;text-align:right">${item.qty.toFixed(2)}</td>
+            <td style="padding:8px 12px;text-align:right">${item.price.toFixed(2)}</td>
+            <td style="padding:8px 12px;text-align:right">${item.total.toFixed(2)}</td>
         </tr>`;
     }).join('');
 }
@@ -217,7 +226,7 @@ function renderClassic(d) {
             <div style="font-size:13px;color:#6b7280;margin-top:2px">Datums: ${d.displayDate}</div>
         </div>
         <hr style="border:none;border-top:0.5px solid #e5e7eb;margin:12px 0 16px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
+        <div class="preview-parties" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
             <div>
                 <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
                 <div style="font-size:13px;line-height:1.6">${partyLines(d.supplier)}</div>
@@ -227,7 +236,8 @@ function renderClassic(d) {
                 <div style="font-size:13px;line-height:1.6">${partyLines(d.buyer)}</div>
             </div>
         </div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+        <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px">
             <thead>
                 <tr style="background:#f9fafb">
                     <th style="padding:8px 12px;text-align:left;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Nr.</th>
@@ -240,13 +250,14 @@ function renderClassic(d) {
             </thead>
             <tbody style="font-size:13px">${itemsTableHtml(d.items, 'classic')}</tbody>
         </table>
+        </div>
         <div style="text-align:right;font-size:13px">
             <div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
             <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>
             <div style="font-size:16px;font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:12px;color:#6b7280">
+        <div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:12px;color:#6b7280">
             <div><strong>Izsniedza:</strong> ________________________</div>
             <div><strong>Saņēma:</strong> ________________________</div>
         </div>
@@ -255,14 +266,14 @@ function renderClassic(d) {
 
 function renderModern(d) {
     return `
-        <div style="background:#111827;color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
+        <div class="preview-modern-header" style="background:#111827;color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
             <div style="font-size:22px;font-weight:700">${d.docTypeName}</div>
             <div style="font-size:13px;color:rgba(255,255,255,0.7);text-align:right">
                 Nr. ${d.docNumber}<br>Datums: ${d.displayDate}
             </div>
         </div>
-        <div style="padding:24px">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
+        <div>
+            <div class="preview-parties" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
                 <div>
                     <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
                     <div style="font-size:13px;line-height:1.6">${partyLines(d.supplier)}</div>
@@ -272,7 +283,8 @@ function renderModern(d) {
                     <div style="font-size:13px;line-height:1.6">${partyLines(d.buyer)}</div>
                 </div>
             </div>
-            <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+            <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px">
                 <thead>
                     <tr style="background:#1f2937">
                         <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Nr.</th>
@@ -285,13 +297,14 @@ function renderModern(d) {
                 </thead>
                 <tbody style="font-size:13px">${itemsTableHtml(d.items, 'modern')}</tbody>
             </table>
+            </div>
             <div style="text-align:right;font-size:13px">
                 <div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
                 <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>
                 <div style="font-size:17px;font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${d.total.toFixed(2)} EUR</div>
             </div>
             ${d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:12px;color:#6b7280">
+            <div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:12px;color:#6b7280">
                 <div><strong>Izsniedza:</strong> ________________________</div>
                 <div><strong>Saņēma:</strong> ________________________</div>
             </div>
@@ -304,7 +317,7 @@ function renderMinimal(d) {
         <div style="font-size:18px;font-weight:700;color:#111827;margin-bottom:3px">${d.docTypeName}</div>
         <div style="font-size:13px;color:#9ca3af;margin-bottom:14px">Nr. ${d.docNumber} &nbsp;&middot;&nbsp; ${d.displayDate}</div>
         <hr style="border:none;border-top:0.25px solid #e5e7eb;margin:0 0 16px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:18px">
+        <div class="preview-parties" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:18px">
             <div>
                 <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">PIEGĀDĀTĀJS</div>
                 <div style="font-size:13px;line-height:1.6">${partyLines(d.supplier)}</div>
@@ -314,7 +327,8 @@ function renderMinimal(d) {
                 <div style="font-size:13px;line-height:1.6">${partyLines(d.buyer)}</div>
             </div>
         </div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+        <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px">
             <thead>
                 <tr>
                     <th style="padding:7px 12px;text-align:left;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">#</th>
@@ -327,13 +341,14 @@ function renderMinimal(d) {
             </thead>
             <tbody style="font-size:13px">${itemsTableHtml(d.items, 'minimal')}</tbody>
         </table>
+        </div>
         <div style="text-align:right;font-size:13px">
             <div style="color:#9ca3af">Bez PVN: ${d.subtotal.toFixed(2)} EUR</div>
             <div style="color:#9ca3af">PVN ${d.vatRate}%: ${d.vatAmount.toFixed(2)} EUR</div>
             <div style="font-size:15px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:12px 0 6px"><div style="font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:11px;color:#9ca3af">
+        <div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:11px;color:#9ca3af">
             <div>Izsniedza ________________________</div>
             <div>Saņēma ________________________</div>
         </div>
@@ -356,10 +371,10 @@ function renderPreview(template) {
     }
 }
 
-function selectTemplate(key) {
+function selectTemplate(key, btn) {
     currentTemplate = key;
     document.querySelectorAll('.template-tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    btn.classList.add('active');
     document.getElementById('downloadBtn').href = '/documents/' + docId + '/pdf?template=' + key;
     document.getElementById('sendTemplate').value = key;
     renderPreview(key);
