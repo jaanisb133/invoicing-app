@@ -94,6 +94,7 @@ def init_db():
             user_id INTEGER NOT NULL,
             doc_type TEXT NOT NULL CHECK(doc_type IN ('buy', 'sell')),
             doc_number TEXT NOT NULL,
+            seq_num INTEGER NOT NULL DEFAULT 0,
             client_id INTEGER NOT NULL,
             doc_date DATE NOT NULL,
             vat_rate REAL NOT NULL DEFAULT 21.0,
@@ -190,6 +191,11 @@ def _run_migrations():
         table_cols = {row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()}
         if "user_id" not in table_cols:
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0")
+
+    # Add seq_num column to documents if missing
+    doc_cols = {row[1] for row in cursor.execute("PRAGMA table_info(documents)").fetchall()}
+    if "seq_num" not in doc_cols:
+        cursor.execute("ALTER TABLE documents ADD COLUMN seq_num INTEGER NOT NULL DEFAULT 0")
 
     # Create user_settings table if not exists
     cursor.execute("""
@@ -466,34 +472,12 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
 
     elif number_type == "type3":
         # Type 3: Simple sequential from 001
-        seq_key = f"{doc_type}-all"
-
-        recycled = conn.execute(
-            "SELECT id, number FROM recycled_numbers WHERE user_id = ? AND doc_type = ? ORDER BY number ASC LIMIT 1",
+        # Use MAX(seq_num) from existing documents so deletions naturally reset the counter
+        row = conn.execute(
+            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND doc_type = ?",
             (user_id, doc_type)
         ).fetchone()
-
-        if recycled:
-            next_num = recycled["number"]
-            conn.execute("DELETE FROM recycled_numbers WHERE id = ?", (recycled["id"],))
-        else:
-            row = conn.execute(
-                "SELECT last_number FROM doc_sequences WHERE user_id = ? AND prefix = ?",
-                (user_id, seq_key)
-            ).fetchone()
-
-            if row:
-                next_num = row["last_number"] + 1
-                conn.execute(
-                    "UPDATE doc_sequences SET last_number = ? WHERE user_id = ? AND prefix = ?",
-                    (next_num, user_id, seq_key)
-                )
-            else:
-                next_num = 1
-                conn.execute(
-                    "INSERT INTO doc_sequences (user_id, prefix, last_number, year) VALUES (?, ?, ?, ?)",
-                    (user_id, seq_key, next_num, year)
-                )
+        next_num = (row["max_num"] or 0) + 1
 
         doc_number = str(next_num).zfill(min_digits)
         if prefix:
@@ -506,34 +490,12 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
 
     else:
         # Type 1 (default): YEAR + sequential (e.g., 26-001)
-        seq_key = f"{doc_type}-{year}"
-
-        recycled = conn.execute(
-            "SELECT id, number FROM recycled_numbers WHERE user_id = ? AND doc_type = ? AND year = ? ORDER BY number ASC LIMIT 1",
-            (user_id, doc_type, year)
+        # Use MAX(seq_num) from existing documents for this year so deletions naturally reset
+        row = conn.execute(
+            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND doc_type = ? AND strftime('%Y', doc_date) = ?",
+            (user_id, doc_type, str(year))
         ).fetchone()
-
-        if recycled:
-            next_num = recycled["number"]
-            conn.execute("DELETE FROM recycled_numbers WHERE id = ?", (recycled["id"],))
-        else:
-            row = conn.execute(
-                "SELECT last_number FROM doc_sequences WHERE user_id = ? AND prefix = ? AND year = ?",
-                (user_id, seq_key, year)
-            ).fetchone()
-
-            if row:
-                next_num = row["last_number"] + 1
-                conn.execute(
-                    "UPDATE doc_sequences SET last_number = ? WHERE user_id = ? AND prefix = ?",
-                    (next_num, user_id, seq_key)
-                )
-            else:
-                next_num = 1
-                conn.execute(
-                    "INSERT INTO doc_sequences (user_id, prefix, last_number, year) VALUES (?, ?, ?, ?)",
-                    (user_id, seq_key, next_num, year)
-                )
+        next_num = (row["max_num"] or 0) + 1
 
         num_str = str(next_num).zfill(min_digits)
         doc_number = f"{year_short}{separator}{num_str}"
@@ -569,9 +531,9 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
 
         cursor = conn.execute(
-            """INSERT INTO documents (user_id, doc_type, doc_number, client_id, doc_date, vat_rate, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (user_id, doc_type, doc_number, client_id,
+            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, vat_rate, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
              vat_rate, notes)
         )
@@ -699,35 +661,6 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
 
 def delete_document(user_id, doc_id):
     conn = get_connection()
-    doc = conn.execute("SELECT * FROM documents WHERE id = ? AND user_id = ?",
-                       (doc_id, user_id)).fetchone()
-    if doc:
-        # Try to recycle the number
-        number_type = get_user_setting(user_id, "invoice_number_type", "type1")
-        if number_type != "type2":
-            # For type2 (daily reset) recycling doesn't make sense
-            try:
-                doc_number = doc["doc_number"]
-                year = int(doc["doc_date"][:4])
-                # Strip prefix if present (e.g., "PAR-26-001" -> "26-001")
-                doc_type = doc["doc_type"]
-                prefix = get_user_setting(user_id, "sell_doc_prefix" if doc_type == "sell" else "buy_doc_prefix", "")
-                if prefix and doc_number.startswith(prefix + "-"):
-                    doc_number = doc_number[len(prefix) + 1:]
-                # Extract the sequence number from the doc_number
-                if number_type == "type3":
-                    seq_num = int(doc_number)
-                else:
-                    # type1: "26-001" -> 1
-                    parts = doc_number.split(get_user_setting(user_id, "invoice_number_separator", "-"), 1)
-                    seq_num = int(parts[-1]) if len(parts) > 1 else int(doc_number)
-                conn.execute(
-                    "INSERT INTO recycled_numbers (user_id, doc_type, year, number) VALUES (?, ?, ?, ?)",
-                    (user_id, doc["doc_type"], year, seq_num)
-                )
-            except (ValueError, IndexError):
-                pass
-
     conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
     conn.commit()
     conn.close()
