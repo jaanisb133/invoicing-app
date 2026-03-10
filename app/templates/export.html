@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Eksports</h2>
+</div>
+
+<div class="page-body">
+    {% if request.query_params.get('error') == 'no_docs' %}
+    <div class="alert alert-danger">Norādītajā periodā nav atrasts neviens dokuments.</div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header">PDF dokumentu eksports</div>
+        <div class="card-body">
+            <p style="font-size:13px;color:var(--text-light);margin-bottom:16px">
+                Atlasiet periodu un lejupielādējiet visus dokumentus vienā ZIP arhīvā.
+            </p>
+            <form method="post" action="/export/pdf" id="exportForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Datums no</label>
+                        <input type="date" name="date_from" id="dateFrom" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Datums līdz</label>
+                        <input type="date" name="date_to" id="dateTo" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Dokumenta tips</label>
+                        <select name="doc_type" id="docType" class="form-control" onchange="updatePreview()">
+                            <option value="">Visi dokumenti</option>
+                            <option value="sell">Tikai pārdošana</option>
+                            <option value="buy">Tikai iegāde</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Šablons</label>
+                        <select name="template" class="form-control">
+                            {% for key, label in templates.items() %}
+                            <option value="{{ key }}" {% if key == selected_template %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="setPreviousMonth()">Iepriekšējais mēnesis</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="setCurrentMonth()">Šis mēnesis</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="setCurrentYear()">Šis gads</button>
+                </div>
+
+                <div id="exportPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:20px;display:none">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-light)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <span style="font-size:14px;font-weight:600" id="previewCount">0 dokumenti</span>
+                    </div>
+                    <div id="previewList" style="font-size:12px;color:var(--text-light);max-height:200px;overflow-y:auto"></div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="exportBtn" style="font-size:15px;padding:12px 28px" disabled>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Lejupielādēt ZIP
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const allDocs = {{ documents | tojson }};
+
+function setPreviousMonth() {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const last = new Date(now.getFullYear(), now.getMonth(), 0);
+    document.getElementById('dateFrom').value = first.toISOString().slice(0, 10);
+    document.getElementById('dateTo').value = last.toISOString().slice(0, 10);
+    updatePreview();
+}
+
+function setCurrentMonth() {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    document.getElementById('dateFrom').value = first.toISOString().slice(0, 10);
+    document.getElementById('dateTo').value = last.toISOString().slice(0, 10);
+    updatePreview();
+}
+
+function setCurrentYear() {
+    const now = new Date();
+    document.getElementById('dateFrom').value = now.getFullYear() + '-01-01';
+    document.getElementById('dateTo').value = now.getFullYear() + '-12-31';
+    updatePreview();
+}
+
+function updatePreview() {
+    const from = document.getElementById('dateFrom').value;
+    const to = document.getElementById('dateTo').value;
+    const type = document.getElementById('docType').value;
+    const preview = document.getElementById('exportPreview');
+    const btn = document.getElementById('exportBtn');
+
+    if (!from || !to) {
+        preview.style.display = 'none';
+        btn.disabled = true;
+        return;
+    }
+
+    const filtered = allDocs.filter(d => {
+        if (d.doc_date < from || d.doc_date > to) return false;
+        if (type && d.doc_type !== type) return false;
+        return true;
+    });
+
+    preview.style.display = 'block';
+    const count = filtered.length;
+    const countText = count === 1 ? '1 dokuments' : count + ' dokumenti';
+    document.getElementById('previewCount').textContent = countText;
+
+    if (count === 0) {
+        document.getElementById('previewList').innerHTML = '<em>Nav dokumentu šajā periodā.</em>';
+        btn.disabled = true;
+    } else {
+        const lines = filtered.map(d => {
+            const typeLabel = d.doc_type === 'sell' ? 'PAR' : 'PIR';
+            return `<div style="padding:2px 0">${d.doc_number} &mdash; ${d.client_name} &mdash; ${d.doc_date}</div>`;
+        }).join('');
+        document.getElementById('previewList').innerHTML = lines;
+        btn.disabled = false;
+    }
+}
+
+document.getElementById('dateFrom').addEventListener('change', updatePreview);
+document.getElementById('dateTo').addEventListener('change', updatePreview);
+
+// Auto-select previous month on load
+setPreviousMonth();
+</script>
+{% endblock %}

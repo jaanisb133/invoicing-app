@@ -1207,6 +1207,64 @@ async def delete_recurring(request: Request, recurring_id: int):
 
 
 # =============================================================================
+# Export
+# =============================================================================
+
+@app.get("/export", response_class=HTMLResponse)
+async def export_page(request: Request):
+    ctx = _base_context(request)
+    user = request.state.user
+    docs = db.get_documents(user["id"])
+    ctx.update({
+        "documents": docs,
+        "templates": TEMPLATES,
+        "selected_template": "classic",
+        "page": "export",
+    })
+    return templates.TemplateResponse("export.html", ctx)
+
+
+@app.post("/export/pdf")
+async def export_pdf_bulk(
+    request: Request,
+    date_from: str = Form(""),
+    date_to: str = Form(""),
+    doc_type: str = Form(""),
+    template: str = Form("classic"),
+):
+    import zipfile
+    import tempfile
+
+    user = request.state.user
+    docs = db.get_documents(
+        user["id"],
+        doc_type=doc_type or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+    )
+
+    if not docs:
+        return RedirectResponse("/export?error=no_docs", status_code=303)
+
+    # Create ZIP with all PDFs
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp.close()
+
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc in docs:
+            filepath = generate_invoice_pdf(doc["id"], template=template)
+            arcname = f"{doc['doc_number']}.pdf"
+            zf.write(filepath, arcname)
+
+    filename = f"dokumenti_{date_from}_{date_to}.zip"
+    return FileResponse(
+        tmp.name,
+        media_type="application/zip",
+        filename=filename,
+    )
+
+
+# =============================================================================
 # API endpoints for AJAX
 # =============================================================================
 
