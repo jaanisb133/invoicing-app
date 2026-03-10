@@ -61,6 +61,7 @@ def _register_fonts():
     from reportlab.pdfbase.pdfmetrics import registerFontFamily
 
     font_options = [
+        ("DMSans", "DMSans-Regular.ttf", "DMSans-Bold", "DMSans-Bold.ttf"),
         ("Liberation", "LiberationSans-Regular.ttf", "Liberation-Bold", "LiberationSans-Bold.ttf"),
         ("DejaVu", "DejaVuSans.ttf", "DejaVu-Bold", "DejaVuSans-Bold.ttf"),
         ("Arial", "arial.ttf", "Arial-Bold", "arialbd.ttf"),
