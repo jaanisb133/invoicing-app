@@ -306,7 +306,7 @@ def _generate_classic(doc_id):
     # Parties
     s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", section_label)] + \
               _party_lines(data['supplier'], FONT_BOLD, normal)
-    b_lines = [Paragraph("PIRCĒJS", section_label)] + \
+    b_lines = [Paragraph("SAŅĒMĒJS / PIRCĒJS", section_label)] + \
               _party_lines(data['buyer'], FONT_BOLD, normal)
 
     party_rows = []
@@ -492,7 +492,7 @@ def _generate_modern(doc_id):
     # Parties
     s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", styles["section"])] + \
               _party_lines(data['supplier'], FONT_BOLD, styles["normal"])
-    b_lines = [Paragraph("PIRCĒJS", styles["section"])] + \
+    b_lines = [Paragraph("SAŅĒMĒJS / PIRCĒJS", styles["section"])] + \
               _party_lines(data['buyer'], FONT_BOLD, styles["normal"])
 
     party_rows = []
@@ -643,6 +643,7 @@ def _generate_minimal(doc_id):
     if logo_path:
         logo_el = _make_logo_element(logo_path, max_width=40*mm, max_height=20*mm, settings=data["settings"])
         if logo_el:
+            logo_el.hAlign = 'LEFT'
             elements.append(logo_el)
             elements.append(Spacer(1, 5 * mm))
 
@@ -675,8 +676,8 @@ def _generate_minimal(doc_id):
             lines.append(Paragraph("  &middot;  ".join(parts), styles["value"]))
         return lines
 
-    s_block = _min_party_block("PIEGĀDĀTĀJS", data["supplier"])
-    b_block = _min_party_block("PIRCĒJS", data["buyer"])
+    s_block = _min_party_block("PIEGĀDĀTĀJS / PĀRDEVĒJS", data["supplier"])
+    b_block = _min_party_block("SAŅĒMĒJS / PIRCĒJS", data["buyer"])
 
     party_rows = []
     for i in range(max(len(s_block), len(b_block))):
