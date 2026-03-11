@@ -225,7 +225,7 @@ function logoHtml(invert) {
 function partyLines(info) {
     let html = '';
     html += '<strong>' + info.name + '</strong>';
-    if (info.reg) html += '<br>Reģ.Nr.: ' + info.reg;
+    if (info.reg) html += '<br>Reģ.Nr. / P.k.: ' + info.reg;
     if (info.vat) html += '<br>PVN Nr.: ' + info.vat;
     if (info.addr) html += '<br>' + info.addr;
     if (info.bank) html += '<br>Banka: ' + info.bank;

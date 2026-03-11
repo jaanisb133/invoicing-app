@@ -164,7 +164,7 @@ def generate_invoice_pdf(doc_id):
         buyer = party_info(client)
 
     field_labels = [
-        ("Nosaukums", "name"), ("Reģ.Nr.", "reg"), ("PVN Nr.", "vat"),
+        ("Nosaukums", "name"), ("Reģ.Nr. / P.k.", "reg"), ("PVN Nr.", "vat"),
         ("Adrese", "addr"), ("Banka", "bank"), ("Konts", "account"),
     ]
 

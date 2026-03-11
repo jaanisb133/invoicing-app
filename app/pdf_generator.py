@@ -231,7 +231,7 @@ def _party_lines(info, FONT_BOLD, style):
     lines = []
     lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", style))
     if info['reg']:
-        lines.append(Paragraph(f"Reģ.Nr.: {info['reg']}", style))
+        lines.append(Paragraph(f"Reģ.Nr. / P.k.: {info['reg']}", style))
     if info['vat']:
         lines.append(Paragraph(f"PVN Nr.: {info['vat']}", style))
     if info['addr']:
@@ -662,7 +662,7 @@ def _generate_minimal(doc_id):
         lines = [Paragraph(title, styles["label"])]
         lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", styles["value"]))
         if info['reg']:
-            lines.append(Paragraph(f"Reģ.Nr. {info['reg']}", styles["value"]))
+            lines.append(Paragraph(f"Reģ.Nr. / P.k. {info['reg']}", styles["value"]))
         if info['vat']:
             lines.append(Paragraph(f"PVN {info['vat']}", styles["value"]))
         if info['addr']:
