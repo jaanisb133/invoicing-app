@@ -109,24 +109,24 @@
                     <div class="form-group">
                         <label>Pirkuma dokumenta prefikss</label>
                         <input type="text" name="buy_doc_prefix" class="form-control"
-                               value="{{ settings.get('buy_doc_prefix', 'PIR') }}">
+                               value="{{ settings.get('buy_doc_prefix', '') }}">
                     </div>
                     <div class="form-group">
                         <label>Pārdošanas dokumenta prefikss</label>
                         <input type="text" name="sell_doc_prefix" class="form-control"
-                               value="{{ settings.get('sell_doc_prefix', 'PAR') }}" oninput="updateNumberPreview()">
+                               value="{{ settings.get('sell_doc_prefix', '') }}" oninput="updateNumberPreview()">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Pirkuma dokumenta nosaukums</label>
                         <input type="text" name="buy_doc_name" class="form-control"
-                               value="{{ settings.get('buy_doc_name', 'PIRKUMA PAVADZĪME') }}">
+                               value="{{ settings.get('buy_doc_name', 'Rēķins') }}">
                     </div>
                     <div class="form-group">
                         <label>Pārdošanas dokumenta nosaukums</label>
                         <input type="text" name="sell_doc_name" class="form-control"
-                               value="{{ settings.get('sell_doc_name', 'PĀRDOŠANAS PAVADZĪME') }}">
+                               value="{{ settings.get('sell_doc_name', 'Rēķins') }}">
                     </div>
                 </div>
                 <div class="form-row">
@@ -138,9 +138,9 @@
                     <div class="form-group" style="max-width:200px">
                         <label>Noklusējuma šablons</label>
                         <select name="default_template" class="form-control">
-                            <option value="classic" {% if settings.get('default_template', 'classic') == 'classic' %}selected{% endif %}>Klasiskā</option>
+                            <option value="classic" {% if settings.get('default_template') == 'classic' %}selected{% endif %}>Klasiskā</option>
                             <option value="modern" {% if settings.get('default_template') == 'modern' %}selected{% endif %}>Modernā</option>
-                            <option value="minimal" {% if settings.get('default_template') == 'minimal' %}selected{% endif %}>Minimālā</option>
+                            <option value="minimal" {% if settings.get('default_template', 'minimal') == 'minimal' %}selected{% endif %}>Minimālā</option>
                         </select>
                     </div>
                     <div class="form-group">

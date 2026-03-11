@@ -212,7 +212,7 @@ async def _process_recurring_invoices():
                         today, items, rec["vat_rate"], rec["notes"]
                     )
 
-                    template = rec.get("template", "classic")
+                    template = rec.get("template", "minimal")
                     filepath = generate_invoice_pdf(doc_id, template=template)
 
                     # Send email if enabled
@@ -221,7 +221,7 @@ async def _process_recurring_invoices():
                         if client and client.get("email"):
                             settings = db.get_all_user_settings(rec["user_id"])
                             company_name = settings.get("company_name", "")
-                            doc_type_name = settings.get("sell_doc_name", "PAVADZĪME") if rec["doc_type"] == "sell" else settings.get("buy_doc_name", "PAVADZĪME")
+                            doc_type_name = settings.get("sell_doc_name", "Rēķins") if rec["doc_type"] == "sell" else settings.get("buy_doc_name", "Rēķins")
                             rec_user = db.get_user(rec["user_id"])
                             user_email = rec_user.get("email", "") if rec_user else ""
 
@@ -370,10 +370,11 @@ async def register(request: Request,
         "invoice_number_digits": "3",
         "default_vat_rate": "21",
         "stock_enabled": "0",
-        "buy_doc_prefix": "PIR",
-        "sell_doc_prefix": "PAR",
-        "buy_doc_name": "PIRKUMA PAVADZĪME",
-        "sell_doc_name": "PĀRDOŠANAS PAVADZĪME",
+        "buy_doc_prefix": "",
+        "sell_doc_prefix": "",
+        "buy_doc_name": "Rēķins",
+        "sell_doc_name": "Rēķins",
+        "default_template": "minimal",
     })
 
     response = RedirectResponse("/", status_code=303)
@@ -587,14 +588,14 @@ async def save_settings(
     bank_account: str = Form(""),
     buy_doc_prefix: str = Form(""),
     sell_doc_prefix: str = Form(""),
-    buy_doc_name: str = Form("PIRKUMA PAVADZĪME"),
-    sell_doc_name: str = Form("PĀRDOŠANAS PAVADZĪME"),
+    buy_doc_name: str = Form("Rēķins"),
+    sell_doc_name: str = Form("Rēķins"),
     default_vat_rate: str = Form("21"),
     stock_enabled: str = Form("0"),
     electronic_doc: str = Form("0"),
     status_tracking: str = Form("0"),
     logo_width: str = Form("100"),
-    default_template: str = Form("classic"),
+    default_template: str = Form("minimal"),
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form(""),
     invoice_number_digits: str = Form("3"),
@@ -852,7 +853,7 @@ async def create_document(request: Request):
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
     vat_rate = float(form.get("vat_rate", 21.0))
     notes = form.get("notes", "")
-    template = form.get("template", "classic")
+    template = form.get("template", "minimal")
 
     items = []
     i = 0
@@ -927,7 +928,7 @@ async def update_document(request: Request, doc_id: int):
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
     vat_rate = float(form.get("vat_rate", 21.0))
     notes = form.get("notes", "")
-    template = form.get("template", "classic")
+    template = form.get("template", "minimal")
 
     items = []
     i = 0
@@ -975,9 +976,9 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
     total = subtotal + vat_amount
 
     if not template or template not in TEMPLATES:
-        template = settings.get("default_template", "classic")
+        template = settings.get("default_template", "minimal")
     if template not in TEMPLATES:
-        template = "classic"
+        template = "minimal"
 
     ctx.update({
         "doc": doc,
@@ -996,7 +997,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
 
 
 @app.get("/documents/{doc_id}/pdf")
-async def download_pdf(request: Request, doc_id: int, template: str = "classic"):
+async def download_pdf(request: Request, doc_id: int, template: str = "minimal"):
     user = request.state.user
     doc, _ = db.get_document(doc_id)
     if not doc or doc.get("user_id") != user["id"]:
@@ -1012,7 +1013,7 @@ async def send_document_email(request: Request, doc_id: int):
     user = request.state.user
     form = await request.form()
     recipient_email = form.get("email", "").strip()
-    template = form.get("template", "classic")
+    template = form.get("template", "minimal")
 
     doc, items = db.get_document(doc_id)
     if not doc or doc.get("user_id") != user["id"]:
@@ -1037,7 +1038,7 @@ async def send_document_email(request: Request, doc_id: int):
     settings = _user_settings(user["id"])
     client = db.get_client(doc["client_id"])
     company_name = settings.get("company_name", "")
-    doc_type_name = settings.get("sell_doc_name", "PAVADZĪME") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "PAVADZĪME")
+    doc_type_name = settings.get("sell_doc_name", "Rēķins") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "Rēķins")
     user_email = user.get("email", "")
 
     # Build email — sent from central V-Rēķini address, Reply-To is the user
@@ -1162,7 +1163,7 @@ async def create_recurring(request: Request):
     client_id = int(form.get("client_id", 0))
     vat_rate = float(form.get("vat_rate", 21.0))
     notes = form.get("notes", "")
-    template = form.get("template", "classic")
+    template = form.get("template", "minimal")
     frequency = form.get("frequency", "monthly")
     next_run = form.get("next_run", "")
     send_email = form.get("send_email", "0") == "1"
@@ -1200,7 +1201,7 @@ async def create_recurring_from_document(request: Request, doc_id: int):
     form = await request.form()
     frequency = form.get("frequency", "monthly")
     send_email = form.get("send_email", "0") == "1"
-    template = form.get("template", "classic")
+    template = form.get("template", "minimal")
     next_run = form.get("next_run", "")
 
     doc, items = db.get_document(doc_id)
@@ -1256,7 +1257,7 @@ async def export_page(request: Request):
     ctx.update({
         "documents": docs,
         "templates": TEMPLATES,
-        "selected_template": settings.get("default_template", "classic"),
+        "selected_template": settings.get("default_template", "minimal"),
         "page": "export",
     })
     return templates.TemplateResponse("export.html", ctx)
@@ -1268,7 +1269,7 @@ async def export_pdf_bulk(
     date_from: str = Form(""),
     date_to: str = Form(""),
     doc_type: str = Form(""),
-    template: str = Form("classic"),
+    template: str = Form("minimal"),
 ):
     import zipfile
     import tempfile

@@ -100,7 +100,7 @@
                 <span style="color:var(--text-light)">
                     No: V-Rēķini &lt;rekini@v-rekini.lv&gt;<br>
                     {% if request.state.user.email %}Atbildēt uz: {{ request.state.user.email }}<br>{% endif %}
-                    Tēma: {{ settings.get('sell_doc_name', 'PAVADZĪME') if doc.doc_type == 'sell' else settings.get('buy_doc_name', 'PAVADZĪME') }} Nr. {{ doc.doc_number }} — {{ settings.get('company_name', '') }}<br>
+                    Tēma: {{ settings.get('sell_doc_name', 'Rēķins') if doc.doc_type == 'sell' else settings.get('buy_doc_name', 'Rēķins') }} Nr. {{ doc.doc_number }} — {{ settings.get('company_name', '') }}<br>
                     Pielikums: {{ doc.doc_number }}.pdf
                 </span>
             </div>
@@ -158,7 +158,7 @@ let currentTemplate = "{{ selected_template }}";
 
 // Document data from server
 const docData = {
-    docTypeName: {{ (settings.get('sell_doc_name', 'PĀRDOŠANAS PAVADZĪME') if doc.doc_type == 'sell' else settings.get('buy_doc_name', 'PIRKUMA PAVADZĪME')) | tojson }},
+    docTypeName: {{ (settings.get('sell_doc_name', 'Rēķins') if doc.doc_type == 'sell' else settings.get('buy_doc_name', 'Rēķins')) | tojson }},
     docNumber: {{ doc.doc_number | tojson }},
     displayDate: "{{ doc.doc_date.split('-')[2] }}.{{ doc.doc_date.split('-')[1] }}.{{ doc.doc_date.split('-')[0] }}",
     notes: {{ (doc.notes or '') | tojson }},

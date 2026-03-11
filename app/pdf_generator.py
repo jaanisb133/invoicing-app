@@ -164,9 +164,9 @@ def _get_doc_data(doc_id):
         display_date = raw_date
 
     if doc["doc_type"] == "buy":
-        doc_type_label = settings.get("buy_doc_name", "PIRKUMA PAVADZĪME")
+        doc_type_label = settings.get("buy_doc_name", "Rēķins")
     else:
-        doc_type_label = settings.get("sell_doc_name", "PĀRDOŠANAS PAVADZĪME")
+        doc_type_label = settings.get("sell_doc_name", "Rēķins")
 
     def party_info(source_client, from_settings=False):
         if from_settings:
@@ -215,9 +215,9 @@ def _get_doc_data(doc_id):
     }
 
 
-def generate_invoice_pdf(doc_id, template="classic"):
+def generate_invoice_pdf(doc_id, template="minimal"):
     if template not in TEMPLATES:
-        template = "classic"
+        template = "minimal"
     generators = {
         "classic": _generate_classic,
         "modern": _generate_modern,

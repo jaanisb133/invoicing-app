@@ -70,7 +70,7 @@
                                 <label>PDF veidne</label>
                                 <select name="template" id="templateSelect" class="form-control" onchange="updatePreview()">
                                     {% for key, label in templates.items() %}
-                                    <option value="{{ key }}" {% if key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
+                                    <option value="{{ key }}" {% if key == settings.get('default_template', 'minimal') %}selected{% endif %}>{{ label }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -403,8 +403,8 @@ function getPreviewData() {
     if (clientId) clientInfo = clientsData.find(c => c.id == clientId);
 
     const docTypeName = docType === 'buy'
-        ? (companySettings.buy_doc_name || 'PIRKUMA PAVADZĪME')
-        : (companySettings.sell_doc_name || 'PĀRDOŠANAS PAVADZĪME');
+        ? (companySettings.buy_doc_name || 'Rēķins')
+        : (companySettings.sell_doc_name || 'Rēķins');
 
     let displayDate = docDate;
     if (docDate) {

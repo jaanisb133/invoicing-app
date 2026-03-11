@@ -148,7 +148,7 @@ def init_db():
             client_id INTEGER NOT NULL,
             vat_rate REAL NOT NULL DEFAULT 21.0,
             notes TEXT DEFAULT '',
-            template TEXT DEFAULT 'classic',
+            template TEXT DEFAULT 'minimal',
             frequency TEXT NOT NULL DEFAULT 'monthly',
             next_run DATE NOT NULL,
             send_email INTEGER NOT NULL DEFAULT 0,
@@ -440,7 +440,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     number_type = settings.get("invoice_number_type", "type1")
     separator = settings.get("invoice_number_separator", "-")
     min_digits = int(settings.get("invoice_number_digits", "3"))
-    prefix = settings.get("sell_doc_prefix", "PAR") if doc_type == "sell" else settings.get("buy_doc_prefix", "PIR")
+    prefix = settings.get("sell_doc_prefix", "") if doc_type == "sell" else settings.get("buy_doc_prefix", "")
 
     if isinstance(doc_date, str):
         doc_date_obj = datetime.date.fromisoformat(doc_date)
