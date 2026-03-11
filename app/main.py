@@ -793,7 +793,7 @@ async def delete_client(request: Request, client_id: int):
 
 @app.get("/documents", response_class=HTMLResponse)
 async def documents_page(request: Request, doc_type: str = "", client_id: str = "",
-                         date_from: str = "", date_to: str = ""):
+                         date_from: str = "", date_to: str = "", status: str = ""):
     ctx = _base_context(request)
     user = request.state.user
     docs = db.get_documents(
@@ -802,6 +802,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         client_id=int(client_id) if client_id else None,
         date_from=date_from or None,
         date_to=date_to or None,
+        status=status or None,
     )
     clients = db.get_all_clients(user["id"])
     settings = _user_settings(user["id"])
@@ -810,7 +811,8 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         "clients": clients,
         "settings": settings,
         "filters": {"doc_type": doc_type, "client_id": client_id,
-                     "date_from": date_from, "date_to": date_to},
+                     "date_from": date_from, "date_to": date_to,
+                     "status": status},
         "page": "documents",
     })
     return templates.TemplateResponse("documents.html", ctx)
@@ -1099,10 +1101,9 @@ async def toggle_document_status(request: Request, doc_id: int):
         raise HTTPException(status_code=404)
     new_status = "paid" if doc.get("status", "issued") == "issued" else "issued"
     db.update_document_status(user["id"], doc_id, new_status)
-    # Return JSON for AJAX requests
+    # Return JSON for AJAX requests, fall back to redirect
     accept = request.headers.get("accept", "")
     if "application/json" in accept:
-        from starlette.responses import JSONResponse
         return JSONResponse({"status": new_status})
     return RedirectResponse(f"/documents/{doc_id}", status_code=303)
 

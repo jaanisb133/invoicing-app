@@ -12,7 +12,7 @@
 <div class="page-body">
     <div class="card">
         <div class="card-body">
-            <form method="get" action="/documents" class="filters-bar">
+            <form method="get" action="/documents" class="filters-bar" id="filterForm">
                 <div class="form-group">
                     <label>Tips</label>
                     <select name="doc_type" class="form-control">
@@ -30,17 +30,36 @@
                         {% endfor %}
                     </select>
                 </div>
+                {% if settings.get('status_tracking', '0') == '1' %}
+                <div class="form-group">
+                    <label>Statuss</label>
+                    <select name="status" class="form-control">
+                        <option value="">Visi</option>
+                        <option value="issued" {% if filters.status == 'issued' %}selected{% endif %}>Izrakstīts</option>
+                        <option value="paid" {% if filters.status == 'paid' %}selected{% endif %}>Apmaksāts</option>
+                    </select>
+                </div>
+                {% endif %}
                 <div class="form-group">
                     <label>No datuma</label>
-                    <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+                    <input type="date" name="date_from" id="dateFrom" class="form-control" value="{{ filters.date_from }}">
                 </div>
                 <div class="form-group">
                     <label>Līdz datumam</label>
-                    <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+                    <input type="date" name="date_to" id="dateTo" class="form-control" value="{{ filters.date_to }}">
                 </div>
                 <div class="form-group">
                     <label>&nbsp;</label>
-                    <button type="submit" class="btn btn-outline">Filtrēt</button>
+                    <div class="btn-group">
+                        <button type="submit" class="btn btn-outline">Filtrēt</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="setThisMonth()">Šomēnes</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="setLastMonth()">Iepr. mēnesis</button>
+                    </div>
                 </div>
             </form>
 
@@ -112,14 +131,14 @@
 <script>
 async function toggleStatus(el) {
     const docId = el.dataset.docId;
-    const current = el.dataset.status;
     el.style.opacity = '0.5';
     try {
-        const res = await fetch(`/documents/${docId}/status`, {
+        const res = await fetch('/documents/' + docId + '/status', {
             method: 'POST',
-            headers: {'Accept': 'application/json'}
+            headers: {'Accept': 'application/json'},
+            credentials: 'same-origin'
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error('Status ' + res.status);
         const data = await res.json();
         el.dataset.status = data.status;
         if (data.status === 'paid') {
@@ -133,6 +152,32 @@ async function toggleStatus(el) {
         alert('Kļūda mainot statusu');
     }
     el.style.opacity = '1';
+}
+
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+function setThisMonth() {
+    var now = new Date();
+    var y = now.getFullYear();
+    var m = now.getMonth();
+    var first = y + '-' + pad(m + 1) + '-01';
+    var last = new Date(y, m + 1, 0);
+    var lastStr = y + '-' + pad(m + 1) + '-' + pad(last.getDate());
+    document.getElementById('dateFrom').value = first;
+    document.getElementById('dateTo').value = lastStr;
+    document.getElementById('filterForm').submit();
+}
+
+function setLastMonth() {
+    var now = new Date();
+    var y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    var m = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    var first = y + '-' + pad(m + 1) + '-01';
+    var last = new Date(y, m + 1, 0);
+    var lastStr = y + '-' + pad(m + 1) + '-' + pad(last.getDate());
+    document.getElementById('dateFrom').value = first;
+    document.getElementById('dateTo').value = lastStr;
+    document.getElementById('filterForm').submit();
 }
 </script>
 {% endblock %}

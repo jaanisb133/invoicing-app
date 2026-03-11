@@ -456,10 +456,10 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         month = doc_date_obj.month
         date_str = doc_date_obj.isoformat()
 
-        # Count documents already created for this date
+        # Count documents already created for this date (across all types)
         row = conn.execute(
-            "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_type = ? AND doc_date = ?",
-            (user_id, doc_type, date_str)
+            "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date = ?",
+            (user_id, date_str)
         ).fetchone()
         next_num = (row["cnt"] if row else 0) + 1
 
@@ -476,8 +476,8 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         # Type 3: Simple sequential from 001
         # Use MAX(seq_num) from existing documents so deletions naturally reset the counter
         row = conn.execute(
-            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND doc_type = ?",
-            (user_id, doc_type)
+            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ?",
+            (user_id,)
         ).fetchone()
         next_num = (row["max_num"] or 0) + 1
 
@@ -494,8 +494,8 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         # Type 1 (default): YEAR + sequential (e.g., 26-001)
         # Use MAX(seq_num) from existing documents for this year so deletions naturally reset
         row = conn.execute(
-            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND doc_type = ? AND strftime('%Y', doc_date) = ?",
-            (user_id, doc_type, str(year))
+            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND strftime('%Y', doc_date) = ?",
+            (user_id, str(year))
         ).fetchone()
         next_num = (row["max_num"] or 0) + 1
 
@@ -634,7 +634,7 @@ def get_document(doc_id):
     return (dict(doc) if doc else None, [dict(i) for i in items])
 
 
-def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_to=None):
+def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_to=None, status=None):
     conn = get_connection()
     query = """SELECT d.*, c.name as client_name
                FROM documents d
@@ -654,6 +654,9 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
     if date_to:
         query += " AND d.doc_date <= ?"
         params.append(date_to)
+    if status:
+        query += " AND d.status = ?"
+        params.append(status)
 
     query += " ORDER BY d.doc_date DESC, d.id DESC"
     rows = conn.execute(query, params).fetchall()
