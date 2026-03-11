@@ -592,6 +592,7 @@ async def save_settings(
     default_vat_rate: str = Form("21"),
     stock_enabled: str = Form("0"),
     electronic_doc: str = Form("0"),
+    status_tracking: str = Form("0"),
     logo_width: str = Form("100"),
     default_template: str = Form("classic"),
     invoice_number_type: str = Form("type1"),
@@ -613,6 +614,7 @@ async def save_settings(
         "default_vat_rate": default_vat_rate,
         "stock_enabled": stock_enabled,
         "electronic_doc": electronic_doc,
+        "status_tracking": status_tracking,
         "logo_width": logo_width,
         "default_template": default_template,
     }
@@ -802,9 +804,11 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         date_to=date_to or None,
     )
     clients = db.get_all_clients(user["id"])
+    settings = _user_settings(user["id"])
     ctx.update({
         "documents": docs,
         "clients": clients,
+        "settings": settings,
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to},
         "page": "documents",
@@ -1085,6 +1089,17 @@ async def delete_document(request: Request, doc_id: int):
     user = request.state.user
     db.delete_document(user["id"], doc_id)
     return RedirectResponse("/documents", status_code=303)
+
+
+@app.post("/documents/{doc_id}/status")
+async def toggle_document_status(request: Request, doc_id: int):
+    user = request.state.user
+    doc, _ = db.get_document(doc_id)
+    if not doc or doc.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404)
+    new_status = "paid" if doc.get("status", "issued") == "issued" else "issued"
+    db.update_document_status(user["id"], doc_id, new_status)
+    return RedirectResponse(f"/documents/{doc_id}", status_code=303)
 
 
 # =============================================================================

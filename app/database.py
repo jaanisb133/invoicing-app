@@ -196,6 +196,8 @@ def _run_migrations():
     doc_cols = {row[1] for row in cursor.execute("PRAGMA table_info(documents)").fetchall()}
     if "seq_num" not in doc_cols:
         cursor.execute("ALTER TABLE documents ADD COLUMN seq_num INTEGER NOT NULL DEFAULT 0")
+    if "status" not in doc_cols:
+        cursor.execute("ALTER TABLE documents ADD COLUMN status TEXT NOT NULL DEFAULT 'issued'")
 
     # Create user_settings table if not exists
     cursor.execute("""
@@ -657,6 +659,14 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def update_document_status(user_id, doc_id, status):
+    conn = get_connection()
+    conn.execute("UPDATE documents SET status = ? WHERE id = ? AND user_id = ?",
+                 (status, doc_id, user_id))
+    conn.commit()
+    conn.close()
 
 
 def delete_document(user_id, doc_id):
