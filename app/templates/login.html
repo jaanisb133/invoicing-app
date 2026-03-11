@@ -9,10 +9,15 @@
     <style>
         body {
             display: flex;
-            align-items: center;
-            justify-content: center;
+            flex-direction: column;
             min-height: 100vh;
             background: var(--bg);
+        }
+        .login-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .login-container { width: 100%; max-width: 400px; padding: 20px; }
         .login-card {
@@ -30,6 +35,8 @@
     </style>
 </head>
 <body>
+    {% include "_public_navbar.html" %}
+    <div class="login-wrap">
     <div class="login-container">
         <div class="login-card">
             <h1>V-Rēķini</h1>
@@ -60,6 +67,7 @@
                 Nav konta? <a href="/register">Reģistrēties</a>
             </div>
         </div>
+    </div>
     </div>
 </body>
 </html>

@@ -389,6 +389,7 @@ async def login_page(request: Request, error: str = "", message: str = ""):
         "request": request,
         "error": error,
         "message": message,
+        "page": "login",
     })
 
 
@@ -400,6 +401,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
             "request": request,
             "error": "Nepareizs e-pasts vai parole.",
             "username": username,
+            "page": "login",
         })
 
     if user["must_change_password"]:
@@ -418,6 +420,7 @@ async def register_page(request: Request, error: str = ""):
     return templates.TemplateResponse("register.html", {
         "request": request,
         "error": error,
+        "page": "register",
     })
 
 
@@ -432,6 +435,7 @@ async def register(request: Request,
             "request": request,
             "error": "Paroles nesakrīt.",
             "email": email, "display_name": display_name,
+            "page": "register",
         })
 
     if len(password) < 6:
@@ -439,6 +443,7 @@ async def register(request: Request,
             "request": request,
             "error": "Parolei jābūt vismaz 6 simbolus garai.",
             "email": email, "display_name": display_name,
+            "page": "register",
         })
 
     if db.get_user_by_email(email):
@@ -446,6 +451,7 @@ async def register(request: Request,
             "request": request,
             "error": "E-pasts jau reģistrēts.",
             "email": email, "display_name": display_name,
+            "page": "register",
         })
 
     # Auto-generate username from email

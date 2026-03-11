@@ -11,39 +11,11 @@
     <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t)document.documentElement.setAttribute('data-theme',t);})()</script>
     <style>
         body { display: block; min-height: 100vh; background: var(--bg); }
-        .pricing-navbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 32px;
-            background: var(--bg-card);
-            border-bottom: 1px solid var(--border);
-        }
-        .pricing-navbar-brand {
-            display: flex; align-items: center; gap: 10px;
-            text-decoration: none; color: var(--text);
-        }
-        .pricing-navbar-brand .logo {
-            width: 32px; height: 32px; background: var(--primary); color: white;
-            border-radius: 8px; display: flex; align-items: center; justify-content: center;
-            font-weight: 800; font-size: 12px;
-        }
-        .pricing-navbar-brand span { font-size: 16px; font-weight: 700; }
-        .pricing-navbar-links { display: flex; gap: 12px; }
         .pricing-page-wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px; }
     </style>
 </head>
 <body>
-    <div class="pricing-navbar">
-        <a href="/login" class="pricing-navbar-brand">
-            <div class="logo">VR</div>
-            <span>V-Rēķini</span>
-        </a>
-        <div class="pricing-navbar-links">
-            <a href="/login" class="btn btn-outline btn-sm">Pieslēgties</a>
-            <a href="/register" class="btn btn-primary btn-sm">Reģistrēties</a>
-        </div>
-    </div>
+    {% include "_public_navbar.html" %}
     <div class="pricing-page-wrap">
         {% include "_pricing_content.html" %}
     </div>

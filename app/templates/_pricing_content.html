@@ -1,7 +1,7 @@
 <div class="pricing-section">
     <div style="text-align:center;margin-bottom:36px">
         <h2 style="font-size:24px;font-weight:800;letter-spacing:-0.5px;margin-bottom:8px">Izvēlieties plānu</h2>
-        <p style="color:var(--text-light);font-size:15px">Sāciet bez maksas. Uzlabojiet, kad esat gatavs.</p>
+        <p style="color:var(--text-light);font-size:15px">Sāciet bez maksas. Palieliniet plānu kad esat gatavs.</p>
     </div>
 
     <div class="pricing-toggle" style="display:flex;justify-content:center;margin-bottom:32px">
@@ -85,7 +85,7 @@
                     </form>
                     {% endif %}
                 {% else %}
-                <a href="/register" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px">Sākt bez maksas</a>
+                <a href="/register" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px">Izvēlēties plānu</a>
                 {% endif %}
             </div>
         </div>
@@ -110,6 +110,7 @@
                     <li>Neierobežoti e-pasti</li>
                     <li>Visas veidnes</li>
                     <li>Periodiskie rēķini</li>
+                    <li>Noliktavas pārvaldība</li>
                     <li>Prioritārais atbalsts</li>
                 </ul>
                 {% if current_user %}
@@ -125,7 +126,7 @@
                     </form>
                     {% endif %}
                 {% else %}
-                <a href="/register" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px">Sākt bez maksas</a>
+                <a href="/register" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px">Izvēlēties plānu</a>
                 {% endif %}
             </div>
         </div>
@@ -164,7 +165,11 @@
     [data-theme="dark"] .pricing-features li::before {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23d1d5db' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
     }
-    .pricing-grid { align-items: start; }
+    .pricing-grid { align-items: stretch; }
+    .pricing-grid .card { display: flex; flex-direction: column; height: 100%; }
+    .pricing-grid .card-body { flex: 1; display: flex; flex-direction: column; }
+    .pricing-grid .card-body .btn,
+    .pricing-grid .card-body form { margin-top: auto !important; }
 </style>
 
 <script>
