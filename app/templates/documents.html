@@ -76,11 +76,13 @@
                             <td>{{ doc.vat_rate }}%</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <td>
-                                {% if doc.status == 'paid' %}
-                                <span class="badge badge-paid">Apmaksāts</span>
-                                {% else %}
-                                <span class="badge badge-issued">Izrakstīts</span>
-                                {% endif %}
+                                <span class="badge badge-status {% if doc.status == 'paid' %}badge-paid{% else %}badge-issued{% endif %}"
+                                      data-doc-id="{{ doc.id }}"
+                                      data-status="{{ doc.status or 'issued' }}"
+                                      onclick="toggleStatus(this)"
+                                      title="Noklikšķiniet, lai mainītu statusu">
+                                    {% if doc.status == 'paid' %}Apmaksāts{% else %}Izrakstīts{% endif %}
+                                </span>
                             </td>
                             {% endif %}
                             <td>
@@ -104,4 +106,33 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function toggleStatus(el) {
+    const docId = el.dataset.docId;
+    const current = el.dataset.status;
+    el.style.opacity = '0.5';
+    try {
+        const res = await fetch(`/documents/${docId}/status`, {
+            method: 'POST',
+            headers: {'Accept': 'application/json'}
+        });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        el.dataset.status = data.status;
+        if (data.status === 'paid') {
+            el.textContent = 'Apmaksāts';
+            el.className = 'badge badge-status badge-paid';
+        } else {
+            el.textContent = 'Izrakstīts';
+            el.className = 'badge badge-status badge-issued';
+        }
+    } catch(e) {
+        alert('Kļūda mainot statusu');
+    }
+    el.style.opacity = '1';
+}
+</script>
 {% endblock %}

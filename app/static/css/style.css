@@ -472,6 +472,8 @@ select.form-control { cursor: pointer; }
 .badge-sell { background: rgba(17, 24, 39, 0.06); color: #111827; }
 .badge-issued { background: rgba(234, 179, 8, 0.1); color: #a16207; }
 .badge-paid { background: rgba(22, 163, 74, 0.1); color: #15803d; }
+.badge-status { cursor: pointer; transition: opacity 0.2s; }
+.badge-status:hover { opacity: 0.7; }
 
 /* --- Tier badges --- */
 .tier-badge {

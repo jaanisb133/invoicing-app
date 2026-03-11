@@ -1099,6 +1099,11 @@ async def toggle_document_status(request: Request, doc_id: int):
         raise HTTPException(status_code=404)
     new_status = "paid" if doc.get("status", "issued") == "issued" else "issued"
     db.update_document_status(user["id"], doc_id, new_status)
+    # Return JSON for AJAX requests
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept:
+        from starlette.responses import JSONResponse
+        return JSONResponse({"status": new_status})
     return RedirectResponse(f"/documents/{doc_id}", status_code=303)
 
 
