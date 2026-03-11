@@ -105,14 +105,25 @@
         <div class="card">
             <div class="card-header">Dokumentu iestatījumi</div>
             <div class="card-body">
-                <div class="form-row">
+                <div class="form-group">
+                    <div style="margin-top:4px">
+                        <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                            <input type="checkbox" id="prefix_toggle"
+                                   {% if settings.get('buy_doc_prefix', '') or settings.get('sell_doc_prefix', '') %}checked{% endif %}
+                                   onchange="document.getElementById('prefix_fields').style.display=this.checked?'':'none'"
+                                   style="width:18px;height:18px;cursor:pointer">
+                            Izmantot dokumentu numuru priedēkļus (prefiksus)
+                        </label>
+                    </div>
+                </div>
+                <div class="form-row" id="prefix_fields" style="{% if not settings.get('buy_doc_prefix', '') and not settings.get('sell_doc_prefix', '') %}display:none{% endif %}">
                     <div class="form-group">
-                        <label>Pirkuma dokumenta prefikss</label>
+                        <label>Pirkuma dokumenta prefikss <span style="font-size:12px;color:var(--text-light)">(Nav obligāts)</span></label>
                         <input type="text" name="buy_doc_prefix" class="form-control"
                                value="{{ settings.get('buy_doc_prefix', '') }}">
                     </div>
                     <div class="form-group">
-                        <label>Pārdošanas dokumenta prefikss</label>
+                        <label>Pārdošanas dokumenta prefikss <span style="font-size:12px;color:var(--text-light)">(Nav obligāts)</span></label>
                         <input type="text" name="sell_doc_prefix" class="form-control"
                                value="{{ settings.get('sell_doc_prefix', '') }}" oninput="updateNumberPreview()">
                     </div>
