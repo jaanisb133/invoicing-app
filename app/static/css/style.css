@@ -338,6 +338,7 @@ body {
     font-size: 13px;
     color: var(--text);
     letter-spacing: -0.2px;
+    background: var(--bg);
 }
 
 .card-body { padding: 20px; }
@@ -1075,8 +1076,5 @@ select.form-control { cursor: pointer; }
 @media (max-width: 1100px) {
     .doc-editor-layout {
         grid-template-columns: 1fr;
-    }
-    .doc-editor-preview {
-        order: -1;
     }
 }
