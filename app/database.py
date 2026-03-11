@@ -440,7 +440,10 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     number_type = settings.get("invoice_number_type", "type1")
     separator = settings.get("invoice_number_separator", "-")
     min_digits = int(settings.get("invoice_number_digits", "3"))
-    prefix = settings.get("sell_doc_prefix", "") if doc_type == "sell" else settings.get("buy_doc_prefix", "")
+    if settings.get("use_prefixes", "0") == "1":
+        prefix = settings.get("sell_doc_prefix", "") if doc_type == "sell" else settings.get("buy_doc_prefix", "")
+    else:
+        prefix = ""
 
     if isinstance(doc_date, str):
         doc_date_obj = datetime.date.fromisoformat(doc_date)
