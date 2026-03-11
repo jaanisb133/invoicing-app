@@ -7,10 +7,11 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=/opt/vrekini
-ExecStart=/opt/vrekini/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+ExecStart=/opt/vrekini/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
 RestartSec=5
 EnvironmentFile=/opt/vrekini/.env
+Environment=VREKINI_DB_PATH=/opt/vrekini/data/veggie_invoices.db
 
 [Install]
 WantedBy=multi-user.target

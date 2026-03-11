@@ -362,10 +362,21 @@ async def _process_recurring_invoices():
 
 @app.on_event("startup")
 async def startup():
+    db_path = db.get_db_path()
+    db_exists = os.path.exists(db_path)
+    db_size = os.path.getsize(db_path) if db_exists else 0
+    print(f"[STARTUP] Database path: {db_path}")
+    print(f"[STARTUP] Database exists: {db_exists}, size: {db_size} bytes")
+
     db.init_db()
+
+    user_ct = db.user_count()
+    print(f"[STARTUP] Users in database: {user_ct}")
+
     temp_pw = db.ensure_default_admin()
     if temp_pw:
         print(f"\n{'='*60}")
+        print(f"  WARNING: Fresh database detected — no existing users found!")
         print(f"  Izveidots noklusējuma administrators:")
         print(f"  Lietotājvārds: admin")
         print(f"  Parole: {temp_pw}")

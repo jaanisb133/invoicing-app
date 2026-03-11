@@ -13,7 +13,10 @@ import bcrypt
 DB_NAME = "veggie_invoices.db"
 
 _db_dir = os.path.dirname(os.path.abspath(__file__))
-_db_path = os.path.join(os.path.dirname(_db_dir), "data", DB_NAME)
+_default_db_path = os.path.join(os.path.dirname(_db_dir), "data", DB_NAME)
+
+# Allow overriding via environment variable for production reliability
+_db_path = os.environ.get("VREKINI_DB_PATH", _default_db_path)
 
 
 def get_db_path():
