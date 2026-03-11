@@ -46,6 +46,11 @@ SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "V-Rēķini <rekini@v-rekini.lv>")
 SMTP_SSL = os.getenv("SMTP_SSL", "true").lower() in ("true", "1", "yes")
 
+# --- Brevo transactional email API ---
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
+BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "rekini@v-rekini.lv")
+BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "V-Rēķini")
+
 
 def _smtp_connect():
     """Return an authenticated SMTP connection (SSL or STARTTLS)."""
@@ -56,6 +61,82 @@ def _smtp_connect():
         server.starttls()
     server.login(SMTP_USER, SMTP_PASS)
     return server
+
+
+def _send_email(*, to_email: str, subject: str, body: str,
+                reply_to: str = "", attachment_path: str = ""):
+    """Send email via Brevo API (preferred) or SMTP fallback."""
+    if BREVO_API_KEY:
+        return _send_via_brevo(
+            to_email=to_email, subject=subject, body=body,
+            reply_to=reply_to, attachment_path=attachment_path,
+        )
+    if SMTP_PASS:
+        return _send_via_smtp(
+            to_email=to_email, subject=subject, body=body,
+            reply_to=reply_to, attachment_path=attachment_path,
+        )
+    raise RuntimeError("E-pasta serviss nav konfigurēts (nav ne BREVO_API_KEY, ne SMTP_PASS).")
+
+
+def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path=""):
+    """Send email using Brevo HTTP API."""
+    import httpx
+    import base64
+
+    payload = {
+        "sender": {"name": BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": body,
+    }
+    if reply_to:
+        payload["replyTo"] = {"email": reply_to}
+
+    if attachment_path and os.path.exists(attachment_path):
+        with open(attachment_path, "rb") as f:
+            content_b64 = base64.b64encode(f.read()).decode()
+        payload["attachment"] = [{
+            "content": content_b64,
+            "name": os.path.basename(attachment_path),
+        }]
+
+    resp = httpx.post(
+        "https://api.brevo.com/v3/smtp/email",
+        headers={
+            "api-key": BREVO_API_KEY,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        json=payload,
+        timeout=30,
+    )
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(f"Brevo API kļūda ({resp.status_code}): {resp.text}")
+
+
+def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path=""):
+    """Send email using SMTP (legacy fallback)."""
+    msg = MIMEMultipart()
+    msg["From"] = SMTP_FROM
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    if reply_to:
+        msg["Reply-To"] = reply_to
+
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    if attachment_path and os.path.exists(attachment_path):
+        with open(attachment_path, "rb") as f:
+            part = MIMEBase("application", "pdf")
+            part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition",
+                            f"attachment; filename={os.path.basename(attachment_path)}")
+            msg.attach(part)
+
+    with _smtp_connect() as server:
+        server.send_message(msg)
 
 
 SESSION_COOKIE = "session"
@@ -216,7 +297,7 @@ async def _process_recurring_invoices():
                     filepath = generate_invoice_pdf(doc_id, template=template)
 
                     # Send email if enabled
-                    if rec["send_email"] and SMTP_PASS:
+                    if rec["send_email"] and (BREVO_API_KEY or SMTP_PASS):
                         client = db.get_client(rec["client_id"])
                         if client and client.get("email"):
                             settings = db.get_all_user_settings(rec["user_id"])
@@ -225,25 +306,13 @@ async def _process_recurring_invoices():
                             rec_user = db.get_user(rec["user_id"])
                             user_email = rec_user.get("email", "") if rec_user else ""
 
-                            msg = MIMEMultipart()
-                            msg["From"] = SMTP_FROM
-                            msg["To"] = client["email"]
-                            msg["Subject"] = f"{doc_type_name} Nr. {doc_number} — {company_name}"
-                            if user_email:
-                                msg["Reply-To"] = user_email
-
-                            body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n"
-                            msg.attach(MIMEText(body, "plain", "utf-8"))
-
-                            with open(filepath, "rb") as f:
-                                part = MIMEBase("application", "pdf")
-                                part.set_payload(f.read())
-                                encoders.encode_base64(part)
-                                part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(filepath)}")
-                                msg.attach(part)
-
-                            with _smtp_connect() as server:
-                                server.send_message(msg)
+                            _send_email(
+                                to_email=client["email"],
+                                subject=f"{doc_type_name} Nr. {doc_number} — {company_name}",
+                                body=f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n",
+                                reply_to=user_email,
+                                attachment_path=filepath,
+                            )
 
                     # Calculate next run
                     next_run = _calc_next_run(rec["next_run"], rec["frequency"])
@@ -1027,7 +1096,7 @@ async def send_document_email(request: Request, doc_id: int):
             status_code=303
         )
 
-    if not SMTP_PASS:
+    if not BREVO_API_KEY and not SMTP_PASS:
         return RedirectResponse(
             f"/documents/{doc_id}?error=E-pasta serviss nav konfigurēts.&template={template}",
             status_code=303
@@ -1043,36 +1112,14 @@ async def send_document_email(request: Request, doc_id: int):
     doc_type_name = settings.get("sell_doc_name", "Rēķins") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "Rēķins")
     user_email = user.get("email", "")
 
-    # Build email — sent from central V-Rēķini address, Reply-To is the user
-    msg = MIMEMultipart()
-    msg["From"] = SMTP_FROM
-    msg["To"] = recipient_email
-    msg["Subject"] = f"{doc_type_name} Nr. {doc['doc_number']} — {company_name}"
-    if user_email:
-        msg["Reply-To"] = user_email
-
-    body = f"""Labdien!
-
-Pielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}
-Datums: {doc['doc_date']}
-
-Ar cieņu,
-{company_name}
-"""
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-
-    # Attach PDF
-    with open(filepath, "rb") as f:
-        part = MIMEBase("application", "pdf")
-        part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(filepath)}")
-        msg.attach(part)
-
-    # Send via centralised SMTP
     try:
-        with _smtp_connect() as server:
-            server.send_message(msg)
+        _send_email(
+            to_email=recipient_email,
+            subject=f"{doc_type_name} Nr. {doc['doc_number']} — {company_name}",
+            body=f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}\nDatums: {doc['doc_date']}\n\nAr cieņu,\n{company_name}\n",
+            reply_to=user_email,
+            attachment_path=filepath,
+        )
     except Exception as e:
         return RedirectResponse(
             f"/documents/{doc_id}?error=E-pasta sūtīšanas kļūda: {str(e)}&template={template}",
