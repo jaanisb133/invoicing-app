@@ -297,7 +297,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
     if not user:
         return templates.TemplateResponse("login.html", {
             "request": request,
-            "error": "Nepareizs lietotājvārds vai parole.",
+            "error": "Nepareizs e-pasts vai parole.",
             "username": username,
         })
 
@@ -322,7 +322,6 @@ async def register_page(request: Request, error: str = ""):
 
 @app.post("/register")
 async def register(request: Request,
-                   username: str = Form(...),
                    email: str = Form(...),
                    display_name: str = Form(...),
                    password: str = Form(...),
@@ -331,29 +330,30 @@ async def register(request: Request,
         return templates.TemplateResponse("register.html", {
             "request": request,
             "error": "Paroles nesakrīt.",
-            "username": username, "email": email, "display_name": display_name,
+            "email": email, "display_name": display_name,
         })
 
     if len(password) < 6:
         return templates.TemplateResponse("register.html", {
             "request": request,
             "error": "Parolei jābūt vismaz 6 simbolus garai.",
-            "username": username, "email": email, "display_name": display_name,
+            "email": email, "display_name": display_name,
         })
 
-    if db.get_user_by_username(username):
-        return templates.TemplateResponse("register.html", {
-            "request": request,
-            "error": "Lietotājvārds jau aizņemts.",
-            "username": username, "email": email, "display_name": display_name,
-        })
-
-    if email and db.get_user_by_email(email):
+    if db.get_user_by_email(email):
         return templates.TemplateResponse("register.html", {
             "request": request,
             "error": "E-pasts jau reģistrēts.",
-            "username": username, "email": email, "display_name": display_name,
+            "email": email, "display_name": display_name,
         })
+
+    # Auto-generate username from email
+    username = email.split("@")[0].lower().replace(" ", "_")
+    base_username = username
+    counter = 1
+    while db.get_user_by_username(username):
+        username = f"{base_username}{counter}"
+        counter += 1
 
     user_id = db.create_user(
         username=username,

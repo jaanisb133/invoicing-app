@@ -26,9 +26,9 @@
             <div class="card-body">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Uzņēmuma nosaukums *</label>
+                        <label>Vārds / Uzņēmuma nosaukums *</label>
                         <input type="text" name="company_name" class="form-control"
-                               value="{{ settings.get('company_name', '') }}" required>
+                               value="{{ settings.get('company_name', '') or current_user.display_name or '' }}" required>
                     </div>
                     <div class="form-group">
                         <label>Reģistrācijas numurs</label>

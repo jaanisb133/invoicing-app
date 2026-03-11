@@ -805,6 +805,9 @@ def authenticate_user(username: str, password: str):
     conn = get_connection()
     row = conn.execute("SELECT * FROM users WHERE username = ?",
                        (username.lower().strip(),)).fetchone()
+    if not row:
+        row = conn.execute("SELECT * FROM users WHERE email = ?",
+                           (username.strip().lower(),)).fetchone()
     conn.close()
     if row and _check_password(password, row["password_hash"]):
         return dict(row)
