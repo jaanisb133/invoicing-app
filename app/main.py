@@ -4,7 +4,7 @@ V-Rēķini — Multi-tenant SaaS Invoice Manager (FastAPI)
 
 import os
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
 import json
 import secrets
