@@ -47,6 +47,9 @@ def init_db():
             subscription_status TEXT NOT NULL DEFAULT 'active',
             subscription_start DATE,
             subscription_end DATE,
+            billing_cycle TEXT NOT NULL DEFAULT '',
+            stripe_customer_id TEXT NOT NULL DEFAULT '',
+            stripe_subscription_id TEXT NOT NULL DEFAULT '',
             max_documents INTEGER NOT NULL DEFAULT 50,
             max_clients INTEGER NOT NULL DEFAULT 20,
             max_products INTEGER NOT NULL DEFAULT 50,
@@ -181,6 +184,9 @@ def _run_migrations():
         "max_documents": "ALTER TABLE users ADD COLUMN max_documents INTEGER NOT NULL DEFAULT 50",
         "max_clients": "ALTER TABLE users ADD COLUMN max_clients INTEGER NOT NULL DEFAULT 20",
         "max_products": "ALTER TABLE users ADD COLUMN max_products INTEGER NOT NULL DEFAULT 50",
+        "billing_cycle": "ALTER TABLE users ADD COLUMN billing_cycle TEXT NOT NULL DEFAULT ''",
+        "stripe_customer_id": "ALTER TABLE users ADD COLUMN stripe_customer_id TEXT NOT NULL DEFAULT ''",
+        "stripe_subscription_id": "ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT NOT NULL DEFAULT ''",
     }
     for col, sql in migrations.items():
         if col not in cols:
@@ -982,15 +988,96 @@ def ensure_default_admin():
 # --- Tier limits ---
 
 TIER_LIMITS = {
-    "free": {"max_documents": 50, "max_clients": 20, "max_products": 50, "label": "Bezmaksas"},
-    "starter": {"max_documents": 500, "max_clients": 100, "max_products": 200, "label": "Sākums"},
-    "business": {"max_documents": 5000, "max_clients": 500, "max_products": 1000, "label": "Bizness"},
-    "admin": {"max_documents": 999999, "max_clients": 999999, "max_products": 999999, "label": "Administrators"},
+    "free": {
+        "max_documents": 50, "max_clients": 20, "max_products": 50,
+        "max_emails_month": 5, "recurring": False, "all_templates": False,
+        "label": "Bezmaksas",
+        "price_monthly": 0, "price_yearly": 0,
+    },
+    "starter": {
+        "max_documents": 500, "max_clients": 100, "max_products": 200,
+        "max_emails_month": 50, "recurring": True, "all_templates": True,
+        "label": "Sākums",
+        "price_monthly": 499, "price_yearly": 4900,  # cents
+    },
+    "business": {
+        "max_documents": 5000, "max_clients": 500, "max_products": 1000,
+        "max_emails_month": 0, "recurring": True, "all_templates": True,  # 0 = unlimited
+        "label": "Bizness",
+        "price_monthly": 1299, "price_yearly": 12900,  # cents
+    },
+    "admin": {
+        "max_documents": 999999, "max_clients": 999999, "max_products": 999999,
+        "max_emails_month": 0, "recurring": True, "all_templates": True,
+        "label": "Administrators",
+        "price_monthly": 0, "price_yearly": 0,
+    },
 }
 
 
 def get_tier_limits(tier):
     return TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
+
+def update_user_subscription(user_id: int, tier: str, billing_cycle: str = "",
+                             stripe_customer_id: str = "", stripe_subscription_id: str = "",
+                             subscription_status: str = "active"):
+    """Update user subscription fields after Stripe events."""
+    conn = get_connection()
+    limits = get_tier_limits(tier)
+    conn.execute(
+        """UPDATE users SET tier = ?, billing_cycle = ?, stripe_customer_id = ?,
+           stripe_subscription_id = ?, subscription_status = ?,
+           subscription_start = COALESCE(subscription_start, ?),
+           max_documents = ?, max_clients = ?, max_products = ?
+           WHERE id = ?""",
+        (tier, billing_cycle, stripe_customer_id, stripe_subscription_id,
+         subscription_status, datetime.date.today().isoformat(),
+         limits["max_documents"], limits["max_clients"], limits["max_products"],
+         user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_by_stripe_customer(stripe_customer_id: str):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM users WHERE stripe_customer_id = ?",
+                       (stripe_customer_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def cancel_user_subscription(user_id: int):
+    """Downgrade user to free tier on subscription cancellation."""
+    conn = get_connection()
+    limits = get_tier_limits("free")
+    conn.execute(
+        """UPDATE users SET tier = 'free', billing_cycle = '',
+           stripe_subscription_id = '', subscription_status = 'cancelled',
+           subscription_end = ?,
+           max_documents = ?, max_clients = ?, max_products = ?
+           WHERE id = ?""",
+        (datetime.date.today().isoformat(),
+         limits["max_documents"], limits["max_clients"], limits["max_products"],
+         user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_resource_counts(user_id: int) -> dict:
+    """Get current usage counts for a user."""
+    conn = get_connection()
+    docs = conn.execute("SELECT COUNT(*) as cnt FROM documents WHERE user_id = ?", (user_id,)).fetchone()
+    clients = conn.execute("SELECT COUNT(*) as cnt FROM clients WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
+    products = conn.execute("SELECT COUNT(*) as cnt FROM products WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
+    conn.close()
+    return {
+        "documents": docs["cnt"] if docs else 0,
+        "clients": clients["cnt"] if clients else 0,
+        "products": products["cnt"] if products else 0,
+    }
 
 
 # --- Recurring Invoices ---

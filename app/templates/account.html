@@ -77,7 +77,16 @@
                     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
                         <span class="tier-badge tier-{{ current_user.tier }}">{{ tier_label }}</span>
                         {% if current_user.subscription_status == 'active' %}
-                        <span class="badge badge-buy">Aktīvs</span>
+                        <span class="badge badge-paid">Aktīvs</span>
+                        {% elif current_user.subscription_status == 'past_due' %}
+                        <span class="badge badge-issued">Kavēts maksājums</span>
+                        {% elif current_user.subscription_status == 'cancelled' %}
+                        <span class="badge" style="background:var(--danger-soft);color:var(--danger)">Atcelts</span>
+                        {% endif %}
+                        {% if current_user.billing_cycle %}
+                        <span style="font-size:12px;color:var(--text-light)">
+                            ({{ 'mēneša' if current_user.billing_cycle == 'monthly' else 'gada' }} plāns)
+                        </span>
                         {% endif %}
                     </div>
 
@@ -85,10 +94,41 @@
                         <div class="usage-item">
                             <div class="usage-label">Dokumenti</div>
                             <div class="usage-bar">
-                                <div class="usage-fill" style="width: {{ (doc_count / limits.max_documents * 100) | int }}%"></div>
+                                <div class="usage-fill" style="width: {{ [(usage.documents / limits.max_documents * 100) | int, 100] | min }}%"></div>
                             </div>
-                            <div class="usage-count">{{ doc_count }} / {{ limits.max_documents }}</div>
+                            <div class="usage-count">{{ usage.documents }} / {{ limits.max_documents }}</div>
                         </div>
+                        <div class="usage-item">
+                            <div class="usage-label">Klienti</div>
+                            <div class="usage-bar">
+                                <div class="usage-fill" style="width: {{ [(usage.clients / limits.max_clients * 100) | int, 100] | min }}%"></div>
+                            </div>
+                            <div class="usage-count">{{ usage.clients }} / {{ limits.max_clients }}</div>
+                        </div>
+                        <div class="usage-item">
+                            <div class="usage-label">Produkti</div>
+                            <div class="usage-bar">
+                                <div class="usage-fill" style="width: {{ [(usage.products / limits.max_products * 100) | int, 100] | min }}%"></div>
+                            </div>
+                            <div class="usage-count">{{ usage.products }} / {{ limits.max_products }}</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap">
+                        {% if current_user.tier == 'free' or current_user.tier == 'starter' %}
+                        <a href="/pricing" class="btn btn-primary btn-sm">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            Uzlabot plānu
+                        </a>
+                        {% endif %}
+                        {% if current_user.stripe_customer_id and has_stripe %}
+                        <form method="post" action="/billing/portal" style="display:inline">
+                            <button type="submit" class="btn btn-outline btn-sm">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                                Pārvaldīt abonemetu
+                            </button>
+                        </form>
+                        {% endif %}
                     </div>
 
                     <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:var(--radius);font-size:13px;color:var(--text-light)">

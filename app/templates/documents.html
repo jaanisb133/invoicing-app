@@ -10,6 +10,9 @@
 </div>
 
 <div class="page-body">
+    {% if request.query_params.get('error') %}
+    <div class="alert alert-danger">{{ request.query_params.get('error') | safe }}</div>
+    {% endif %}
     <div class="card">
         <div class="card-body">
             <form method="get" action="/documents" class="filters-bar" id="filterForm">

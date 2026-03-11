@@ -51,6 +51,19 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "rekini@v-rekini.lv")
 BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "V-Rēķini")
 
+# --- Stripe ---
+import stripe
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_IDS = {
+    "starter_monthly": os.getenv("STRIPE_PRICE_STARTER_MONTHLY", ""),
+    "starter_yearly": os.getenv("STRIPE_PRICE_STARTER_YEARLY", ""),
+    "business_monthly": os.getenv("STRIPE_PRICE_BUSINESS_MONTHLY", ""),
+    "business_yearly": os.getenv("STRIPE_PRICE_BUSINESS_YEARLY", ""),
+}
+stripe.api_key = STRIPE_SECRET_KEY
+
 
 def _smtp_connect():
     """Return an authenticated SMTP connection (SSL or STARTTLS)."""
@@ -182,14 +195,32 @@ def _user_settings(user_id):
 def _base_context(request):
     """Common template context for authenticated pages."""
     user = request.state.user
+    tier = user.get("tier", "free")
     return {
         "request": request,
         "current_user": user,
         "stock_enabled": _stock_enabled(user["id"]),
-        "tier": user.get("tier", "free"),
-        "tier_label": db.TIER_LIMITS.get(user.get("tier", "free"), {}).get("label", "Bezmaksas"),
+        "tier": tier,
+        "tier_label": db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
+        "tier_limits": db.get_tier_limits(tier),
         "needs_setup": not db.get_user_setting(user["id"], "company_name"),
     }
+
+
+def _check_tier_limit(user, resource_type):
+    """Check if user has reached their tier limit for a resource type.
+    Returns (allowed: bool, current_count: int, max_count: int)."""
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    usage = db.get_user_resource_counts(user["id"])
+    key_map = {
+        "documents": "max_documents",
+        "clients": "max_clients",
+        "products": "max_products",
+    }
+    max_key = key_map.get(resource_type, "max_documents")
+    current = usage.get(resource_type, 0)
+    maximum = limits.get(max_key, 50)
+    return current < maximum, current, maximum
 
 
 def _get_logo_path(user_id):
@@ -206,7 +237,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        if path.startswith("/static") or path in ("/login", "/register"):
+        if (path.startswith("/static") or path in ("/login", "/register", "/pricing")
+                or path == "/stripe/webhook"):
             return await call_next(request)
 
         user = _get_current_user(request)
@@ -505,11 +537,14 @@ async def account_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
     limits = db.get_tier_limits(user.get("tier", "free"))
-    doc_count = db.get_user_document_count(user["id"])
+    usage = db.get_user_resource_counts(user["id"])
     ctx.update({
         "page": "account",
         "limits": limits,
-        "doc_count": doc_count,
+        "usage": usage,
+        "doc_count": usage["documents"],
+        "has_stripe": bool(STRIPE_SECRET_KEY),
+        "tiers": db.TIER_LIMITS,
     })
     return templates.TemplateResponse("account.html", ctx)
 
@@ -541,6 +576,148 @@ async def change_password(request: Request,
 
     db.update_user_password(user["id"], new_password)
     return RedirectResponse("/account?saved=password", status_code=303)
+
+
+# =============================================================================
+# Pricing (public) & Stripe billing
+# =============================================================================
+
+@app.get("/pricing", response_class=HTMLResponse)
+async def pricing_page(request: Request):
+    user = _get_current_user(request)
+    ctx = {
+        "request": request,
+        "current_user": user,
+        "tiers": db.TIER_LIMITS,
+        "page": "pricing",
+    }
+    if user:
+        ctx.update(_base_context(request))
+    return templates.TemplateResponse("pricing.html", ctx)
+
+
+@app.post("/billing/checkout")
+async def billing_checkout(request: Request, tier: str = Form(...), cycle: str = Form("monthly")):
+    """Create a Stripe Checkout session and redirect."""
+    user = request.state.user
+    if tier not in ("starter", "business") or cycle not in ("monthly", "yearly"):
+        return RedirectResponse("/pricing?error=invalid", status_code=303)
+
+    price_key = f"{tier}_{cycle}"
+    price_id = STRIPE_PRICE_IDS.get(price_key, "")
+    if not price_id or not STRIPE_SECRET_KEY:
+        return RedirectResponse("/pricing?error=stripe_not_configured", status_code=303)
+
+    # Get or create Stripe customer
+    stripe_customer_id = user.get("stripe_customer_id", "")
+    if not stripe_customer_id:
+        customer = stripe.Customer.create(
+            email=user.get("email", ""),
+            name=user.get("display_name", user["username"]),
+            metadata={"user_id": str(user["id"])},
+        )
+        stripe_customer_id = customer.id
+        db.update_user_subscription(
+            user["id"], user.get("tier", "free"),
+            stripe_customer_id=stripe_customer_id,
+        )
+
+    base_url = str(request.base_url).rstrip("/")
+    session = stripe.checkout.Session.create(
+        customer=stripe_customer_id,
+        mode="subscription",
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=f"{base_url}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base_url}/pricing",
+        metadata={"user_id": str(user["id"]), "tier": tier, "cycle": cycle},
+    )
+    return RedirectResponse(session.url, status_code=303)
+
+
+@app.get("/billing/success", response_class=HTMLResponse)
+async def billing_success(request: Request, session_id: str = ""):
+    """Post-checkout success page. The webhook handles the actual activation."""
+    ctx = _base_context(request)
+    ctx["page"] = "billing"
+    return templates.TemplateResponse("billing_success.html", ctx)
+
+
+@app.post("/billing/portal")
+async def billing_portal(request: Request):
+    """Redirect to Stripe Customer Portal for managing subscription."""
+    user = request.state.user
+    stripe_customer_id = user.get("stripe_customer_id", "")
+    if not stripe_customer_id or not STRIPE_SECRET_KEY:
+        return RedirectResponse("/account?error=no_subscription", status_code=303)
+
+    base_url = str(request.base_url).rstrip("/")
+    session = stripe.billing_portal.Session.create(
+        customer=stripe_customer_id,
+        return_url=f"{base_url}/account",
+    )
+    return RedirectResponse(session.url, status_code=303)
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events for subscription lifecycle."""
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except (ValueError, stripe.error.SignatureVerificationError):
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    event_type = event["type"]
+    data = event["data"]["object"]
+
+    if event_type == "checkout.session.completed":
+        metadata = data.get("metadata", {})
+        user_id = int(metadata.get("user_id", 0))
+        tier = metadata.get("tier", "starter")
+        cycle = metadata.get("cycle", "monthly")
+        subscription_id = data.get("subscription", "")
+        customer_id = data.get("customer", "")
+
+        if user_id:
+            db.update_user_subscription(
+                user_id, tier,
+                billing_cycle=cycle,
+                stripe_customer_id=customer_id,
+                stripe_subscription_id=subscription_id,
+                subscription_status="active",
+            )
+            logger.info(f"User {user_id} upgraded to {tier} ({cycle})")
+
+    elif event_type in ("customer.subscription.updated", "customer.subscription.renewed"):
+        customer_id = data.get("customer", "")
+        user = db.get_user_by_stripe_customer(customer_id)
+        if user:
+            status = data.get("status", "")
+            if status == "active":
+                db.update_user_subscription(
+                    user["id"], user["tier"],
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=data.get("id", ""),
+                    subscription_status="active",
+                )
+            elif status in ("past_due", "unpaid"):
+                db.update_user_subscription(
+                    user["id"], user["tier"],
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=data.get("id", ""),
+                    subscription_status=status,
+                )
+
+    elif event_type in ("customer.subscription.deleted", "customer.subscription.canceled"):
+        customer_id = data.get("customer", "")
+        user = db.get_user_by_stripe_customer(customer_id)
+        if user:
+            db.cancel_user_subscription(user["id"])
+            logger.info(f"User {user['id']} subscription cancelled, downgraded to free")
+
+    return JSONResponse({"status": "ok"})
 
 
 # =============================================================================
@@ -776,6 +953,9 @@ async def products_page(request: Request):
 @app.post("/products/add")
 async def add_product(request: Request, name: str = Form(...), unit: str = Form(...)):
     user = request.state.user
+    allowed, current, maximum = _check_tier_limit(user, "products")
+    if not allowed:
+        return RedirectResponse(f"/products?error=limit", status_code=303)
     db.add_product(user["id"], name, unit)
     return RedirectResponse("/products", status_code=303)
 
@@ -825,6 +1005,9 @@ async def add_client(
     email: str = Form(""),
 ):
     user = request.state.user
+    allowed, current, maximum = _check_tier_limit(user, "clients")
+    if not allowed:
+        return RedirectResponse(f"/clients?error=limit", status_code=303)
     db.add_client(user["id"], name, reg_number, vat_number, legal_address,
                   bank_name, bank_account, contact_person, phone, email)
     return RedirectResponse("/clients", status_code=303)
@@ -918,6 +1101,15 @@ async def new_document_page(request: Request, doc_type: str = "buy"):
 @app.post("/documents/create")
 async def create_document(request: Request):
     user = request.state.user
+
+    # Check tier limit
+    allowed, current, maximum = _check_tier_limit(user, "documents")
+    if not allowed:
+        return RedirectResponse(
+            f"/documents?error=Dokumentu limits sasniegts ({current}/{maximum}). "
+            f"<a href='/pricing'>Uzlabojiet plānu</a>, lai turpinātu.",
+            status_code=303)
+
     form = await request.form()
     doc_type = form.get("doc_type", "buy")
     client_id = int(form.get("client_id", 0))
@@ -1359,6 +1551,9 @@ async def export_pdf_bulk(
 @app.post("/api/products/add")
 async def api_add_product(request: Request):
     user = request.state.user
+    allowed, current, maximum = _check_tier_limit(user, "products")
+    if not allowed:
+        return JSONResponse({"error": f"Produktu limits sasniegts ({current}/{maximum})"}, status_code=403)
     data = await request.json()
     product_id = db.add_product(user["id"], data["name"], data["unit"])
     product = db.get_product(product_id)
@@ -1368,6 +1563,9 @@ async def api_add_product(request: Request):
 @app.post("/api/clients/add")
 async def api_add_client(request: Request):
     user = request.state.user
+    allowed, current, maximum = _check_tier_limit(user, "clients")
+    if not allowed:
+        return JSONResponse({"error": f"Klientu limits sasniegts ({current}/{maximum})"}, status_code=403)
     data = await request.json()
     client_id = db.add_client(
         user["id"],

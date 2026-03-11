@@ -9,6 +9,9 @@
 </div>
 
 <div class="page-body">
+    {% if request.query_params.get('error') == 'limit' %}
+    <div class="alert alert-danger">Produktu limits sasniegts ({{ tier_limits.max_products }}). <a href="/pricing">Uzlabojiet plānu</a>, lai pievienotu vairāk.</div>
+    {% endif %}
     <div class="card">
         <div class="card-body">
             {% if products %}
