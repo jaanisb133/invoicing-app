@@ -128,7 +128,8 @@
                     </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 32px">
+                <div id="stockError" class="alert alert-danger" style="display:none;margin-bottom:12px"></div>
+                <button type="submit" id="submitBtn" class="btn btn-primary" style="font-size:15px;padding:12px 32px">
                     {% if edit_mode %}Saglabāt izmaiņas{% else %}Izveidot dokumentu{% endif %}
                 </button>
             </div>
@@ -270,7 +271,7 @@ function addItemRow(presetProduct, presetUnit, presetQty, presetPrice) {
             </div>
             <div class="stock-hint" id="stock-hint-${idx}"></div>
         </td>
-        <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control">${unitOptions}</select></td>
+        <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control" ${stockEnabled ? 'disabled' : ''}>${unitOptions}</select>${stockEnabled ? `<input type="hidden" name="items[${idx}][unit]" id="unit-hidden-${idx}" value="${presetUnit || units[0]}">` : ''}</td>
         <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" onchange="recalculate()" oninput="recalculate()" required></td>
         <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" onchange="recalculate()" oninput="recalculate()" required></td>
         <td class="item-total text-right" id="total-${idx}">0.00</td>
@@ -294,6 +295,8 @@ function onProductChange(select, idx) {
     const option = select.selectedOptions[0];
     if (option && option.dataset.unit) {
         document.getElementById('unit-' + idx).value = option.dataset.unit;
+        const hidden = document.getElementById('unit-hidden-' + idx);
+        if (hidden) hidden.value = option.dataset.unit;
     }
     if (stockEnabled && docType === 'sell' && select.value) {
         const stock = stockMap[parseInt(select.value)] || 0;
@@ -301,7 +304,7 @@ function onProductChange(select, idx) {
         hint.textContent = 'Pieejams: ' + stock.toFixed(2);
         hint.className = stock <= 0 ? 'stock-hint stock-warn' : 'stock-hint';
     }
-    updatePreview();
+    recalculate();
 }
 
 function recalculate() {
@@ -322,7 +325,65 @@ function recalculate() {
     document.getElementById('subtotalDisplay').textContent = subtotal.toFixed(2);
     document.getElementById('vatDisplay').textContent = vat.toFixed(2);
     document.getElementById('totalDisplay').textContent = total.toFixed(2);
+
+    validateStock();
     updatePreview();
+}
+
+function validateStock() {
+    const submitBtn = document.getElementById('submitBtn');
+    const errorDiv = document.getElementById('stockError');
+    if (!stockEnabled || docType !== 'sell') {
+        submitBtn.disabled = false;
+        errorDiv.style.display = 'none';
+        return;
+    }
+
+    // Aggregate requested quantities per product
+    const requested = {};
+    document.querySelectorAll('.item-row').forEach(row => {
+        const productSelect = row.querySelector('select[name*="product_id"]');
+        const productId = parseInt(productSelect.value);
+        if (!productId) return;
+        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
+        requested[productId] = (requested[productId] || 0) + qty;
+    });
+
+    const errors = [];
+    for (const [productId, totalQty] of Object.entries(requested)) {
+        const available = stockMap[parseInt(productId)] || 0;
+        if (totalQty > available) {
+            const product = products.find(p => p.id == productId);
+            const name = product ? product.name : 'ID:' + productId;
+            errors.push(`${name}: pieejams ${available.toFixed(2)}, pieprasīts ${totalQty.toFixed(2)}`);
+        }
+    }
+
+    // Update stock hints per row
+    document.querySelectorAll('.item-row').forEach(row => {
+        const productSelect = row.querySelector('select[name*="product_id"]');
+        const productId = parseInt(productSelect.value);
+        const idx = row.id.split('-')[1];
+        const hint = document.getElementById('stock-hint-' + idx);
+        if (!productId || !hint) return;
+        const available = stockMap[productId] || 0;
+        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
+        hint.textContent = 'Pieejams: ' + available.toFixed(2);
+        hint.className = qty > available ? 'stock-hint stock-warn' : 'stock-hint';
+    });
+
+    if (errors.length > 0) {
+        errorDiv.innerHTML = '<strong>Nepietiekams krājums:</strong><br>' + errors.join('<br>');
+        errorDiv.style.display = 'block';
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.5';
+        submitBtn.style.cursor = 'not-allowed';
+    } else {
+        errorDiv.style.display = 'none';
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '';
+        submitBtn.style.cursor = '';
+    }
 }
 
 document.getElementById('vatRate').addEventListener('input', recalculate);
