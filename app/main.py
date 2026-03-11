@@ -585,15 +585,15 @@ async def change_password(request: Request,
 @app.get("/pricing", response_class=HTMLResponse)
 async def pricing_page(request: Request):
     user = _get_current_user(request)
-    ctx = {
-        "request": request,
-        "current_user": user,
-        "tiers": db.TIER_LIMITS,
-        "page": "pricing",
-    }
     if user:
-        ctx.update(_base_context(request))
-    return templates.TemplateResponse("pricing.html", ctx)
+        ctx = _base_context(request)
+        ctx["page"] = "pricing"
+        return templates.TemplateResponse("pricing_auth.html", ctx)
+    return templates.TemplateResponse("pricing.html", {
+        "request": request,
+        "current_user": None,
+        "page": "pricing",
+    })
 
 
 @app.post("/billing/checkout")
