@@ -3,6 +3,9 @@ V-Rēķini — Multi-tenant SaaS Invoice Manager (FastAPI)
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import secrets
 import datetime
@@ -36,11 +39,24 @@ UNITS = ["kg", "gab", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
 # --- Centralised email configuration ---
 # Emails are sent from a single V-Rēķini address; Reply-To is set to
 # the user's own email so clients can reply directly to them.
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_HOST = os.getenv("SMTP_HOST", "server50.areait.lv")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 SMTP_USER = os.getenv("SMTP_USER", "rekini@v-rekini.lv")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "V-Rēķini <rekini@v-rekini.lv>")
+SMTP_SSL = os.getenv("SMTP_SSL", "true").lower() in ("true", "1", "yes")
+
+
+def _smtp_connect():
+    """Return an authenticated SMTP connection (SSL or STARTTLS)."""
+    if SMTP_SSL:
+        server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15)
+    else:
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15)
+        server.starttls()
+    server.login(SMTP_USER, SMTP_PASS)
+    return server
+
 
 SESSION_COOKIE = "session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
@@ -226,9 +242,7 @@ async def _process_recurring_invoices():
                                 part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(filepath)}")
                                 msg.attach(part)
 
-                            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-                                server.starttls()
-                                server.login(SMTP_USER, SMTP_PASS)
+                            with _smtp_connect() as server:
                                 server.send_message(msg)
 
                     # Calculate next run
@@ -1048,9 +1062,7 @@ Ar cieņu,
 
     # Send via centralised SMTP
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
+        with _smtp_connect() as server:
             server.send_message(msg)
     except Exception as e:
         return RedirectResponse(
