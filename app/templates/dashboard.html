@@ -22,12 +22,12 @@
             <div class="stat-label">Dokumenti (7 dienas)</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value">{{ "%.2f" | format(stats.revenue_last_7_days) }}</div>
-            <div class="stat-label">Apgrozījums 7d (EUR)</div>
+            <div class="stat-value">{{ "%.2f" | format(stats.revenue_last_7_days) }} EUR</div>
+            <div class="stat-label">Apgrozījums 7d</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value">{{ "%.2f" | format(stats.total_revenue) }}</div>
-            <div class="stat-label">Kopējais apgrozījums (EUR)</div>
+            <div class="stat-value">{{ "%.2f" | format(stats.total_revenue) }} EUR</div>
+            <div class="stat-label">Kopējais apgrozījums</div>
         </div>
         <div class="stat-card">
             <div class="stat-value">{{ stats.total_docs }}</div>
@@ -35,7 +35,7 @@
         </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+    <div class="mobile-stack" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
         <div class="card" style="margin-bottom:0">
             <div class="card-header">Populārākais klients</div>
             <div class="card-body">
