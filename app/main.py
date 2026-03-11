@@ -603,6 +603,7 @@ async def change_password(request: Request,
 async def pricing_page(request: Request):
     user = _get_current_user(request)
     if user:
+        request.state.user = user
         ctx = _base_context(request)
         ctx["page"] = "pricing"
         return templates.TemplateResponse("pricing_auth.html", ctx)
