@@ -1084,3 +1084,94 @@ select.form-control { cursor: pointer; }
         grid-template-columns: 1fr;
     }
 }
+
+/* ==========================================
+   Column Builder (Accounting Export)
+   ========================================== */
+
+.col-builder-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.col-builder-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    font-size: 13px;
+}
+
+.col-builder-row:hover {
+    border-color: var(--primary-light);
+}
+
+.col-builder-handle {
+    color: var(--text-light);
+    font-size: 14px;
+    user-select: none;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.col-builder-num {
+    color: var(--text-light);
+    font-size: 11px;
+    font-weight: 600;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.col-builder-input {
+    flex: 1;
+    min-width: 120px;
+    padding: 4px 8px !important;
+    font-size: 13px !important;
+}
+
+.col-builder-select {
+    flex: 1;
+    min-width: 140px;
+    padding: 4px 8px !important;
+    font-size: 13px !important;
+}
+
+.col-builder-const {
+    padding: 4px 8px !important;
+    font-size: 13px !important;
+}
+
+.col-builder-fmt {
+    padding: 4px 8px !important;
+    font-size: 13px !important;
+}
+
+.col-builder-remove {
+    padding: 2px 8px !important;
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.col-builder-remove:hover {
+    background: var(--danger);
+    color: #fff;
+}
+
+@media (max-width: 768px) {
+    .col-builder-row {
+        flex-wrap: wrap;
+    }
+    .col-builder-input,
+    .col-builder-select {
+        min-width: 100%;
+    }
+}

@@ -1153,3 +1153,51 @@ def get_due_recurring_invoices(today_str):
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# --- Accounting Export ---
+
+def get_documents_for_export(user_id, doc_type=None, date_from=None, date_to=None):
+    """Get documents with full client data and line items for accounting export.
+    Returns list of dicts, each with 'doc', 'client', and 'items' keys."""
+    conn = get_connection()
+
+    query = """SELECT d.*, c.name as client_name, c.reg_number as client_reg_number,
+               c.vat_number as client_vat_number, c.legal_address as client_address,
+               c.bank_name as client_bank, c.bank_account as client_account,
+               c.contact_person as client_contact, c.phone as client_phone,
+               c.email as client_email
+               FROM documents d
+               JOIN clients c ON d.client_id = c.id
+               WHERE d.user_id = ?"""
+    params = [user_id]
+
+    if doc_type:
+        query += " AND d.doc_type = ?"
+        params.append(doc_type)
+    if date_from:
+        query += " AND d.doc_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND d.doc_date <= ?"
+        params.append(date_to)
+
+    query += " ORDER BY d.doc_date ASC, d.id ASC"
+    docs = conn.execute(query, params).fetchall()
+
+    results = []
+    for doc in docs:
+        doc_dict = dict(doc)
+        items = conn.execute(
+            """SELECT di.*, p.name as product_name, p.unit as product_unit
+               FROM document_items di
+               JOIN products p ON di.product_id = p.id
+               WHERE di.document_id = ?
+               ORDER BY di.id""",
+            (doc_dict["id"],)
+        ).fetchall()
+        doc_dict["items"] = [dict(i) for i in items]
+        results.append(doc_dict)
+
+    conn.close()
+    return results

@@ -9,7 +9,13 @@
     {% if request.query_params.get('error') == 'no_docs' %}
     <div class="alert alert-danger">Norādītajā periodā nav atrasts neviens dokuments.</div>
     {% endif %}
+    {% if request.query_params.get('error') == 'no_preset' %}
+    <div class="alert alert-danger">Eksporta profils nav atrasts.</div>
+    {% endif %}
 
+    <!-- ============================================================= -->
+    <!-- PDF Export (existing)                                          -->
+    <!-- ============================================================= -->
     <div class="card">
         <div class="card-header">PDF dokumentu eksports</div>
         <div class="card-body">
@@ -64,12 +70,157 @@
             </form>
         </div>
     </div>
+
+    <!-- ============================================================= -->
+    <!-- Accounting Export                                              -->
+    <!-- ============================================================= -->
+    <div class="card" style="margin-top:24px">
+        <div class="card-header">
+            <span>Grāmatvedības eksports</span>
+        </div>
+        <div class="card-body">
+            <p style="font-size:13px;color:var(--text-light);margin-bottom:16px">
+                Eksportējiet dokumentu datus Excel formātā grāmatvedības programmatūrai. Fails satur 2 lapas: dokumentu kopsavilkumu un pozīcijas.
+            </p>
+
+            <form method="post" action="/export/accounting" id="accExportForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Datums no</label>
+                        <input type="date" name="acc_date_from" id="accDateFrom" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Datums līdz</label>
+                        <input type="date" name="acc_date_to" id="accDateTo" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Dokumenta tips</label>
+                        <select name="acc_doc_type" id="accDocType" class="form-control" onchange="updateAccPreview()">
+                            <option value="">Visi dokumenti</option>
+                            <option value="sell">Tikai pārdošana</option>
+                            <option value="buy">Tikai iegāde</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Eksporta profils</label>
+                        <select name="acc_preset" id="accPreset" class="form-control" onchange="onPresetChange()">
+                            <optgroup label="Iebūvētie profili">
+                                <option value="horizon">Horizon</option>
+                                <option value="jumis">Jumis</option>
+                                <option value="zalktis">Zalktis</option>
+                            </optgroup>
+                            {% if custom_presets %}
+                            <optgroup label="Mani profili" id="customPresetGroup">
+                                {% for p in custom_presets %}
+                                <option value="custom_{{ loop.index0 }}">{{ p.name }}</option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endif %}
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="setAccPreviousMonth()">Iepriekšējais mēnesis</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="setAccCurrentMonth()">Šis mēnesis</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="setAccCurrentYear()">Šis gads</button>
+                    <span style="flex:1"></span>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="openColumnBuilder()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        Profilu pārvaldība
+                    </button>
+                </div>
+
+                <div id="accPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:20px;display:none">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-light)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                        <span style="font-size:14px;font-weight:600" id="accPreviewCount">0 dokumenti</span>
+                    </div>
+                    <div id="accColumnPreview" style="font-size:12px;color:var(--text-light)"></div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="accExportBtn" style="font-size:15px;padding:12px 28px" disabled>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:6px"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                    Lejupielādēt Excel
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================================= -->
+<!-- Column Builder Modal                                              -->
+<!-- ================================================================= -->
+<div class="modal-overlay" id="columnBuilderModal" style="display:none">
+    <div class="modal" style="max-width:900px;width:95%;max-height:90vh;display:flex;flex-direction:column">
+        <div class="modal-header">
+            <h3 style="margin:0">Eksporta profilu pārvaldība</h3>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeColumnBuilder()" style="padding:4px 10px">&times;</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:20px">
+            <!-- Preset selector / create -->
+            <div style="display:flex;gap:12px;align-items:end;margin-bottom:20px;flex-wrap:wrap">
+                <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0">
+                    <label>Profils</label>
+                    <select id="builderPresetSelect" class="form-control" onchange="loadPresetInBuilder()">
+                        <optgroup label="Iebūvētie (tikai skatīt)">
+                            <option value="builtin_horizon">Horizon</option>
+                            <option value="builtin_jumis">Jumis</option>
+                            <option value="builtin_zalktis">Zalktis</option>
+                        </optgroup>
+                        <optgroup label="Mani profili" id="builderCustomGroup"></optgroup>
+                    </select>
+                </div>
+                <button type="button" class="btn btn-outline btn-sm" onclick="createNewPreset()" style="margin-bottom:0">+ Jauns profils</button>
+                <button type="button" class="btn btn-danger btn-sm" id="deletePresetBtn" onclick="deleteCurrentPreset()" style="margin-bottom:0;display:none">Dzēst</button>
+            </div>
+
+            <!-- Preset name (for custom) -->
+            <div id="presetNameRow" style="margin-bottom:16px;display:none">
+                <div class="form-group" style="margin-bottom:0;max-width:300px">
+                    <label>Profila nosaukums</label>
+                    <input type="text" id="presetNameInput" class="form-control" placeholder="Piem., Mans eksports">
+                </div>
+            </div>
+
+            <!-- Readonly notice for built-in presets -->
+            <div id="builtinNotice" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text-light)">
+                Iebūvētos profilus nevar rediģēt. Izveidojiet jaunu profilu vai kopējiet šo kā pamatu.
+                <button type="button" class="btn btn-outline btn-sm" onclick="duplicateAsCustom()" style="margin-left:8px">Kopēt kā jaunu</button>
+            </div>
+
+            <!-- Document columns -->
+            <div style="margin-bottom:24px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <h4 style="margin:0;font-size:14px;font-weight:600">Dokumentu lapa (Dokumenti)</h4>
+                    <button type="button" class="btn btn-outline btn-sm" id="addDocColBtn" onclick="addColumn('doc')" style="display:none">+ Kolonna</button>
+                </div>
+                <div id="docColumnsContainer"></div>
+            </div>
+
+            <!-- Item columns -->
+            <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <h4 style="margin:0;font-size:14px;font-weight:600">Pozīciju lapa (Pozīcijas)</h4>
+                    <button type="button" class="btn btn-outline btn-sm" id="addItemColBtn" onclick="addColumn('item')" style="display:none">+ Kolonna</button>
+                </div>
+                <div id="itemColumnsContainer"></div>
+            </div>
+        </div>
+        <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+            <button type="button" class="btn btn-outline" onclick="closeColumnBuilder()">Aizvērt</button>
+            <button type="button" class="btn btn-primary" id="savePresetBtn" onclick="savePresets()" style="display:none">Saglabāt</button>
+        </div>
+    </div>
 </div>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
+// ===================================================================
+// PDF Export logic (existing)
+// ===================================================================
 const allDocs = {{ documents | tojson }};
 
 function localDateStr(d) {
@@ -111,11 +262,7 @@ function updatePreview() {
     const preview = document.getElementById('exportPreview');
     const btn = document.getElementById('exportBtn');
 
-    if (!from || !to) {
-        preview.style.display = 'none';
-        btn.disabled = true;
-        return;
-    }
+    if (!from || !to) { preview.style.display = 'none'; btn.disabled = true; return; }
 
     const filtered = allDocs.filter(d => {
         if (d.doc_date < from || d.doc_date > to) return false;
@@ -125,27 +272,393 @@ function updatePreview() {
 
     preview.style.display = 'block';
     const count = filtered.length;
-    const countText = count === 1 ? '1 dokuments' : count + ' dokumenti';
-    document.getElementById('previewCount').textContent = countText;
+    document.getElementById('previewCount').textContent = count === 1 ? '1 dokuments' : count + ' dokumenti';
 
     if (count === 0) {
         document.getElementById('previewList').innerHTML = '<em>Nav dokumentu šajā periodā.</em>';
         btn.disabled = true;
     } else {
-        const lines = filtered.map(d => {
+        document.getElementById('previewList').innerHTML = filtered.map(d => {
             const parts = d.doc_date.split('-');
-            const displayDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d.doc_date;
-            return `<div style="padding:2px 0">${d.doc_number} &mdash; ${d.client_name} &mdash; ${displayDate}</div>`;
+            const dd = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d.doc_date;
+            return `<div style="padding:2px 0">${d.doc_number} &mdash; ${d.client_name} &mdash; ${dd}</div>`;
         }).join('');
-        document.getElementById('previewList').innerHTML = lines;
         btn.disabled = false;
     }
 }
 
 document.getElementById('dateFrom').addEventListener('change', updatePreview);
 document.getElementById('dateTo').addEventListener('change', updatePreview);
-
-// Auto-select previous month on load
 setPreviousMonth();
+
+
+// ===================================================================
+// Accounting Export
+// ===================================================================
+
+// Available fields loaded from server
+let allFields = {};
+let itemOnlyFields = [];
+let builtinPresets = {};
+let customPresets = {{ custom_presets | tojson }};
+
+// Fetch field definitions on load
+fetch('/api/accounting-presets')
+    .then(r => r.json())
+    .then(data => {
+        allFields = data.fields;
+        itemOnlyFields = data.item_only_fields;
+        builtinPresets = data.builtin;
+    });
+
+// --- Date shortcuts for accounting export ---
+function setAccPreviousMonth() {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const last = new Date(now.getFullYear(), now.getMonth(), 0);
+    document.getElementById('accDateFrom').value = localDateStr(first);
+    document.getElementById('accDateTo').value = localDateStr(last);
+    updateAccPreview();
+}
+function setAccCurrentMonth() {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    document.getElementById('accDateFrom').value = localDateStr(first);
+    document.getElementById('accDateTo').value = localDateStr(last);
+    updateAccPreview();
+}
+function setAccCurrentYear() {
+    const now = new Date();
+    document.getElementById('accDateFrom').value = now.getFullYear() + '-01-01';
+    document.getElementById('accDateTo').value = now.getFullYear() + '-12-31';
+    updateAccPreview();
+}
+
+function updateAccPreview() {
+    const from = document.getElementById('accDateFrom').value;
+    const to = document.getElementById('accDateTo').value;
+    const type = document.getElementById('accDocType').value;
+    const preview = document.getElementById('accPreview');
+    const btn = document.getElementById('accExportBtn');
+
+    if (!from || !to) { preview.style.display = 'none'; btn.disabled = true; return; }
+
+    const filtered = allDocs.filter(d => {
+        if (d.doc_date < from || d.doc_date > to) return false;
+        if (type && d.doc_type !== type) return false;
+        return true;
+    });
+
+    preview.style.display = 'block';
+    const count = filtered.length;
+    document.getElementById('accPreviewCount').textContent = count === 1 ? '1 dokuments' : count + ' dokumenti';
+
+    const presetKey = document.getElementById('accPreset').value;
+    let presetName = document.getElementById('accPreset').selectedOptions[0]?.text || '';
+    document.getElementById('accColumnPreview').innerHTML =
+        `Profils: <strong>${presetName}</strong> &mdash; Excel ar 2 lapām (Dokumenti + Pozīcijas)`;
+
+    btn.disabled = count === 0;
+}
+
+function onPresetChange() {
+    updateAccPreview();
+}
+
+document.getElementById('accDateFrom').addEventListener('change', updateAccPreview);
+document.getElementById('accDateTo').addEventListener('change', updateAccPreview);
+setAccPreviousMonth();
+
+
+// ===================================================================
+// Column Builder Modal
+// ===================================================================
+
+let currentBuilderPreset = null; // {name, doc_columns, item_columns}
+let isBuiltinPreset = true;
+let currentCustomIndex = -1; // index in customPresets array, -1 = new
+
+function openColumnBuilder() {
+    document.getElementById('columnBuilderModal').style.display = 'flex';
+    rebuildBuilderPresetList();
+    // Load the first preset
+    document.getElementById('builderPresetSelect').selectedIndex = 0;
+    loadPresetInBuilder();
+}
+
+function closeColumnBuilder() {
+    document.getElementById('columnBuilderModal').style.display = 'none';
+    // Refresh main page preset dropdown
+    refreshMainPresetDropdown();
+}
+
+function rebuildBuilderPresetList() {
+    const group = document.getElementById('builderCustomGroup');
+    group.innerHTML = '';
+    customPresets.forEach((p, i) => {
+        const opt = document.createElement('option');
+        opt.value = 'custom_' + i;
+        opt.textContent = p.name || ('Profils ' + (i + 1));
+        group.appendChild(opt);
+    });
+}
+
+function refreshMainPresetDropdown() {
+    const sel = document.getElementById('accPreset');
+    // Remove old custom optgroup
+    const oldGroup = document.getElementById('customPresetGroup');
+    if (oldGroup) oldGroup.remove();
+    // Add updated custom presets
+    if (customPresets.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = 'Mani profili';
+        group.id = 'customPresetGroup';
+        customPresets.forEach((p, i) => {
+            const opt = document.createElement('option');
+            opt.value = 'custom_' + i;
+            opt.textContent = p.name || ('Profils ' + (i + 1));
+            group.appendChild(opt);
+        });
+        sel.appendChild(group);
+    }
+}
+
+function loadPresetInBuilder() {
+    const val = document.getElementById('builderPresetSelect').value;
+    if (val.startsWith('builtin_')) {
+        const key = val.replace('builtin_', '');
+        currentBuilderPreset = JSON.parse(JSON.stringify(builtinPresets[key] || {name: key, doc_columns: [], item_columns: []}));
+        isBuiltinPreset = true;
+        currentCustomIndex = -1;
+    } else if (val.startsWith('custom_')) {
+        const idx = parseInt(val.replace('custom_', ''));
+        currentBuilderPreset = JSON.parse(JSON.stringify(customPresets[idx]));
+        isBuiltinPreset = false;
+        currentCustomIndex = idx;
+    }
+    renderBuilderUI();
+}
+
+function renderBuilderUI() {
+    const isEditable = !isBuiltinPreset;
+    document.getElementById('builtinNotice').style.display = isBuiltinPreset ? 'block' : 'none';
+    document.getElementById('presetNameRow').style.display = isEditable ? 'block' : 'none';
+    document.getElementById('addDocColBtn').style.display = isEditable ? 'inline-flex' : 'none';
+    document.getElementById('addItemColBtn').style.display = isEditable ? 'inline-flex' : 'none';
+    document.getElementById('savePresetBtn').style.display = isEditable ? 'inline-flex' : 'none';
+    document.getElementById('deletePresetBtn').style.display = (isEditable && currentCustomIndex >= 0) ? 'inline-flex' : 'none';
+
+    if (isEditable) {
+        document.getElementById('presetNameInput').value = currentBuilderPreset.name || '';
+    }
+
+    renderColumns('doc', currentBuilderPreset.doc_columns || [], isEditable);
+    renderColumns('item', currentBuilderPreset.item_columns || [], isEditable);
+}
+
+function renderColumns(type, columns, editable) {
+    const container = document.getElementById(type + 'ColumnsContainer');
+    if (columns.length === 0) {
+        container.innerHTML = '<div style="padding:12px;color:var(--text-light);font-size:13px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius)">Nav kolonnu. Nospiediet "+ Kolonna" lai pievienotu.</div>';
+        return;
+    }
+
+    // Determine which fields are available for this sheet type
+    const isItemSheet = type === 'item';
+
+    let html = '<div class="col-builder-list">';
+    columns.forEach((col, i) => {
+        const sourceLabel = allFields[col.source] || col.source || '—';
+        html += `<div class="col-builder-row" data-type="${type}" data-index="${i}">`;
+        html += `<span class="col-builder-handle" title="Velciet lai pārkārtotu">${editable ? '⠿' : ''}</span>`;
+        html += `<span class="col-builder-num">${i + 1}</span>`;
+
+        if (editable) {
+            // Header input
+            html += `<input type="text" class="form-control col-builder-input" value="${escapeAttr(col.header || '')}"
+                      placeholder="Kolonnas nosaukums" onchange="updateColumnHeader('${type}', ${i}, this.value)">`;
+            // Source select
+            html += `<select class="form-control col-builder-select" onchange="updateColumnSource('${type}', ${i}, this.value)">`;
+            for (const [fk, fv] of Object.entries(allFields)) {
+                if (!isItemSheet && itemOnlyFields.includes(fk)) continue;
+                const sel = col.source === fk ? ' selected' : '';
+                html += `<option value="${fk}"${sel}>${fv}</option>`;
+            }
+            html += `</select>`;
+            // Constant value input (shown only when source=constant)
+            const showConst = col.source === 'constant' ? '' : 'display:none;';
+            html += `<input type="text" class="form-control col-builder-const" style="${showConst}width:100px"
+                      value="${escapeAttr(col.value || '')}" placeholder="Vērtība"
+                      onchange="updateColumnValue('${type}', ${i}, this.value)">`;
+            // Date format (shown only for date fields)
+            const showFmt = col.source === 'doc_date' ? '' : 'display:none;';
+            html += `<select class="form-control col-builder-fmt" style="${showFmt}width:120px" onchange="updateColumnFormat('${type}', ${i}, this.value)">
+                <option value=""${!col.format ? ' selected' : ''}>YYYY-MM-DD</option>
+                <option value="dd.mm.yyyy"${col.format === 'dd.mm.yyyy' ? ' selected' : ''}>DD.MM.YYYY</option>
+            </select>`;
+            // Remove button
+            html += `<button type="button" class="btn btn-outline btn-sm col-builder-remove" onclick="removeColumn('${type}', ${i})" title="Noņemt">&times;</button>`;
+        } else {
+            // Read-only display
+            html += `<span class="col-builder-input" style="background:transparent;border:none">${escapeHtml(col.header || '')}</span>`;
+            html += `<span class="col-builder-select" style="background:transparent;border:none;color:var(--text-light);font-size:12px">${sourceLabel}${col.source === 'constant' ? ' = "' + escapeHtml(col.value || '') + '"' : ''}</span>`;
+        }
+
+        html += `</div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Enable drag reordering for editable presets
+    if (editable) {
+        enableDragReorder(container, type);
+    }
+}
+
+function escapeAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function escapeHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function addColumn(type) {
+    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+    cols.push({header: '', source: 'doc_number', value: '', format: ''});
+    renderColumns(type, cols, true);
+}
+
+function removeColumn(type, index) {
+    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+    cols.splice(index, 1);
+    renderColumns(type, cols, true);
+}
+
+function updateColumnHeader(type, index, val) {
+    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+    cols[index].header = val;
+}
+
+function updateColumnSource(type, index, val) {
+    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+    cols[index].source = val;
+    // Show/hide constant input and format select
+    const row = document.querySelectorAll(`[data-type="${type}"][data-index="${index}"]`)[0];
+    if (row) {
+        const constInput = row.querySelector('.col-builder-const');
+        const fmtSelect = row.querySelector('.col-builder-fmt');
+        if (constInput) constInput.style.display = val === 'constant' ? '' : 'none';
+        if (fmtSelect) fmtSelect.style.display = val === 'doc_date' ? '' : 'none';
+    }
+}
+
+function updateColumnValue(type, index, val) {
+    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+    cols[index].value = val;
+}
+
+function updateColumnFormat(type, index, val) {
+    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+    cols[index].format = val;
+}
+
+function createNewPreset() {
+    currentBuilderPreset = {name: '', doc_columns: [], item_columns: []};
+    isBuiltinPreset = false;
+    currentCustomIndex = -1; // new, not yet saved
+    renderBuilderUI();
+    document.getElementById('presetNameInput').focus();
+}
+
+function duplicateAsCustom() {
+    const copy = JSON.parse(JSON.stringify(currentBuilderPreset));
+    copy.name = (copy.name || 'Profils') + ' (kopija)';
+    currentBuilderPreset = copy;
+    isBuiltinPreset = false;
+    currentCustomIndex = -1;
+    renderBuilderUI();
+    document.getElementById('presetNameInput').focus();
+}
+
+function deleteCurrentPreset() {
+    if (currentCustomIndex < 0) return;
+    if (!confirm('Vai tiešām dzēst šo profilu?')) return;
+    customPresets.splice(currentCustomIndex, 1);
+    savePresetsToServer().then(() => {
+        rebuildBuilderPresetList();
+        document.getElementById('builderPresetSelect').selectedIndex = 0;
+        loadPresetInBuilder();
+    });
+}
+
+function savePresets() {
+    // Update name from input
+    currentBuilderPreset.name = document.getElementById('presetNameInput').value.trim() || 'Profils';
+
+    if (currentCustomIndex >= 0) {
+        // Update existing
+        customPresets[currentCustomIndex] = JSON.parse(JSON.stringify(currentBuilderPreset));
+    } else {
+        // Add new
+        customPresets.push(JSON.parse(JSON.stringify(currentBuilderPreset)));
+        currentCustomIndex = customPresets.length - 1;
+    }
+
+    savePresetsToServer().then(() => {
+        rebuildBuilderPresetList();
+        // Select the saved preset
+        document.getElementById('builderPresetSelect').value = 'custom_' + currentCustomIndex;
+        loadPresetInBuilder();
+    });
+}
+
+function savePresetsToServer() {
+    return fetch('/api/accounting-presets/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({presets: customPresets})
+    }).then(r => {
+        if (!r.ok) throw new Error('Save failed');
+        return r.json();
+    });
+}
+
+// --- Drag reorder ---
+function enableDragReorder(container, type) {
+    const list = container.querySelector('.col-builder-list');
+    if (!list) return;
+    let dragEl = null;
+    let dragIdx = -1;
+
+    list.querySelectorAll('.col-builder-row').forEach(row => {
+        const handle = row.querySelector('.col-builder-handle');
+        if (!handle) return;
+        handle.style.cursor = 'grab';
+        handle.addEventListener('mousedown', e => {
+            dragEl = row;
+            dragIdx = parseInt(row.dataset.index);
+            row.style.opacity = '0.5';
+            e.preventDefault();
+        });
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (dragEl) {
+            dragEl.style.opacity = '1';
+            dragEl = null;
+        }
+    });
+
+    list.addEventListener('mouseover', e => {
+        if (!dragEl) return;
+        const target = e.target.closest('.col-builder-row');
+        if (!target || target === dragEl) return;
+        const targetIdx = parseInt(target.dataset.index);
+        if (isNaN(targetIdx) || targetIdx === dragIdx) return;
+
+        const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+        const [moved] = cols.splice(dragIdx, 1);
+        cols.splice(targetIdx, 0, moved);
+        dragIdx = targetIdx;
+        renderColumns(type, cols, true);
+    });
+}
 </script>
 {% endblock %}
