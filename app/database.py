@@ -84,6 +84,7 @@ def init_db():
             name TEXT NOT NULL,
             reg_number TEXT,
             vat_number TEXT,
+            vat_payer INTEGER NOT NULL DEFAULT 0,
             legal_address TEXT,
             bank_name TEXT,
             bank_account TEXT,
@@ -103,6 +104,7 @@ def init_db():
             seq_num INTEGER NOT NULL DEFAULT 0,
             client_id INTEGER NOT NULL,
             doc_date DATE NOT NULL,
+            payment_due_date DATE,
             vat_rate REAL NOT NULL DEFAULT 21.0,
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -207,6 +209,13 @@ def _run_migrations():
         cursor.execute("ALTER TABLE documents ADD COLUMN seq_num INTEGER NOT NULL DEFAULT 0")
     if "status" not in doc_cols:
         cursor.execute("ALTER TABLE documents ADD COLUMN status TEXT NOT NULL DEFAULT 'issued'")
+    if "payment_due_date" not in doc_cols:
+        cursor.execute("ALTER TABLE documents ADD COLUMN payment_due_date DATE")
+
+    # Add vat_payer column to clients if missing
+    client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
+    if "vat_payer" not in client_cols:
+        cursor.execute("ALTER TABLE clients ADD COLUMN vat_payer INTEGER NOT NULL DEFAULT 0")
 
     # Create user_settings table if not exists
     cursor.execute("""
@@ -363,14 +372,14 @@ def get_product(product_id):
 
 # --- Clients (per-user) ---
 
-def add_client(user_id, name, reg_number="", vat_number="", legal_address="",
+def add_client(user_id, name, reg_number="", vat_number="", vat_payer=0, legal_address="",
                bank_name="", bank_account="", contact_person="", phone="", email=""):
     conn = get_connection()
     cursor = conn.execute(
-        """INSERT INTO clients (user_id, name, reg_number, vat_number, legal_address,
+        """INSERT INTO clients (user_id, name, reg_number, vat_number, vat_payer, legal_address,
            bank_name, bank_account, contact_person, phone, email)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (user_id, name, reg_number, vat_number, legal_address,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, name, reg_number, vat_number, int(vat_payer), legal_address,
          bank_name, bank_account, contact_person, phone, email)
     )
     client_id = cursor.lastrowid
@@ -380,7 +389,7 @@ def add_client(user_id, name, reg_number="", vat_number="", legal_address="",
 
 
 def update_client(user_id, client_id, **kwargs):
-    allowed_fields = {"name", "reg_number", "vat_number", "legal_address",
+    allowed_fields = {"name", "reg_number", "vat_number", "vat_payer", "legal_address",
                       "bank_name", "bank_account", "contact_person", "phone", "email"}
     conn = get_connection()
     for key, value in kwargs.items():
@@ -522,7 +531,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
 
-def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes=""):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date=""):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
@@ -545,11 +554,11 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
 
         cursor = conn.execute(
-            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, vat_rate, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
-             vat_rate, notes)
+             payment_due_date or None, vat_rate, notes)
         )
         doc_id = cursor.lastrowid
 
@@ -571,7 +580,7 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         conn.close()
 
 
-def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes=""):
+def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date=""):
     """
     Update an existing document and its line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
@@ -607,10 +616,10 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
 
         # Update document fields
         conn.execute(
-            """UPDATE documents SET client_id = ?, doc_date = ?, vat_rate = ?, notes = ?
+            """UPDATE documents SET client_id = ?, doc_date = ?, payment_due_date = ?, vat_rate = ?, notes = ?
                WHERE id = ? AND user_id = ?""",
             (client_id, doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
-             vat_rate, notes, doc_id, user_id)
+             payment_due_date or None, vat_rate, notes, doc_id, user_id)
         )
 
         # Delete old items and insert new ones
@@ -1163,7 +1172,8 @@ def get_documents_for_export(user_id, doc_type=None, date_from=None, date_to=Non
     conn = get_connection()
 
     query = """SELECT d.*, c.name as client_name, c.reg_number as client_reg_number,
-               c.vat_number as client_vat_number, c.legal_address as client_address,
+               c.vat_number as client_vat_number, c.vat_payer as client_vat_payer,
+               c.legal_address as client_address,
                c.bank_name as client_bank, c.bank_account as client_account,
                c.contact_person as client_contact, c.phone as client_phone,
                c.email as client_email

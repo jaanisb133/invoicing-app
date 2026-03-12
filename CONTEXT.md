@@ -112,13 +112,13 @@
    - `id, user_id, name, unit, active, created_at`
 
 4. **clients** — Client details per user
-   - `id, user_id, name, reg_number, vat_number, legal_address`
+   - `id, user_id, name, reg_number, vat_number, vat_payer` (0/1), `legal_address`
    - `bank_name, bank_account, contact_person, phone, email`
    - `active, created_at`
 
 5. **documents** — Invoices and purchase orders
    - `id, user_id, doc_type` (buy/sell), `doc_number, seq_num`
-   - `client_id, doc_date, vat_rate, notes`
+   - `client_id, doc_date, vat_rate, notes, payment_due_date`
    - `status, created_at`
 
 6. **document_items** — Line items within documents
@@ -208,6 +208,27 @@
 - Fixed pricing page crash for logged-in users
 - Removed old desktop/ directory artifacts
 
+### Phase 10: Accounting Export & Document Enhancements
+- **Accounting export** (`POST /export/accounting`) — generates Excel (.xlsx) via openpyxl with 2 sheets:
+  - Sheet 1 "Dokumenti": one row per document with configurable columns
+  - Sheet 2 "Pozīcijas": one row per line item with configurable columns
+- **Built-in presets** for Latvian accounting software: Horizon, Jumis, Zalktis
+- **Custom preset builder** — users can create/save/edit/delete custom column configurations via modal UI
+  - Drag-to-reorder columns, field source selection, constant values, date formatting
+  - Saved as JSON in `user_settings` table with key `accounting_preset_<name>`
+- **Preset API routes:** `POST /api/accounting-presets/save`, `GET /api/accounting-presets`
+- **Payment due date system:**
+  - Default setting `payment_due_days` in settings (auto-calculates from doc_date)
+  - Per-document datepicker override on document form
+  - `payment_due_date` column in documents table
+- **VAT payer status on clients:**
+  - `vat_payer` field (0/1) on clients table
+  - Checkbox "Ir PVN maksātājs?" in add/edit client modals
+  - Auto-checks when PVN number is entered
+  - Exports as "M" (vat payer) or "X" (non-payer) in `vat_category` column
+- **Document type codes:** Export uses "Pirk." (buy) / "Pārd." (sell) instead of raw type values
+- **30+ export field types** available for column configuration (doc info, client data, company data, line items, calculated totals)
+
 ---
 
 ## 6. Key Routes
@@ -240,7 +261,8 @@
 ### Stock, Recurring, Export
 - `GET /stock`, `GET /api/stock/{product_id}`
 - `GET /recurring`, `POST /recurring/create`, `POST /recurring/from-document/{id}`, `POST /recurring/{id}/toggle`, `POST /recurring/{id}/delete`
-- `GET /export`, `POST /export/pdf`
+- `GET /export`, `POST /export/pdf`, `POST /export/accounting`
+- `POST /api/accounting-presets/save`, `GET /api/accounting-presets`
 
 ### Billing
 - `GET /pricing`

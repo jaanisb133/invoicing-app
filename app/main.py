@@ -856,6 +856,7 @@ async def save_settings(
     buy_doc_name: str = Form("Rēķins"),
     sell_doc_name: str = Form("Rēķins"),
     default_vat_rate: str = Form("21"),
+    payment_due_days: str = Form(""),
     stock_enabled: str = Form("0"),
     electronic_doc: str = Form("0"),
     status_tracking: str = Form("0"),
@@ -879,6 +880,7 @@ async def save_settings(
         "buy_doc_name": buy_doc_name,
         "sell_doc_name": sell_doc_name,
         "default_vat_rate": default_vat_rate,
+        "payment_due_days": payment_due_days,
         "stock_enabled": stock_enabled,
         "electronic_doc": electronic_doc,
         "status_tracking": status_tracking,
@@ -1015,6 +1017,7 @@ async def add_client(
     name: str = Form(...),
     reg_number: str = Form(""),
     vat_number: str = Form(""),
+    vat_payer: str = Form("0"),
     legal_address: str = Form(""),
     bank_name: str = Form(""),
     bank_account: str = Form(""),
@@ -1026,7 +1029,7 @@ async def add_client(
     allowed, current, maximum = _check_tier_limit(user, "clients")
     if not allowed:
         return RedirectResponse(f"/clients?error=limit", status_code=303)
-    db.add_client(user["id"], name, reg_number, vat_number, legal_address,
+    db.add_client(user["id"], name, reg_number, vat_number, int(vat_payer), legal_address,
                   bank_name, bank_account, contact_person, phone, email)
     return RedirectResponse("/clients", status_code=303)
 
@@ -1038,6 +1041,7 @@ async def edit_client(
     name: str = Form(...),
     reg_number: str = Form(""),
     vat_number: str = Form(""),
+    vat_payer: str = Form("0"),
     legal_address: str = Form(""),
     bank_name: str = Form(""),
     bank_account: str = Form(""),
@@ -1047,7 +1051,7 @@ async def edit_client(
 ):
     user = request.state.user
     db.update_client(user["id"], client_id, name=name, reg_number=reg_number,
-                     vat_number=vat_number, legal_address=legal_address,
+                     vat_number=vat_number, vat_payer=int(vat_payer), legal_address=legal_address,
                      bank_name=bank_name, bank_account=bank_account,
                      contact_person=contact_person, phone=phone, email=email)
     return RedirectResponse("/clients", status_code=303)
@@ -1132,6 +1136,7 @@ async def create_document(request: Request):
     doc_type = form.get("doc_type", "buy")
     client_id = int(form.get("client_id", 0))
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
+    payment_due_date = form.get("payment_due_date", "")
     vat_rate = float(form.get("vat_rate", 21.0))
     notes = form.get("notes", "")
     template = form.get("template", "minimal")
@@ -1156,7 +1161,8 @@ async def create_document(request: Request):
 
     try:
         doc_id, doc_number = db.create_document(
-            user["id"], doc_type, client_id, doc_date, items, vat_rate, notes
+            user["id"], doc_type, client_id, doc_date, items, vat_rate, notes,
+            payment_due_date=payment_due_date,
         )
     except ValueError as e:
         return RedirectResponse(f"/documents/new?doc_type={doc_type}&error={str(e)}", status_code=303)
@@ -1210,6 +1216,7 @@ async def update_document(request: Request, doc_id: int):
     vat_rate = float(form.get("vat_rate", 21.0))
     notes = form.get("notes", "")
     template = form.get("template", "minimal")
+    payment_due_date = form.get("payment_due_date", "")
 
     items = []
     i = 0
@@ -1230,7 +1237,7 @@ async def update_document(request: Request, doc_id: int):
         return RedirectResponse(f"/documents/{doc_id}/edit?error=no_items", status_code=303)
 
     try:
-        db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes)
+        db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes, payment_due_date=payment_due_date)
     except ValueError as e:
         return RedirectResponse(f"/documents/{doc_id}/edit?error={str(e)}", status_code=303)
 
@@ -1651,12 +1658,14 @@ ACCOUNTING_PRESETS = {
 
 # All available data fields for column builder
 ACCOUNTING_EXPORT_FIELDS = {
-    "doc_type_code": "Dokumenta tips (kods)",
+    "doc_type_code": "Dokumenta tips (Pirk./Pārd.)",
     "doc_type_name": "Dokumenta tips (nosaukums)",
     "doc_number": "Dokumenta numurs",
     "doc_date": "Datums",
+    "payment_due_date": "Apmaksas datums",
     "seq_num": "Secības numurs",
     "vat_rate": "PVN likme (%)",
+    "vat_category": "PVN kategorija (M/X)",
     "notes": "Piezīmes",
     "status": "Statuss",
     "subtotal_no_vat": "Summa bez PVN",
@@ -1695,7 +1704,7 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
     if source == "constant":
         val = constant_val
     elif source == "doc_type_code":
-        val = doc.get("doc_type", "")
+        val = "Pirk." if doc.get("doc_type") == "buy" else "Pārd."
     elif source == "doc_type_name":
         val = "Pārdošana" if doc.get("doc_type") == "sell" else "Iegāde"
     elif source == "doc_number":
@@ -1710,10 +1719,22 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
                 val = raw
         else:
             val = raw
+    elif source == "payment_due_date":
+        raw = doc.get("payment_due_date", "")
+        if fmt == "dd.mm.yyyy" and raw:
+            parts = raw.split("-")
+            if len(parts) == 3:
+                val = f"{parts[2]}.{parts[1]}.{parts[0]}"
+            else:
+                val = raw
+        else:
+            val = raw
     elif source == "seq_num":
         val = doc.get("seq_num", "")
     elif source == "vat_rate":
         val = doc.get("vat_rate", 21.0)
+    elif source == "vat_category":
+        val = "M" if doc.get("client_vat_payer") else "X"
     elif source == "notes":
         val = doc.get("notes", "") or ""
     elif source == "status":
