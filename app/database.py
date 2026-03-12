@@ -53,6 +53,7 @@ def init_db():
             billing_cycle TEXT NOT NULL DEFAULT '',
             stripe_customer_id TEXT NOT NULL DEFAULT '',
             stripe_subscription_id TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
             max_documents INTEGER NOT NULL DEFAULT 50,
             max_clients INTEGER NOT NULL DEFAULT 20,
             max_products INTEGER NOT NULL DEFAULT 50,
@@ -192,6 +193,7 @@ def _run_migrations():
         "billing_cycle": "ALTER TABLE users ADD COLUMN billing_cycle TEXT NOT NULL DEFAULT ''",
         "stripe_customer_id": "ALTER TABLE users ADD COLUMN stripe_customer_id TEXT NOT NULL DEFAULT ''",
         "stripe_subscription_id": "ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT NOT NULL DEFAULT ''",
+        "phone": "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
     }
     for col, sql in migrations.items():
         if col not in cols:
@@ -807,15 +809,15 @@ def _check_password(password: str, password_hash: str) -> bool:
 
 
 def create_user(username: str, password: str, display_name: str = "",
-                email: str = "", is_admin: bool = False,
+                email: str = "", phone: str = "", is_admin: bool = False,
                 must_change_password: bool = False,
                 tier: str = "free") -> int:
     conn = get_connection()
     cursor = conn.execute(
-        """INSERT INTO users (username, email, password_hash, display_name,
+        """INSERT INTO users (username, email, phone, password_hash, display_name,
            is_admin, must_change_password, tier, subscription_status, subscription_start)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)""",
-        (username.lower().strip(), email.strip(), _hash_password(password),
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)""",
+        (username.lower().strip(), email.strip(), phone.strip(), _hash_password(password),
          display_name, 1 if is_admin else 0, 1 if must_change_password else 0,
          tier, datetime.date.today().isoformat())
     )
@@ -879,12 +881,14 @@ def update_user_password(user_id: int, new_password: str):
     conn.close()
 
 
-def update_user_profile(user_id: int, display_name: str = None, email: str = None):
+def update_user_profile(user_id: int, display_name: str = None, email: str = None, phone: str = None):
     conn = get_connection()
     if display_name is not None:
         conn.execute("UPDATE users SET display_name = ? WHERE id = ?", (display_name, user_id))
     if email is not None:
         conn.execute("UPDATE users SET email = ? WHERE id = ?", (email.strip(), user_id))
+    if phone is not None:
+        conn.execute("UPDATE users SET phone = ? WHERE id = ?", (phone.strip(), user_id))
     conn.commit()
     conn.close()
 

@@ -84,6 +84,7 @@ def _get_einvoice_data(doc_id):
     client = db.get_client(doc["client_id"])
     user_id = doc.get("user_id", 0)
     settings = db.get_all_user_settings(user_id) if user_id else db.get_all_settings()
+    user = db.get_user(user_id) if user_id else {}
 
     def party_info(source_client, from_settings=False):
         if from_settings:
@@ -94,6 +95,9 @@ def _get_einvoice_data(doc_id):
                 "addr": (settings.get("legal_address", "") or "").strip(),
                 "bank": (settings.get("bank_name", "") or "").strip(),
                 "account": (settings.get("bank_account", "") or "").strip(),
+                "email": ((user or {}).get("email", "") or "").strip(),
+                "phone": ((user or {}).get("phone", "") or "").strip(),
+                "contact": ((user or {}).get("display_name", "") or "").strip(),
             }
         return {
             "name": (source_client["name"] if source_client else "").strip(),
@@ -102,6 +106,9 @@ def _get_einvoice_data(doc_id):
             "addr": ((source_client["legal_address"] or "") if source_client else "").strip(),
             "bank": ((source_client["bank_name"] or "") if source_client else "").strip(),
             "account": ((source_client["bank_account"] or "") if source_client else "").strip(),
+            "email": ((source_client["email"] or "") if source_client else "").strip(),
+            "phone": ((source_client["phone"] or "") if source_client else "").strip(),
+            "contact": ((source_client["contact_person"] or "") if source_client else "").strip(),
         }
 
     if doc["doc_type"] == "buy":
@@ -177,6 +184,19 @@ def _add_party(parent_tag, parent_el, party, is_supplier=True):
     if party.get("reg"):
         company_id_legal = SubElement(legal, f"{{{NS_CBC}}}CompanyID")
         company_id_legal.text = party["reg"]
+
+    # Contact (optional but useful — email and phone)
+    if party.get("email") or party.get("phone") or party.get("contact"):
+        contact_el = SubElement(party_el, f"{{{NS_CAC}}}Contact")
+        if party.get("contact"):
+            contact_name = SubElement(contact_el, f"{{{NS_CBC}}}Name")
+            contact_name.text = party["contact"]
+        if party.get("phone"):
+            contact_phone = SubElement(contact_el, f"{{{NS_CBC}}}Telephone")
+            contact_phone.text = party["phone"]
+        if party.get("email"):
+            contact_email = SubElement(contact_el, f"{{{NS_CBC}}}ElectronicMail")
+            contact_email.text = party["email"]
 
 
 def generate_einvoice_xml(doc_id):

@@ -440,13 +440,14 @@ async def register_page(request: Request, error: str = ""):
 async def register(request: Request,
                    email: str = Form(...),
                    display_name: str = Form(...),
+                   phone: str = Form(""),
                    password: str = Form(...),
                    confirm_password: str = Form(...)):
     if password != confirm_password:
         return templates.TemplateResponse("register.html", {
             "request": request,
             "error": "Paroles nesakrīt.",
-            "email": email, "display_name": display_name,
+            "email": email, "display_name": display_name, "phone": phone,
             "page": "register",
         })
 
@@ -454,7 +455,7 @@ async def register(request: Request,
         return templates.TemplateResponse("register.html", {
             "request": request,
             "error": "Parolei jābūt vismaz 6 simbolus garai.",
-            "email": email, "display_name": display_name,
+            "email": email, "display_name": display_name, "phone": phone,
             "page": "register",
         })
 
@@ -462,7 +463,7 @@ async def register(request: Request,
         return templates.TemplateResponse("register.html", {
             "request": request,
             "error": "E-pasts jau reģistrēts.",
-            "email": email, "display_name": display_name,
+            "email": email, "display_name": display_name, "phone": phone,
             "page": "register",
         })
 
@@ -479,6 +480,7 @@ async def register(request: Request,
         password=password,
         display_name=display_name,
         email=email,
+        phone=phone,
         tier="free",
     )
 
@@ -570,9 +572,10 @@ async def account_page(request: Request):
 @app.post("/account/profile")
 async def update_profile(request: Request,
                          display_name: str = Form(...),
-                         email: str = Form("")):
+                         email: str = Form(""),
+                         phone: str = Form("")):
     user = request.state.user
-    db.update_user_profile(user["id"], display_name=display_name, email=email)
+    db.update_user_profile(user["id"], display_name=display_name, email=email, phone=phone)
     return RedirectResponse("/account?saved=profile", status_code=303)
 
 
