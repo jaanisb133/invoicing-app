@@ -296,16 +296,74 @@ journalctl -u vrekini -f    # View logs
 
 ---
 
-## 9. Database Safety
+## 9. Database — Safety, Backups & Recovery
 
-The SQLite database (`veggie_invoices.db`) persists independently of code changes. Application upgrades (code deploys) do **not** touch the database file. Data is safe across upgrades as long as:
+### CRITICAL: Do Not Lose Data
+The SQLite database (`veggie_invoices.db`) contains ALL user data — clients, products, invoices, settings, everything. There is no cloud sync or automatic backup. **If this file is lost or corrupted, the data is gone.** Always back up before major changes.
+
+### Where the Data Lives
+- **Production database:** `/opt/vrekini/data/veggie_invoices.db`
+- **Generated PDFs:** `/opt/vrekini/data/dokumenti/`
+- **Uploaded logos:** `/opt/vrekini/data/logos/`
+- **Backups:** `/opt/vrekini/data/` (same folder, with `.backup-` suffix)
+
+### Data Persistence
+The database persists independently of code changes. Application upgrades (code deploys via `git pull`) do **not** touch the database file. Data is safe across upgrades as long as:
 1. You don't delete the `.db` file
 2. You don't run migrations that drop tables
 3. You back up the file before major schema changes
 
-**Backup command:**
+### Backup Commands (run on the server)
+
+**Create a backup (one per day — overwrites if run multiple times same day):**
 ```bash
 cp /opt/vrekini/data/veggie_invoices.db /opt/vrekini/data/veggie_invoices.db.backup-$(date +%Y%m%d)
+```
+
+**Create a backup with timestamp (safe for multiple backups per day):**
+```bash
+cp /opt/vrekini/data/veggie_invoices.db /opt/vrekini/data/veggie_invoices.db.backup-$(date +%Y%m%d-%H%M%S)
+```
+This creates filenames like: `veggie_invoices.db.backup-20260312-143025`
+
+**View all backups:**
+```bash
+ls -la /opt/vrekini/data/*.backup-*
+```
+
+### Download Database to Local Machine (run from YOUR computer, not the server)
+```bash
+scp root@204.168.150.114:/opt/vrekini/data/veggie_invoices.db ~/Downloads/
+```
+
+### Restore from a Backup (run on the server)
+```bash
+# Replace the date with the backup you want to restore
+cp /opt/vrekini/data/veggie_invoices.db.backup-20260312 /opt/vrekini/data/veggie_invoices.db
+
+# IMPORTANT: restart the app after restoring
+systemctl restart vrekini
+```
+
+### Quick Reference — Full Workflow
+```bash
+# 1. Create a backup
+cp /opt/vrekini/data/veggie_invoices.db /opt/vrekini/data/veggie_invoices.db.backup-$(date +%Y%m%d-%H%M%S)
+
+# 2. View all backups
+ls -la /opt/vrekini/data/*.backup-*
+
+# 3. Download to your computer (run FROM YOUR LOCAL MACHINE)
+scp root@204.168.150.114:/opt/vrekini/data/veggie_invoices.db ~/Downloads/
+
+# 4. Restore from a specific backup (replace filename with the one you want)
+cp /opt/vrekini/data/veggie_invoices.db.backup-20260312-143025 /opt/vrekini/data/veggie_invoices.db
+
+# 5. Restart app after restore
+systemctl restart vrekini
+
+# 6. Navigate back to working directory
+cd /opt/vrekini
 ```
 
 ---
