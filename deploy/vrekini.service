@@ -7,9 +7,22 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=/opt/vrekini
+
+# Kill the entire process group so no orphan uvicorn processes survive
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# Kill any stale process on port 8000 before starting
+ExecStartPre=/bin/sh -c '/usr/bin/fuser -k 8000/tcp 2>/dev/null; sleep 1; true'
 ExecStart=/opt/vrekini/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+
 Restart=always
 RestartSec=5
+# Cap restarts to prevent infinite crash loops
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
 EnvironmentFile=/opt/vrekini/.env
 Environment=VREKINI_DB_PATH=/opt/vrekini/data/veggie_invoices.db
 

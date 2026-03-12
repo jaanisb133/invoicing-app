@@ -278,7 +278,12 @@
 ssh root@204.168.150.114
 cd /opt/vrekini
 git pull origin main
-systemctl restart vrekini
+# IMPORTANT: always update the systemd service after pull (in case it changed)
+sudo cp deploy/vrekini.service /etc/systemd/system/vrekini.service
+sudo systemctl daemon-reload
+sudo systemctl restart vrekini
+# Verify it started cleanly (no port conflict errors)
+sudo journalctl -u vrekini --no-pager -n 10
 ```
 
 ### Service Management
@@ -293,6 +298,18 @@ journalctl -u vrekini -f    # View logs
 - **Database path** via `VREKINI_DB_PATH` env var
 - **Secrets** in `.env` file (SMTP, Stripe, Brevo credentials)
 - **Nginx** handles SSL termination, static files (7-day cache), 10MB upload limit
+
+### Zombie Process Prevention (CRITICAL)
+The systemd service includes safeguards against orphan uvicorn processes:
+- **`KillMode=control-group`** — kills ALL processes in the service group, not just the main PID
+- **`ExecStartPre=fuser -k 8000/tcp`** — kills any stale process on port 8000 before starting
+- **`StartLimitBurst=5` / `StartLimitIntervalSec=60`** — stops infinite restart loops
+
+**History:** A recurring issue was that `systemctl restart` would fail because an old uvicorn process survived the stop and held port 8000. The new service kept crashing with `[Errno 98] Address already in use`, and Nginx kept proxying to the OLD stale process — serving outdated code/templates. The `ExecStartPre` and `KillMode` directives permanently fix this.
+
+**If it ever happens again:** `sudo fuser -k 8000/tcp && sleep 2 && sudo systemctl restart vrekini`
+
+**Never run `run.py` on the production server** — it's for local development only. Running it creates a second uvicorn on the same port that conflicts with the systemd service.
 
 ---
 
