@@ -173,8 +173,16 @@
             </div>
             <div class="form-group">
                 <label>PVN Nr.</label>
-                <input type="text" id="qc_vat_number" class="form-control">
+                <input type="text" id="qc_vat_number" class="form-control"
+                       oninput="if(this.value.trim()) document.getElementById('qc_vat_payer').checked=true">
             </div>
+        </div>
+        <div class="form-group">
+            <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="qc_vat_payer" value="1"
+                       style="width:18px;height:18px;cursor:pointer">
+                Ir PVN maksātājs?
+            </label>
         </div>
         <div class="form-group">
             <label>Juridiskā adrese</label>
@@ -484,7 +492,7 @@ function getPreviewData() {
 
 function partyLines(info) {
     let html = '<strong>' + info.name + '</strong>';
-    if (info.reg) html += '<br>Reģ.Nr.: ' + info.reg;
+    if (info.reg) html += '<br>Reģ.Nr. / P.k.: ' + info.reg;
     if (info.vat) html += '<br>PVN Nr.: ' + info.vat;
     if (info.addr) html += '<br>' + info.addr;
     if (info.bank) html += '<br>Banka: ' + info.bank;
@@ -683,6 +691,7 @@ async function quickAddClient() {
         name: document.getElementById('qc_name').value,
         reg_number: document.getElementById('qc_reg_number').value,
         vat_number: document.getElementById('qc_vat_number').value,
+        vat_payer: document.getElementById('qc_vat_payer').checked ? 1 : 0,
         legal_address: document.getElementById('qc_legal_address').value,
         bank_name: document.getElementById('qc_bank_name').value,
         bank_account: document.getElementById('qc_bank_account').value,
@@ -706,6 +715,7 @@ async function quickAddClient() {
     ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_bank_name', 'qc_bank_account'].forEach(
         id => document.getElementById(id).value = ''
     );
+    document.getElementById('qc_vat_payer').checked = false;
     updatePreview();
 }
 

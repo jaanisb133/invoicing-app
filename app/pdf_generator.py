@@ -318,24 +318,17 @@ def _generate_classic(doc_id):
     # Thin divider
     elements.append(HRFlowable(width="100%", thickness=0.5, color=C_BORDER, spaceAfter=6 * mm))
 
-    # Parties
+    # Parties (each side independent — different line counts don't affect each other)
     s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", section_label)] + \
               _party_lines(data['supplier'], FONT_BOLD, normal)
     b_lines = [Paragraph("SAŅĒMĒJS / PIRCĒJS", section_label)] + \
               _party_lines(data['buyer'], FONT_BOLD, normal)
 
-    party_rows = []
-    for i in range(max(len(s_lines), len(b_lines))):
-        party_rows.append([
-            s_lines[i] if i < len(s_lines) else "",
-            b_lines[i] if i < len(b_lines) else "",
-        ])
-
-    parties_table = Table(party_rows, colWidths=[85 * mm, 85 * mm])
+    parties_table = Table([[s_lines, b_lines]], colWidths=[85 * mm, 85 * mm])
     parties_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
         ('LEFTPADDING', (1, 0), (1, -1), 6 * mm),
     ]))
     elements.append(parties_table)
@@ -505,24 +498,17 @@ def _generate_modern(doc_id):
     elements.append(header_table)
     elements.append(Spacer(1, 7 * mm))
 
-    # Parties
+    # Parties (each side independent — different line counts don't affect each other)
     s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", styles["section"])] + \
               _party_lines(data['supplier'], FONT_BOLD, styles["normal"])
     b_lines = [Paragraph("SAŅĒMĒJS / PIRCĒJS", styles["section"])] + \
               _party_lines(data['buyer'], FONT_BOLD, styles["normal"])
 
-    party_rows = []
-    for i in range(max(len(s_lines), len(b_lines))):
-        party_rows.append([
-            s_lines[i] if i < len(s_lines) else "",
-            b_lines[i] if i < len(b_lines) else "",
-        ])
-
-    party_table = Table(party_rows, colWidths=[87 * mm, 87 * mm])
+    party_table = Table([[s_lines, b_lines]], colWidths=[87 * mm, 87 * mm])
     party_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
         ('LEFTPADDING', (1, 0), (1, -1), 8 * mm),
     ]))
     elements.append(party_table)
@@ -679,7 +665,7 @@ def _generate_minimal(doc_id):
         lines = [Paragraph(title, styles["label"])]
         lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", styles["value"]))
         if info['reg']:
-            lines.append(Paragraph(f"Reģ.Nr. / P.k. {info['reg']}", styles["value"]))
+            lines.append(Paragraph(f"Reģ.Nr. / P.k.: {info['reg']}", styles["value"]))
         if info['vat']:
             lines.append(Paragraph(f"PVN {info['vat']}", styles["value"]))
         if info['addr']:
@@ -696,18 +682,11 @@ def _generate_minimal(doc_id):
     s_block = _min_party_block("PIEGĀDĀTĀJS / PĀRDEVĒJS", data["supplier"])
     b_block = _min_party_block("SAŅĒMĒJS / PIRCĒJS", data["buyer"])
 
-    party_rows = []
-    for i in range(max(len(s_block), len(b_block))):
-        party_rows.append([
-            s_block[i] if i < len(s_block) else "",
-            b_block[i] if i < len(b_block) else "",
-        ])
-
-    party_table = Table(party_rows, colWidths=[77 * mm, 77 * mm])
+    party_table = Table([[s_block, b_block]], colWidths=[77 * mm, 77 * mm])
     party_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
         ('LEFTPADDING', (1, 0), (1, -1), 10 * mm),
     ]))
     elements.append(party_table)

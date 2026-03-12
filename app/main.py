@@ -1174,7 +1174,7 @@ async def create_document(request: Request):
     except Exception as e:
         logger.exception("PDF generation failed for doc %s", doc_id)
 
-    return RedirectResponse(f"/documents/{doc_id}?created=1", status_code=303)
+    return RedirectResponse(f"/documents/{doc_id}?created=1&template={template}", status_code=303)
 
 
 @app.get("/documents/{doc_id}/edit", response_class=HTMLResponse)
@@ -1248,7 +1248,7 @@ async def update_document(request: Request, doc_id: int):
     except Exception as e:
         logger.exception("PDF generation failed for doc %s", doc_id)
 
-    return RedirectResponse(f"/documents/{doc_id}?updated=1", status_code=303)
+    return RedirectResponse(f"/documents/{doc_id}?updated=1&template={template}", status_code=303)
 
 
 @app.get("/documents/{doc_id}", response_class=HTMLResponse)
@@ -1303,11 +1303,16 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
 
 
 @app.get("/documents/{doc_id}/pdf")
-async def download_pdf(request: Request, doc_id: int, template: str = "minimal"):
+async def download_pdf(request: Request, doc_id: int, template: str = ""):
     user = request.state.user
     doc, _ = db.get_document(doc_id)
     if not doc or doc.get("user_id") != user["id"]:
         raise HTTPException(status_code=404)
+    if not template or template not in TEMPLATES:
+        settings = _user_settings(user["id"])
+        template = settings.get("default_template", "minimal")
+    if template not in TEMPLATES:
+        template = "minimal"
     filepath = generate_invoice_pdf(doc_id, template=template)
     return FileResponse(filepath, media_type="application/pdf",
                         filename=os.path.basename(filepath))
@@ -2001,6 +2006,7 @@ async def api_add_client(request: Request):
         name=data["name"],
         reg_number=data.get("reg_number", ""),
         vat_number=data.get("vat_number", ""),
+        vat_payer=int(data.get("vat_payer", 0)),
         legal_address=data.get("legal_address", ""),
         bank_name=data.get("bank_name", ""),
         bank_account=data.get("bank_account", ""),
