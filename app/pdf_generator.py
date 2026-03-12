@@ -171,20 +171,20 @@ def _get_doc_data(doc_id):
     def party_info(source_client, from_settings=False):
         if from_settings:
             return {
-                "name": settings.get("company_name", ""),
-                "reg": settings.get("reg_number", ""),
-                "vat": settings.get("vat_number", ""),
-                "addr": settings.get("legal_address", ""),
-                "bank": settings.get("bank_name", ""),
-                "account": settings.get("bank_account", ""),
+                "name": (settings.get("company_name", "") or "").strip(),
+                "reg": (settings.get("reg_number", "") or "").strip(),
+                "vat": (settings.get("vat_number", "") or "").strip(),
+                "addr": (settings.get("legal_address", "") or "").strip(),
+                "bank": (settings.get("bank_name", "") or "").strip(),
+                "account": (settings.get("bank_account", "") or "").strip(),
             }
         return {
-            "name": source_client["name"] if source_client else "",
-            "reg": (source_client["reg_number"] or "") if source_client else "",
-            "vat": (source_client["vat_number"] or "") if source_client else "",
-            "addr": (source_client["legal_address"] or "") if source_client else "",
-            "bank": (source_client["bank_name"] or "") if source_client else "",
-            "account": (source_client["bank_account"] or "") if source_client else "",
+            "name": (source_client["name"] if source_client else "").strip(),
+            "reg": ((source_client["reg_number"] or "") if source_client else "").strip(),
+            "vat": ((source_client["vat_number"] or "") if source_client else "").strip(),
+            "addr": ((source_client["legal_address"] or "") if source_client else "").strip(),
+            "bank": ((source_client["bank_name"] or "") if source_client else "").strip(),
+            "account": ((source_client["bank_account"] or "") if source_client else "").strip(),
         }
 
     if doc["doc_type"] == "buy":
@@ -199,12 +199,25 @@ def _get_doc_data(doc_id):
     vat_amount = subtotal * (vat_rate / 100)
     total = subtotal + vat_amount
 
+    raw_due = doc.get("payment_due_date", "") or ""
+    display_due_date = ""
+    if raw_due:
+        try:
+            if isinstance(raw_due, str):
+                dd = datetime.date.fromisoformat(raw_due)
+            else:
+                dd = raw_due
+            display_due_date = dd.strftime("%d.%m.%Y")
+        except Exception:
+            display_due_date = raw_due
+
     return {
         "doc": doc,
         "items": items,
         "client": client,
         "settings": settings,
         "display_date": display_date,
+        "display_due_date": display_due_date,
         "doc_type_label": doc_type_label,
         "supplier": supplier,
         "buyer": buyer,
@@ -299,6 +312,8 @@ def _generate_classic(doc_id):
     elements.append(Paragraph(data["doc_type_label"], title_style))
     elements.append(Paragraph(f"Nr. {doc['doc_number']}", doc_num_style))
     elements.append(Paragraph(f"Datums: {data['display_date']}", date_style))
+    if data["display_due_date"]:
+        elements.append(Paragraph(f"Apmaksas termiņš: {data['display_due_date']}", date_style))
 
     # Thin divider
     elements.append(HRFlowable(width="100%", thickness=0.5, color=C_BORDER, spaceAfter=6 * mm))
@@ -470,8 +485,9 @@ def _generate_modern(doc_id):
             header_left.append(Spacer(1, 2 * mm))
     header_left.append(Paragraph(data["doc_type_label"], styles["title"]))
 
+    due_line = f"<br/>Apmaksas termiņš: {data['display_due_date']}" if data["display_due_date"] else ""
     header_right = Paragraph(
-        f"Nr. {doc['doc_number']}<br/>Datums: {data['display_date']}",
+        f"Nr. {doc['doc_number']}<br/>Datums: {data['display_date']}{due_line}",
         styles["doc_info"]
     )
 
@@ -649,8 +665,9 @@ def _generate_minimal(doc_id):
 
     # Header — title and number on a single clean line
     elements.append(Paragraph(data["doc_type_label"], styles["title"]))
+    due_part = f"  &nbsp;&nbsp;&middot;&nbsp;&nbsp;  Apmaksas termiņš: {data['display_due_date']}" if data["display_due_date"] else ""
     elements.append(Paragraph(
-        f"Nr. {doc['doc_number']}  &nbsp;&nbsp;&middot;&nbsp;&nbsp;  {data['display_date']}",
+        f"Nr. {doc['doc_number']}  &nbsp;&nbsp;&middot;&nbsp;&nbsp;  {data['display_date']}{due_part}",
         styles["subtitle"]
     ))
 

@@ -1624,14 +1624,14 @@ ACCOUNTING_PRESETS = {
         "doc_columns": [
             {"header": "Dokumenta tips", "source": "doc_type_code"},
             {"header": "Klients.Kods", "source": "client_reg_number"},
-            {"header": "PVN kategorija", "source": "constant", "value": "M"},
+            {"header": "PVN kategorija", "source": "vat_category"},
             {"header": "Dok. datums", "source": "doc_date", "format": "dd.mm.yyyy"},
             {"header": "Valūta.Kods", "source": "constant", "value": "EUR"},
             {"header": "Numurs", "source": "doc_number"},
             {"header": "Summa bez PVN", "source": "subtotal_no_vat"},
             {"header": "PVN summa", "source": "vat_amount"},
             {"header": "Summa ar PVN", "source": "total_with_vat"},
-            {"header": "Apmaksas termiņš", "source": "doc_date", "format": "dd.mm.yyyy"},
+            {"header": "Apmaksas termiņš", "source": "payment_due_date", "format": "dd.mm.yyyy"},
             {"header": "Klients", "source": "client_name"},
             {"header": "Klients.PVN", "source": "client_vat_number"},
             {"header": "Adrese", "source": "client_address"},
@@ -1771,7 +1771,8 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
     elif source == "vat_rate":
         val = doc.get("vat_rate", 21.0)
     elif source == "vat_category":
-        val = "M" if doc.get("client_vat_payer") else "X"
+        vp = doc.get("client_vat_payer", 0)
+        val = "M" if vp and str(vp) != "0" else "X"
     elif source == "notes":
         val = doc.get("notes", "") or ""
     elif source == "status":

@@ -394,6 +394,8 @@ def update_client(user_id, client_id, **kwargs):
     conn = get_connection()
     for key, value in kwargs.items():
         if key in allowed_fields:
+            if key == "vat_payer":
+                value = int(value)
             conn.execute(f"UPDATE clients SET {key} = ? WHERE id = ? AND user_id = ?",
                          (value, client_id, user_id))
     conn.commit()
