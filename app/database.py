@@ -657,7 +657,8 @@ def get_document(doc_id):
 
 def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_to=None, status=None):
     conn = get_connection()
-    query = """SELECT d.*, c.name as client_name
+    query = """SELECT d.*, c.name as client_name,
+               ROUND(COALESCE((SELECT SUM(di.total) FROM document_items di WHERE di.document_id = d.id), 0) * (1 + d.vat_rate / 100.0), 2) as total_with_vat
                FROM documents d
                JOIN clients c ON d.client_id = c.id
                WHERE d.user_id = ?"""

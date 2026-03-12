@@ -865,6 +865,7 @@ async def save_settings(
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form(""),
     invoice_number_digits: str = Form("3"),
+    email_template: str = Form(""),
 ):
     user = request.state.user
     settings_dict = {
@@ -901,6 +902,7 @@ async def save_settings(
         "invoice_number_type": invoice_number_type,
         "invoice_number_separator": invoice_number_separator,
         "invoice_number_digits": invoice_number_digits,
+        "email_template": email_template,
     })
     db.save_all_user_settings(user["id"], settings_dict)
     return RedirectResponse("/settings?saved=1", status_code=303)
@@ -1268,6 +1270,21 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
     if template not in TEMPLATES:
         template = "minimal"
 
+    # Build default email body for send modal
+    doc_type_name = settings.get("sell_doc_name", "Rēķins") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "Rēķins")
+    company_name = settings.get("company_name", "")
+    raw_date = doc.get("doc_date", "")
+    if raw_date and "-" in raw_date:
+        dp = raw_date.split("-")
+        display_date = f"{dp[2]}.{dp[1]}.{dp[0]}"
+    else:
+        display_date = raw_date
+    custom_tpl = settings.get("email_template", "")
+    if custom_tpl:
+        default_email_body = custom_tpl.replace("{doc_type}", doc_type_name).replace("{doc_number}", doc["doc_number"]).replace("{date}", display_date).replace("{company}", company_name)
+    else:
+        default_email_body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}\nDatums: {display_date}\n\nAr cieņu,\n{company_name}\n"
+
     ctx.update({
         "doc": doc,
         "items": items,
@@ -1279,6 +1296,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "templates": TEMPLATES,
         "selected_template": template,
         "has_logo": _get_logo_path(user["id"]) is not None,
+        "default_email_body": default_email_body,
         "page": "documents",
     })
     return templates.TemplateResponse("document_view.html", ctx)
@@ -1329,11 +1347,30 @@ async def send_document_email(request: Request, doc_id: int):
     doc_type_name = settings.get("sell_doc_name", "Rēķins") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "Rēķins")
     user_email = user.get("email", "")
 
+    # Format date as dd.mm.yyyy
+    raw_date = doc.get("doc_date", "")
+    if raw_date and "-" in raw_date:
+        dp = raw_date.split("-")
+        display_date = f"{dp[2]}.{dp[1]}.{dp[0]}"
+    else:
+        display_date = raw_date
+
+    # Use custom body if provided, otherwise build default
+    custom_body = form.get("email_body", "").strip()
+    if custom_body:
+        email_body = custom_body
+    else:
+        default_tpl = settings.get("email_template", "")
+        if default_tpl:
+            email_body = default_tpl.replace("{doc_type}", doc_type_name).replace("{doc_number}", doc["doc_number"]).replace("{date}", display_date).replace("{company}", company_name)
+        else:
+            email_body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}\nDatums: {display_date}\n\nAr cieņu,\n{company_name}\n"
+
     try:
         _send_email(
             to_email=recipient_email,
             subject=f"{doc_type_name} Nr. {doc['doc_number']} — {company_name}",
-            body=f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}\nDatums: {doc['doc_date']}\n\nAr cieņu,\n{company_name}\n",
+            body=email_body,
             reply_to=user_email,
             attachment_path=filepath,
         )

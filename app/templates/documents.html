@@ -75,7 +75,7 @@
                             <th>Tips</th>
                             <th>Klients</th>
                             <th>Datums</th>
-                            <th>PVN %</th>
+                            <th>Summa</th>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <th>Statuss</th>
                             {% endif %}
@@ -95,7 +95,7 @@
                             </td>
                             <td>{{ doc.client_name }}</td>
                             <td>{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
-                            <td>{{ doc.vat_rate }}%</td>
+                            <td>{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <td>
                                 <span class="badge badge-status {% if doc.status == 'paid' %}badge-paid{% else %}badge-issued{% endif %}"

@@ -228,6 +228,10 @@
   - Exports as "M" (vat payer) or "X" (non-payer) in `vat_category` column
 - **Document type codes:** Export uses "Pirk." (buy) / "Pārd." (sell) instead of raw type values
 - **30+ export field types** available for column configuration (doc info, client data, company data, line items, calculated totals)
+- **Documents list:** Replaced PVN % column with total invoice sum (with VAT)
+- **Custom email text:** Editable default email template in settings with `{doc_type}`, `{doc_number}`, `{date}`, `{company}` placeholders
+- **Send popup:** "Pielāgot e-pasta ziņojumu" checkbox reveals editable textarea with pre-filled default text
+- **Email date format:** Changed from yyyy-mm-dd to dd.mm.yyyy
 
 ---
 
@@ -492,7 +496,7 @@ The project has ~50 commits on the main branch, progressing from:
 
 These are areas that may need attention in future sessions:
 - Stripe price IDs need to be configured in `.env` for billing to work
-- Brevo API key needs to be set if using Brevo for email
+- Email sending works (Brevo API configured, manual sending verified; recurring invoice emails not yet tested)
 - Database migrations strategy for schema changes
 - Automated backups for the SQLite database
 - Rate limiting / abuse prevention

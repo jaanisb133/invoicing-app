@@ -282,6 +282,22 @@
             </div>
         </div>
 
+        <div class="card">
+            <div class="card-header">E-pasta ziņojuma teksts</div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label>Noklusējuma e-pasta teksts</label>
+                    <textarea name="email_template" class="form-control" rows="6"
+                              style="font-size:13px;line-height:1.5;resize:vertical"
+                              placeholder="Labdien!&#10;&#10;Pielikumā nosūtām dokumentu: {doc_type} Nr. {doc_number}&#10;Datums: {date}&#10;&#10;Ar cieņu,&#10;{company}">{{ settings.get('email_template', '') }}</textarea>
+                    <span style="font-size:12px;color:var(--text-light)">
+                        Pieejamie mainīgie: <code>{doc_type}</code> — dokumenta tips, <code>{doc_number}</code> — numurs, <code>{date}</code> — datums, <code>{company}</code> — uzņēmuma nosaukums.
+                        Atstājiet tukšu, lai izmantotu sistēmas noklusējumu.
+                    </span>
+                </div>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 28px">Saglabāt iestatījumus</button>
     </form>
 </div>

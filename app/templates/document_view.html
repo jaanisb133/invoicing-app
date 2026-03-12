@@ -86,7 +86,7 @@
 
 <!-- Send Email Modal -->
 <div class="modal-overlay" id="sendEmailModal">
-    <div class="modal">
+    <div class="modal" style="max-width:560px">
         <div class="modal-title">Nosūtīt dokumentu pa e-pastu</div>
         <form method="post" action="/documents/{{ doc.id }}/send">
             <input type="hidden" name="template" id="sendTemplate" value="{{ selected_template }}">
@@ -103,6 +103,20 @@
                     Tēma: {{ settings.get('sell_doc_name', 'Rēķins') if doc.doc_type == 'sell' else settings.get('buy_doc_name', 'Rēķins') }} Nr. {{ doc.doc_number }} — {{ settings.get('company_name', '') }}<br>
                     Pielikums: {{ doc.doc_number }}.pdf
                 </span>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="customEmailToggle" onchange="toggleCustomEmail()"
+                           style="width:18px;height:18px;cursor:pointer">
+                    Pielāgot e-pasta ziņojumu
+                </label>
+            </div>
+            <div id="customEmailSection" style="display:none">
+                <div class="form-group">
+                    <label>E-pasta teksts</label>
+                    <textarea name="email_body" id="emailBodyText" class="form-control" rows="6"
+                              style="font-size:13px;line-height:1.5;resize:vertical">{{ default_email_body }}</textarea>
+                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="document.getElementById('sendEmailModal').classList.remove('active')">Atcelt</button>
@@ -430,6 +444,18 @@ function showSendModal() {
     document.getElementById('sendEmailModal').classList.add('active');
     const emailInput = document.getElementById('sendEmail');
     if (!emailInput.value) emailInput.focus();
+}
+
+function toggleCustomEmail() {
+    const section = document.getElementById('customEmailSection');
+    const checkbox = document.getElementById('customEmailToggle');
+    const textarea = document.getElementById('emailBodyText');
+    section.style.display = checkbox.checked ? '' : 'none';
+    if (!checkbox.checked) {
+        textarea.name = '';
+    } else {
+        textarea.name = 'email_body';
+    }
 }
 
 function showRecurringModal() {
