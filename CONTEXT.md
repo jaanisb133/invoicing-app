@@ -299,17 +299,32 @@ journalctl -u vrekini -f    # View logs
 - **Secrets** in `.env` file (SMTP, Stripe, Brevo credentials)
 - **Nginx** handles SSL termination, static files (7-day cache), 10MB upload limit
 
-### Zombie Process Prevention (CRITICAL)
+### IMPORTANT: Only One App Instance (Resolved 2026-03-12)
+There must be exactly **one** systemd service and **one** app directory on the server:
+- **Service:** `vrekini.service` only — no other service should run uvicorn on port 8000
+- **App path:** `/opt/vrekini/` only — no other copies should exist
+
+**Root cause of the "ghost app" problem:** An old `invoicing.service` running from `/opt/invoicing/` was competing with `vrekini.service` for port 8000. The old service always won (started first), so the site served stale code and a different database. Fixed by disabling/removing `invoicing.service` and deleting `/opt/invoicing/` and `/tmp/invoicing-new/`.
+
+**If the site ever shows old/wrong content again**, check:
+```bash
+# Only vrekini.service should appear — nothing else with "invoic" in the name
+sudo systemctl list-units --type=service --all | grep -i invoic
+# Only ONE uvicorn from /opt/vrekini should appear
+ps aux | grep uvicorn
+# Only ONE database should exist
+sudo find / -name "veggie_invoices.db" 2>/dev/null
+```
+
+### Zombie Process Prevention
 The systemd service includes safeguards against orphan uvicorn processes:
 - **`KillMode=control-group`** — kills ALL processes in the service group, not just the main PID
 - **`ExecStartPre=fuser -k 8000/tcp`** — kills any stale process on port 8000 before starting
-- **`StartLimitBurst=5` / `StartLimitIntervalSec=60`** — stops infinite restart loops
-
-**History:** A recurring issue was that `systemctl restart` would fail because an old uvicorn process survived the stop and held port 8000. The new service kept crashing with `[Errno 98] Address already in use`, and Nginx kept proxying to the OLD stale process — serving outdated code/templates. The `ExecStartPre` and `KillMode` directives permanently fix this.
+- **`StartLimitBurst=5` / `StartLimitIntervalSec=60`** — stops infinite restart loops (in `[Unit]` section)
 
 **If it ever happens again:** `sudo fuser -k 8000/tcp && sleep 2 && sudo systemctl restart vrekini`
 
-**Never run `run.py` on the production server** — it's for local development only. Running it creates a second uvicorn on the same port that conflicts with the systemd service.
+**Never run `run.py` on the production server** — it's for local development only.
 
 ---
 

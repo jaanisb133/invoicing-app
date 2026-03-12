@@ -1,6 +1,9 @@
 [Unit]
 Description=V-Rēķini Invoice Manager
 After=network.target
+# Cap restarts to prevent infinite crash loops
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -19,9 +22,6 @@ ExecStart=/opt/vrekini/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 800
 
 Restart=always
 RestartSec=5
-# Cap restarts to prevent infinite crash loops
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 EnvironmentFile=/opt/vrekini/.env
 Environment=VREKINI_DB_PATH=/opt/vrekini/data/veggie_invoices.db
