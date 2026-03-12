@@ -27,6 +27,7 @@ logger = logging.getLogger("vrekini")
 
 from app import database as db
 from app.pdf_generator import generate_invoice_pdf, TEMPLATES
+from app.einvoice import generate_einvoice_xml, generate_einvoice_file
 
 app = FastAPI(title="V-Rēķini")
 
@@ -1615,6 +1616,63 @@ async def export_pdf_bulk(
         tmp.name,
         media_type="application/zip",
         filename=filename,
+    )
+
+
+# =============================================================================
+# E-invoice XML Export (PEPPOL BIS Billing 3.0)
+# =============================================================================
+
+@app.get("/documents/{doc_id}/einvoice")
+async def download_einvoice(request: Request, doc_id: int):
+    """Download a single document as PEPPOL BIS 3.0 e-invoice XML."""
+    user = request.state.user
+    doc, _ = db.get_document(doc_id)
+    if not doc or doc["user_id"] != user["id"]:
+        raise HTTPException(status_code=404)
+    filepath, filename = generate_einvoice_file(doc_id)
+    return FileResponse(
+        filepath,
+        media_type="application/xml",
+        filename=filename,
+    )
+
+
+@app.post("/export/einvoice")
+async def export_einvoice_bulk(
+    request: Request,
+    date_from: str = Form(""),
+    date_to: str = Form(""),
+    doc_type: str = Form(""),
+):
+    """Export multiple documents as e-invoice XML files in a ZIP archive."""
+    import zipfile
+    import tempfile
+
+    user = request.state.user
+    docs = db.get_documents(
+        user["id"],
+        doc_type=doc_type or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+    )
+
+    if not docs:
+        return RedirectResponse("/export?error=no_docs", status_code=303)
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp.close()
+
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc in docs:
+            xml_string, filename = generate_einvoice_xml(doc["id"])
+            zf.writestr(filename, xml_string)
+
+    zip_filename = f"e-rekini_{date_from}_{date_to}.zip"
+    return FileResponse(
+        tmp.name,
+        media_type="application/zip",
+        filename=zip_filename,
     )
 
 

@@ -50,6 +50,7 @@
 │   ├── main.py                    # FastAPI app — 60+ routes
 │   ├── database.py                # SQLite layer (1156 lines)
 │   ├── pdf_generator.py           # PDF generation (788 lines, 3 templates)
+│   ├── einvoice.py                # E-invoice XML generator (PEPPOL BIS 3.0)
 │   ├── fonts/
 │   │   ├── DMSans-Bold.ttf
 │   │   └── DMSans-Regular.ttf
@@ -66,7 +67,7 @@
 │       ├── products.html          # Product/service CRUD
 │       ├── stock.html             # Inventory dashboard
 │       ├── recurring.html         # Recurring invoice management
-│       ├── export.html            # Bulk PDF/ZIP export
+│       ├── export.html            # Bulk PDF/ZIP + e-invoice XML export
 │       ├── settings.html          # Company & document config (20KB)
 │       ├── account.html           # User profile & password
 │       ├── pricing.html           # Public pricing page
@@ -233,6 +234,20 @@
 - **Send popup:** "Pielāgot e-pasta ziņojumu" checkbox reveals editable textarea with pre-filled default text
 - **Email date format:** Changed from yyyy-mm-dd to dd.mm.yyyy
 
+### Phase 11: E-invoice Export (PEPPOL BIS Billing 3.0)
+- **E-invoice XML generator** (`app/einvoice.py`) — generates structured e-invoices in UBL 2.1 XML format
+- **Standard compliance:** PEPPOL BIS Billing 3.0, LVS EN 16931-1:2017 (mandatory in Latvia from 2028)
+- **Single document download:** `GET /documents/{id}/einvoice` — downloads one XML file
+- **Bulk export:** `POST /export/einvoice` — ZIP archive of multiple e-invoice XML files with date/type filters
+- **UI integration:**
+  - "E-rēķins XML" button on document view page (next to PDF download)
+  - Dedicated e-invoice export card on /export page with date range, type filter, preview
+- **Unit code mapping:** Latvian unit names (kg, gab, kaste, etc.) mapped to UN/ECE Recommendation 20 codes (KGM, C62, CT, etc.)
+- **Tax categories:** Automatic S (standard) / Z (zero-rate) determination based on VAT rate
+- **Payment means:** Includes bank account (IBAN) and credit transfer info from seller settings
+- **XML structure:** CustomizationID, ProfileID, InvoiceTypeCode (380), parties with EndpointID, TaxTotal, LegalMonetaryTotal, InvoiceLines
+- **VID reference:** https://www.vid.gov.lv/lv/e-rekini
+
 ---
 
 ## 6. Key Routes
@@ -249,6 +264,7 @@
 - `GET /documents/new`, `POST /documents/create`
 - `GET /documents/{id}`, `GET /documents/{id}/edit`, `POST /documents/{id}/update`
 - `GET /documents/{id}/pdf` — Generate/download PDF
+- `GET /documents/{id}/einvoice` — Download e-invoice XML (PEPPOL BIS 3.0)
 - `POST /documents/{id}/send` — Email with PDF attachment
 - `POST /documents/{id}/delete`, `POST /documents/{id}/status`
 
@@ -265,7 +281,7 @@
 ### Stock, Recurring, Export
 - `GET /stock`, `GET /api/stock/{product_id}`
 - `GET /recurring`, `POST /recurring/create`, `POST /recurring/from-document/{id}`, `POST /recurring/{id}/toggle`, `POST /recurring/{id}/delete`
-- `GET /export`, `POST /export/pdf`, `POST /export/accounting`
+- `GET /export`, `POST /export/pdf`, `POST /export/einvoice`, `POST /export/accounting`
 - `POST /api/accounting-presets/save`, `GET /api/accounting-presets`
 
 ### Billing
@@ -489,6 +505,7 @@ The project has ~50 commits on the main branch, progressing from:
 7. Production deployment (nginx, systemd, SSL)
 8. Stripe billing + Brevo email integration
 9. Stability fixes
+10. E-invoice export (PEPPOL BIS Billing 3.0 / LVS EN 16931-1:2017)
 
 ---
 
