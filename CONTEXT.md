@@ -332,8 +332,20 @@ ls -la /opt/vrekini/data/*.backup-*
 ```
 
 ### Download Database to Local Machine (run from YOUR computer, not the server)
+
+**Download the live database:**
 ```bash
-scp root@204.168.150.114:/opt/vrekini/data/veggie_invoices.db ~/Downloads/
+scp root@204.168.150.114:/opt/vrekini/data/veggie_invoices.db ~/Downloads/veggie_invoices.db
+```
+
+**Download a specific backup (use its full filename):**
+```bash
+scp root@204.168.150.114:/opt/vrekini/data/veggie_invoices.db.backup-20260312-143025 ~/Downloads/veggie_invoices.db.backup-20260312-143025
+```
+
+**List available backups before downloading (run from your computer):**
+```bash
+ssh root@204.168.150.114 "ls -la /opt/vrekini/data/*.backup-*"
 ```
 
 ### Restore from a Backup (run on the server)
