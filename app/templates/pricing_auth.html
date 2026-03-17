@@ -1,9 +1,91 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-header">
-    <h2>Cenas</h2>
+    <h2>Mans abonements</h2>
 </div>
 <div class="page-body" style="max-width:960px">
+    <!-- Current subscription info -->
+    <div class="card" style="margin-bottom:28px">
+        <div class="card-body" style="padding:24px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+                <span style="font-size:15px;font-weight:600">Pašreizējais plāns:</span>
+                <span class="tier-badge tier-{{ current_user.tier }}">{{ limits.label }}</span>
+                {% if current_user.subscription_status == 'active' and current_user.tier != 'free' %}
+                <span class="badge badge-paid">Aktīvs</span>
+                {% elif current_user.subscription_status == 'past_due' %}
+                <span class="badge badge-issued">Kavēts maksājums</span>
+                {% elif current_user.subscription_status == 'cancelled' %}
+                <span class="badge" style="background:var(--danger-soft);color:var(--danger)">Atcelts</span>
+                {% endif %}
+                {% if current_user.billing_cycle %}
+                <span style="font-size:12px;color:var(--text-light)">
+                    ({{ 'mēneša' if current_user.billing_cycle == 'monthly' else 'gada' }} plāns)
+                </span>
+                {% endif %}
+            </div>
+
+            <div class="usage-section" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+                <div class="usage-item">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                        <span style="color:var(--text-light)">Dokumenti</span>
+                        <span style="font-weight:600">{{ usage.documents }} / {{ limits.max_documents }}</span>
+                    </div>
+                    <div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden">
+                        <div style="background:var(--accent);height:100%;border-radius:4px;width:{{ [(usage.documents / limits.max_documents * 100) | int, 100] | min }}%"></div>
+                    </div>
+                </div>
+                <div class="usage-item">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                        <span style="color:var(--text-light)">Klienti</span>
+                        <span style="font-weight:600">{{ usage.clients }} / {{ limits.max_clients }}</span>
+                    </div>
+                    <div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden">
+                        <div style="background:var(--accent);height:100%;border-radius:4px;width:{{ [(usage.clients / limits.max_clients * 100) | int, 100] | min }}%"></div>
+                    </div>
+                </div>
+                <div class="usage-item">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                        <span style="color:var(--text-light)">Produkti</span>
+                        <span style="font-weight:600">{{ usage.products }} / {{ limits.max_products }}</span>
+                    </div>
+                    <div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden">
+                        <div style="background:var(--accent);height:100%;border-radius:4px;width:{{ [(usage.products / limits.max_products * 100) | int, 100] | min }}%"></div>
+                    </div>
+                </div>
+            </div>
+
+            {% if current_user.stripe_customer_id and has_stripe %}
+            <div style="margin-top:16px">
+                <form method="post" action="/billing/portal" style="display:inline">
+                    <button type="submit" class="btn btn-outline btn-sm">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                        Pārvaldīt maksājumus
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Pricing plans -->
     {% include "_pricing_content.html" %}
 </div>
+
+{% if upgrade %}
+<script>
+// Auto-submit checkout for the selected plan after registration
+document.addEventListener('DOMContentLoaded', function() {
+    var tier = '{{ upgrade }}';
+    var cycle = '{{ upgrade_cycle }}';
+    if (tier === 'starter' || tier === 'business') {
+        var form = document.querySelector('form[action="/billing/checkout"] input[value="' + tier + '"]');
+        if (form) {
+            var cycleInput = form.parentElement.querySelector('.cycle-input');
+            if (cycleInput) cycleInput.value = cycle;
+            form.parentElement.submit();
+        }
+    }
+});
+</script>
+{% endif %}
 {% endblock %}

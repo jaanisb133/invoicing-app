@@ -1008,26 +1008,30 @@ def ensure_default_admin():
 
 TIER_LIMITS = {
     "free": {
-        "max_documents": 50, "max_clients": 20, "max_products": 50,
-        "max_emails_month": 5, "recurring": False, "all_templates": False,
+        "max_documents": 5, "max_clients": 3, "max_products": 3,
+        "max_emails_month": 0, "recurring": False, "all_templates": False,
+        "einvoice": False, "accounting_export": False,
         "label": "Bezmaksas",
         "price_monthly": 0, "price_yearly": 0,
     },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": 200,
         "max_emails_month": 50, "recurring": True, "all_templates": True,
+        "einvoice": True, "accounting_export": True,
         "label": "Sākums",
-        "price_monthly": 499, "price_yearly": 4900,  # cents
+        "price_monthly": 999, "price_yearly": 9900,  # cents
     },
     "business": {
         "max_documents": 5000, "max_clients": 500, "max_products": 1000,
         "max_emails_month": 0, "recurring": True, "all_templates": True,  # 0 = unlimited
+        "einvoice": True, "accounting_export": True,
         "label": "Bizness",
-        "price_monthly": 1299, "price_yearly": 12900,  # cents
+        "price_monthly": 1999, "price_yearly": 19900,  # cents
     },
     "admin": {
         "max_documents": 999999, "max_clients": 999999, "max_products": 999999,
         "max_emails_month": 0, "recurring": True, "all_templates": True,
+        "einvoice": True, "accounting_export": True,
         "label": "Administrators",
         "price_monthly": 0, "price_yearly": 0,
     },

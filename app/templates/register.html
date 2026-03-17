@@ -40,13 +40,21 @@
     <div class="login-container">
         <div class="login-card">
             <h1>Izveidot kontu</h1>
+            {% if plan == 'starter' %}
+            <p class="subtitle">Reģistrējieties, lai aktivizētu <strong>Sākums</strong> plānu</p>
+            {% elif plan == 'business' %}
+            <p class="subtitle">Reģistrējieties, lai aktivizētu <strong>Bizness</strong> plānu</p>
+            {% else %}
             <p class="subtitle">Sāciet pārvaldīt savus rēķinus</p>
+            {% endif %}
 
             {% if error %}
             <div class="alert alert-danger">{{ error }}</div>
             {% endif %}
 
             <form method="post" action="/register">
+                <input type="hidden" name="plan" value="{{ plan or '' }}">
+                <input type="hidden" name="cycle" value="{{ cycle or 'monthly' }}">
                 <div class="form-group">
                     <label for="display_name">Vārds / Uzņēmuma nosaukums</label>
                     <input type="text" id="display_name" name="display_name" class="form-control"

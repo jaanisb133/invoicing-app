@@ -425,7 +425,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
 
 
 @app.get("/register", response_class=HTMLResponse)
-async def register_page(request: Request, error: str = ""):
+async def register_page(request: Request, error: str = "", plan: str = "", cycle: str = "monthly"):
     user = _get_current_user(request)
     if user:
         return RedirectResponse("/", status_code=303)
@@ -433,6 +433,8 @@ async def register_page(request: Request, error: str = ""):
         "request": request,
         "error": error,
         "page": "register",
+        "plan": plan,
+        "cycle": cycle,
     })
 
 
@@ -442,30 +444,22 @@ async def register(request: Request,
                    display_name: str = Form(...),
                    phone: str = Form(""),
                    password: str = Form(...),
-                   confirm_password: str = Form(...)):
+                   confirm_password: str = Form(...),
+                   plan: str = Form(""),
+                   cycle: str = Form("monthly")):
+    error_ctx = {
+        "request": request, "page": "register",
+        "email": email, "display_name": display_name, "phone": phone,
+        "plan": plan, "cycle": cycle,
+    }
     if password != confirm_password:
-        return templates.TemplateResponse("register.html", {
-            "request": request,
-            "error": "Paroles nesakrīt.",
-            "email": email, "display_name": display_name, "phone": phone,
-            "page": "register",
-        })
+        return templates.TemplateResponse("register.html", {**error_ctx, "error": "Paroles nesakrīt."})
 
     if len(password) < 6:
-        return templates.TemplateResponse("register.html", {
-            "request": request,
-            "error": "Parolei jābūt vismaz 6 simbolus garai.",
-            "email": email, "display_name": display_name, "phone": phone,
-            "page": "register",
-        })
+        return templates.TemplateResponse("register.html", {**error_ctx, "error": "Parolei jābūt vismaz 6 simbolus garai."})
 
     if db.get_user_by_email(email):
-        return templates.TemplateResponse("register.html", {
-            "request": request,
-            "error": "E-pasts jau reģistrēts.",
-            "email": email, "display_name": display_name, "phone": phone,
-            "page": "register",
-        })
+        return templates.TemplateResponse("register.html", {**error_ctx, "error": "E-pasts jau reģistrēts."})
 
     # Auto-generate username from email
     username = email.split("@")[0].lower().replace(" ", "_")
@@ -498,7 +492,11 @@ async def register(request: Request,
         "default_template": "minimal",
     })
 
-    response = RedirectResponse("/", status_code=303)
+    # If a paid plan was selected during registration, redirect to subscription page
+    if plan in ("starter", "business"):
+        response = RedirectResponse(f"/pricing?upgrade={plan}&cycle={cycle}", status_code=303)
+    else:
+        response = RedirectResponse("/", status_code=303)
     return _set_session_cookie(response, user_id)
 
 
@@ -622,12 +620,21 @@ async def terms_page(request: Request):
 
 
 @app.get("/pricing", response_class=HTMLResponse)
-async def pricing_page(request: Request):
+async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthly"):
     user = _get_current_user(request)
     if user:
         request.state.user = user
         ctx = _base_context(request)
-        ctx["page"] = "pricing"
+        limits = db.get_tier_limits(user.get("tier", "free"))
+        usage = db.get_user_resource_counts(user["id"])
+        ctx.update({
+            "page": "pricing",
+            "limits": limits,
+            "usage": usage,
+            "has_stripe": bool(STRIPE_SECRET_KEY),
+            "upgrade": upgrade,
+            "upgrade_cycle": cycle,
+        })
         return templates.TemplateResponse("pricing_auth.html", ctx)
     return templates.TemplateResponse("pricing.html", {
         "request": request,
