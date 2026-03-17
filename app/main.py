@@ -603,6 +603,24 @@ async def change_password(request: Request,
 # Pricing (public) & Stripe billing
 # =============================================================================
 
+@app.get("/contacts", response_class=HTMLResponse)
+async def contacts_page(request: Request):
+    return templates.TemplateResponse("contacts.html", {
+        "request": request,
+        "current_user": None,
+        "page": "contacts",
+    })
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page(request: Request):
+    return templates.TemplateResponse("terms.html", {
+        "request": request,
+        "current_user": None,
+        "page": "terms",
+    })
+
+
 @app.get("/pricing", response_class=HTMLResponse)
 async def pricing_page(request: Request):
     user = _get_current_user(request)

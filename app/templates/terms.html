@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noteikumi — V-Rēķini</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&subset=latin-ext&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=6">
+    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t)document.documentElement.setAttribute('data-theme',t);})()</script>
+    <style>
+        body { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg); }
+        .terms-page-wrap { flex: 1; max-width: 780px; margin: 0 auto; padding: 48px 24px; }
+        .terms-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 40px 36px;
+            box-shadow: var(--shadow);
+        }
+        .terms-card h2 { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; }
+        .terms-card .subtitle { color: var(--text-light); font-size: 15px; margin-bottom: 36px; }
+        .terms-card h3 {
+            font-size: 16px; font-weight: 700; margin-top: 32px; margin-bottom: 12px;
+            padding-bottom: 8px; border-bottom: 1px solid var(--border);
+        }
+        .terms-card h3:first-of-type { margin-top: 0; }
+        .terms-card p, .terms-card li {
+            font-size: 14px; line-height: 1.7; color: var(--text);
+        }
+        .terms-card p { margin-bottom: 12px; }
+        .terms-card ol, .terms-card ul {
+            padding-left: 20px; margin-bottom: 12px;
+        }
+        .terms-card li { margin-bottom: 6px; }
+        .terms-card strong { font-weight: 600; }
+        .card-logos {
+            display: flex; gap: 16px; align-items: center;
+            margin: 16px 0; flex-wrap: wrap;
+        }
+        .card-logos img {
+            height: 32px; width: auto;
+        }
+        .card-logos .logo-box {
+            display: inline-flex; align-items: center; justify-content: center;
+            background: white; border: 1px solid #e0e0e0; border-radius: 6px;
+            padding: 6px 12px; height: 44px;
+        }
+        @media (max-width: 600px) {
+            .terms-card { padding: 28px 20px; }
+        }
+    </style>
+</head>
+<body>
+    {% include "_public_navbar.html" %}
+    <div class="terms-page-wrap">
+        <div class="terms-card">
+            <h2>Pakalpojuma noteikumi</h2>
+            <p class="subtitle">Pakalpojuma sniegšanas, apmaksas un atgriešanas noteikumi</p>
+
+            <!-- 1. About the service -->
+            <h3>1. Pakalpojuma apraksts</h3>
+            <p>
+                V-Rēķini ir tiešsaistes rēķinu pārvaldības platforma, ko nodrošina SIA "VN Media"
+                (reģ. nr. 40203511357). Platforma piedāvā rēķinu izveidošanu, klientu pārvaldību,
+                produktu uzskaiti, periodisko rēķinu automatizāciju un citas ar grāmatvedību saistītas funkcijas.
+            </p>
+            <p>
+                Pilns pakalpojumu un cenu uzskaitījums ir pieejams <a href="/pricing">cenu lapā</a>.
+                Visas cenas norādītas <strong>EUR (eiro)</strong>. Norādītā cena ir galīgā cena —
+                papildu izmaksas, pasta izdevumi vai muitas nodevas netiek piemērotas, jo pakalpojums
+                tiek sniegts pilnībā digitāli.
+            </p>
+
+            <!-- 2. Payment process -->
+            <h3>2. Apmaksas kārtība</h3>
+            <p>Pakalpojuma iegādes process:</p>
+            <ol>
+                <li>Izvēlieties sev piemērotu abonēšanas plānu <a href="/pricing">cenu lapā</a>.</li>
+                <li>Reģistrējieties vai pieslēdzieties savam kontam.</li>
+                <li>Apstipriniet izvēlēto plānu — Jūs tiksiet novirzīts uz drošu maksājumu lapu.</li>
+                <li>Ievadiet savas maksājumu kartes datus drošajā EveryPay maksājumu vidē.</li>
+                <li>Pēc veiksmīga maksājuma pakalpojums tiek aktivizēts nekavējoties.</li>
+            </ol>
+            <p>
+                Pirms darījuma apstiprināšanas lietotājam ir jāiepazīstas un jāpiekrīt šiem
+                pakalpojuma sniegšanas noteikumiem. Darījuma apstiprināšana apliecina, ka kartes
+                īpašnieks ir piekritis pakalpojuma noteikumiem un nosacījumiem.
+            </p>
+
+            <!-- 3. Accepted payment methods -->
+            <h3>3. Maksājumu veidi un drošība</h3>
+            <p>
+                Maksājumu apstrādi nodrošina <strong>EveryPay</strong> sadarbībā ar <strong>SEB banku</strong>.
+                Mēs pieņemam šādus maksājumu veidus:
+            </p>
+            <div class="card-logos">
+                <div class="logo-box">
+                    <svg width="60" height="20" viewBox="0 0 60 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="0" y="0" width="24" height="20" rx="3" fill="#EB001B"/>
+                        <rect x="16" y="0" width="24" height="20" rx="3" fill="#F79E1B"/>
+                        <rect x="16" y="0" width="8" height="20" fill="#FF5F00"/>
+                        <text x="45" y="14" font-family="Arial" font-size="7" font-weight="bold" fill="#333">MC</text>
+                    </svg>
+                    <span style="font-size:12px;font-weight:600;margin-left:6px">Mastercard</span>
+                </div>
+                <div class="logo-box">
+                    <svg width="50" height="20" viewBox="0 0 50 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <text x="0" y="16" font-family="Arial" font-size="18" font-weight="bold" font-style="italic" fill="#1A1F71">VISA</text>
+                    </svg>
+                </div>
+            </div>
+            <p>
+                Maksājumu drošību garantē:
+            </p>
+            <ul>
+                <li><strong>Mastercard Identity Check</strong> (SecureCode) — papildu autentifikācija Mastercard darījumiem</li>
+                <li><strong>Visa Secure</strong> (Verified by Visa) — papildu autentifikācija Visa darījumiem</li>
+                <li><strong>3D Secure</strong> — visi karšu maksājumi tiek apstrādāti ar 3D Secure tehnoloģiju</li>
+                <li><strong>PCI DSS</strong> — EveryPay maksājumu platforma atbilst PCI DSS drošības standartiem</li>
+            </ul>
+            <p>
+                Karšu dati tiek ievadīti tieši EveryPay drošajā maksājumu vidē — V-Rēķini platforma
+                nesaglabā un neapstrādā karšu datus.
+            </p>
+
+            <!-- 4. Service delivery -->
+            <h3>4. Pakalpojuma piegāde</h3>
+            <p>
+                V-Rēķini ir digitāls pakalpojums. Pēc veiksmīga maksājuma:
+            </p>
+            <ul>
+                <li>Pakalpojums tiek aktivizēts nekavējoties (dažu sekunžu laikā).</li>
+                <li>Apstiprinājuma e-pasts tiek nosūtīts uz reģistrēto e-pasta adresi.</li>
+                <li>Abonements tiek automātiski atjaunots katra perioda beigās (mēneša vai gada).</li>
+            </ul>
+            <p>
+                Tā kā pakalpojums ir pilnībā digitāls, fiziska piegāde netiek veikta.
+                Pasta izdevumi un muitas nodevas nav piemērojami.
+            </p>
+
+            <!-- 5. Refund / cancellation policy -->
+            <h3>5. Atteikuma tiesības un atmaksa</h3>
+            <p>
+                Saskaņā ar ES distances tirdzniecības noteikumiem, Jums ir tiesības atteikties
+                no pakalpojuma <strong>14 dienu laikā</strong> pēc iegādes, nesniedzot iemeslu.
+            </p>
+            <ul>
+                <li>Lai pieteiktu atmaksu, sazinieties ar mums pa e-pastu <a href="mailto:info@vnmedia.lv">info@vnmedia.lv</a>.</li>
+                <li>Atmaksa tiek veikta uz to pašu maksājumu karti, no kuras tika veikts sākotnējais maksājums.</li>
+                <li>Atmaksa tiek apstrādāta 5–10 darba dienu laikā.</li>
+            </ul>
+            <p>
+                Abonementu var atcelt jebkurā laikā konta iestatījumos. Atceļot abonementu,
+                pakalpojums paliek aktīvs līdz tekošā apmaksātā perioda beigām.
+            </p>
+
+            <!-- 6. Guarantee -->
+            <h3>6. Garantija</h3>
+            <p>
+                Mēs garantējam pakalpojuma pieejamību 99.5% laika (gada griezumā). Ja pakalpojuma
+                darbībā rodas traucējumi, mēs tos novērsīsim pēc iespējas ātrāk un informēsim
+                lietotājus pa e-pastu.
+            </p>
+
+            <!-- 7. Customer support -->
+            <h3>7. Klientu atbalsts</h3>
+            <p>
+                Sazinieties ar mums, ja Jums ir jautājumi vai nepieciešama palīdzība:
+            </p>
+            <ul>
+                <li>
+                    <strong>E-pasts:</strong> <a href="mailto:info@vnmedia.lv">info@vnmedia.lv</a>
+                    — atbilde tiek sniegta <strong>24 stundu laikā</strong> darba dienās.
+                </li>
+                <li>
+                    <strong>Tālrunis:</strong> <a href="tel:+37127001074">+371 27001074</a>
+                    — darba dienās (P–Pk), 9:00–17:00 pēc vietējā laika (GMT+2 / Rīgas laiks).
+                </li>
+            </ul>
+
+            <!-- 8. EveryPay technical support -->
+            <h3>8. Maksājumu tehniskais atbalsts</h3>
+            <p>
+                Maksājumu apstrādes pakalpojums tiek sniegts sadarbībā ar SEB bankas partneri
+                <strong>EveryPay</strong> — atzīts par labāko mākoņa maksājumu risinājumu
+                Paytech Awards 2020.
+            </p>
+            <p>
+                Ja rodas tehniski jautājumi par maksājumu apstrādi, sazinieties ar EveryPay:
+            </p>
+            <ul>
+                <li><strong>Tālrunis:</strong> +371 25893803</li>
+                <li><strong>E-pasts:</strong> <a href="mailto:support@every-pay.com">support@every-pay.com</a></li>
+                <li><strong>Darbalaiks:</strong> P–Pk, 9:00–17:00</li>
+            </ul>
+
+            <!-- 9. Data & privacy -->
+            <h3>9. Datu apstrāde</h3>
+            <p>
+                SIA "VN Media" apstrādā personas datus saskaņā ar Vispārīgo datu aizsardzības
+                regulu (GDPR). Karšu datus apstrādā tikai EveryPay maksājumu platforma.
+                Sīkāka informācija par datu apstrādi pieejama, sazinoties ar mums pa e-pastu
+                <a href="mailto:info@vnmedia.lv">info@vnmedia.lv</a>.
+            </p>
+
+            <p style="margin-top:32px;color:var(--text-light);font-size:13px">
+                Pēdējo reizi atjaunināts: 2026. gada 17. marts
+            </p>
+        </div>
+    </div>
+    {% include "_public_footer.html" %}
+</body>
+</html>

@@ -10,8 +10,8 @@
     <link rel="stylesheet" href="/static/css/style.css?v=6">
     <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t)document.documentElement.setAttribute('data-theme',t);})()</script>
     <style>
-        body { display: block; min-height: 100vh; background: var(--bg); }
-        .pricing-page-wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px; }
+        body { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg); }
+        .pricing-page-wrap { flex: 1; max-width: 960px; margin: 0 auto; padding: 48px 24px; }
     </style>
 </head>
 <body>
@@ -19,5 +19,6 @@
     <div class="pricing-page-wrap">
         {% include "_pricing_content.html" %}
     </div>
+    {% include "_public_footer.html" %}
 </body>
 </html>

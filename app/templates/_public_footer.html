@@ -1,0 +1,107 @@
+<footer class="public-footer">
+    <div class="public-footer-inner">
+        <div class="public-footer-links">
+            <a href="/pricing">Cenas</a>
+            <a href="/contacts">Kontakti</a>
+            <a href="/terms">Noteikumi</a>
+        </div>
+        <div class="public-footer-cards">
+            <span style="font-size:12px;color:var(--text-light);margin-right:8px">Pieņemam:</span>
+            <!-- Visa -->
+            <div class="footer-card-logo">
+                <svg width="46" height="16" viewBox="0 0 46 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <text x="0" y="14" font-family="Arial,sans-serif" font-size="16" font-weight="bold" font-style="italic" fill="#1A1F71">VISA</text>
+                </svg>
+            </div>
+            <!-- Mastercard -->
+            <div class="footer-card-logo">
+                <svg width="36" height="22" viewBox="0 0 36 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="9" cy="11" r="9" fill="#EB001B"/>
+                    <circle cx="27" cy="11" r="9" fill="#F79E1B"/>
+                    <path d="M18 3.5a9 9 0 0 1 0 15 9 9 0 0 1 0-15z" fill="#FF5F00"/>
+                </svg>
+            </div>
+            <!-- Visa Secure -->
+            <div class="footer-card-logo" title="Visa Secure">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="20" height="20" rx="3" fill="#1A1F71"/>
+                    <path d="M10 4l-1 2h2l-1-2zm-3 4h6v1H7V8zm1 2h4v1H8v-1zm2 2a1 1 0 100 2 1 1 0 000-2z" fill="white"/>
+                </svg>
+                <span style="font-size:9px;font-weight:600;color:var(--text-light)">Secure</span>
+            </div>
+            <!-- Mastercard ID Check -->
+            <div class="footer-card-logo" title="Mastercard Identity Check">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="20" height="20" rx="3" fill="#F79E1B"/>
+                    <path d="M10 5a3 3 0 00-3 3v2h6V8a3 3 0 00-3-3zm-4 6v4h8v-4H6z" fill="white"/>
+                </svg>
+                <span style="font-size:9px;font-weight:600;color:var(--text-light)">ID Check</span>
+            </div>
+        </div>
+        <div class="public-footer-everypay">
+            Maksājumu apstrādi nodrošina <strong>EveryPay</strong> sadarbībā ar <strong>SEB banku</strong>
+        </div>
+        <div class="public-footer-copy">
+            &copy; 2025 SIA "VN Media", Reģ. Nr. 40203511357
+        </div>
+    </div>
+</footer>
+
+<style>
+    .public-footer {
+        border-top: 1px solid var(--border);
+        background: var(--bg-card);
+        padding: 32px 24px 24px;
+        margin-top: auto;
+    }
+    .public-footer-inner {
+        max-width: 960px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        text-align: center;
+    }
+    .public-footer-links {
+        display: flex;
+        gap: 24px;
+    }
+    .public-footer-links a {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-light);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+    .public-footer-links a:hover { color: var(--text); }
+    .public-footer-cards {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .footer-card-logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 4px 8px;
+        height: 30px;
+    }
+    [data-theme="dark"] .footer-card-logo {
+        background: #2a2a2a;
+        border-color: #444;
+    }
+    .public-footer-everypay {
+        font-size: 12px;
+        color: var(--text-light);
+    }
+    .public-footer-copy {
+        font-size: 12px;
+        color: var(--text-light);
+    }
+</style>

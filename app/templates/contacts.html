@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kontakti — V-Rēķini</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&subset=latin-ext&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=6">
+    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t)document.documentElement.setAttribute('data-theme',t);})()</script>
+    <style>
+        body { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg); }
+        .contacts-page-wrap { flex: 1; max-width: 720px; margin: 0 auto; padding: 48px 24px; }
+        .contacts-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 40px 36px;
+            box-shadow: var(--shadow);
+        }
+        .contacts-card h2 { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; }
+        .contacts-card .subtitle { color: var(--text-light); font-size: 15px; margin-bottom: 32px; }
+        .contact-row {
+            display: flex;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border);
+            gap: 16px;
+        }
+        .contact-row:last-child { border-bottom: none; }
+        .contact-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-light);
+            min-width: 160px;
+            flex-shrink: 0;
+        }
+        .contact-value {
+            font-size: 14px;
+            color: var(--text);
+            font-weight: 500;
+        }
+        .contact-value a { color: var(--accent); text-decoration: none; }
+        .contact-value a:hover { text-decoration: underline; }
+        @media (max-width: 600px) {
+            .contact-row { flex-direction: column; gap: 4px; }
+            .contact-label { min-width: unset; }
+        }
+    </style>
+</head>
+<body>
+    {% include "_public_navbar.html" %}
+    <div class="contacts-page-wrap">
+        <div class="contacts-card">
+            <h2>Kontaktinformācija</h2>
+            <p class="subtitle">Uzņēmuma rekvizīti un saziņas informācija</p>
+
+            <div class="contact-row">
+                <div class="contact-label">Uzņēmums</div>
+                <div class="contact-value">SIA "VN Media"</div>
+            </div>
+            <div class="contact-row">
+                <div class="contact-label">Reģistrācijas numurs</div>
+                <div class="contact-value">40203511357</div>
+            </div>
+            <div class="contact-row">
+                <div class="contact-label">Juridiskā adrese</div>
+                <div class="contact-value">"Sikšņi 1", Virešu pag., Smiltenes nov., LV-4355, Latvija</div>
+            </div>
+            <div class="contact-row">
+                <div class="contact-label">E-pasts</div>
+                <div class="contact-value"><a href="mailto:info@vnmedia.lv">info@vnmedia.lv</a></div>
+            </div>
+            <div class="contact-row">
+                <div class="contact-label">Tālrunis</div>
+                <div class="contact-value"><a href="tel:+37127001074">+371 27001074</a></div>
+            </div>
+        </div>
+    </div>
+    {% include "_public_footer.html" %}
+</body>
+</html>
