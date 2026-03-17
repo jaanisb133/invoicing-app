@@ -208,6 +208,12 @@ def _base_context(request):
     }
 
 
+def _check_tier_feature(user, feature_key):
+    """Check if user's tier has a boolean feature enabled."""
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    return bool(limits.get(feature_key, False))
+
+
 def _check_tier_limit(user, resource_type):
     """Check if user has reached their tier limit for a resource type.
     Returns (allowed: bool, current_count: int, max_count: int)."""
@@ -1508,6 +1514,8 @@ async def recurring_page(request: Request):
 @app.post("/recurring/create")
 async def create_recurring(request: Request):
     user = request.state.user
+    if not _check_tier_feature(user, "recurring"):
+        return RedirectResponse("/pricing", status_code=303)
     form = await request.form()
 
     doc_type = form.get("doc_type", "sell")
@@ -1549,6 +1557,8 @@ async def create_recurring(request: Request):
 async def create_recurring_from_document(request: Request, doc_id: int):
     """Create a recurring invoice schedule from an existing document."""
     user = request.state.user
+    if not _check_tier_feature(user, "recurring"):
+        return RedirectResponse("/pricing", status_code=303)
     form = await request.form()
     frequency = form.get("frequency", "monthly")
     send_email = form.get("send_email", "0") == "1"
@@ -1584,6 +1594,8 @@ async def create_recurring_from_document(request: Request, doc_id: int):
 @app.post("/recurring/{recurring_id}/toggle")
 async def toggle_recurring(request: Request, recurring_id: int):
     user = request.state.user
+    if not _check_tier_feature(user, "recurring"):
+        return RedirectResponse("/pricing", status_code=303)
     db.toggle_recurring_invoice(user["id"], recurring_id)
     return RedirectResponse("/recurring", status_code=303)
 
@@ -1591,6 +1603,8 @@ async def toggle_recurring(request: Request, recurring_id: int):
 @app.post("/recurring/{recurring_id}/delete")
 async def delete_recurring(request: Request, recurring_id: int):
     user = request.state.user
+    if not _check_tier_feature(user, "recurring"):
+        return RedirectResponse("/pricing", status_code=303)
     db.delete_recurring_invoice(user["id"], recurring_id)
     return RedirectResponse("/recurring", status_code=303)
 
@@ -1669,6 +1683,8 @@ async def export_pdf_bulk(
 async def download_einvoice(request: Request, doc_id: int):
     """Download a single document as PEPPOL BIS 3.0 e-invoice XML."""
     user = request.state.user
+    if not _check_tier_feature(user, "einvoice"):
+        return RedirectResponse("/pricing", status_code=303)
     doc, _ = db.get_document(doc_id)
     if not doc or doc["user_id"] != user["id"]:
         raise HTTPException(status_code=404)
@@ -1692,6 +1708,8 @@ async def export_einvoice_bulk(
     import tempfile
 
     user = request.state.user
+    if not _check_tier_feature(user, "einvoice"):
+        return RedirectResponse("/pricing", status_code=303)
     docs = db.get_documents(
         user["id"],
         doc_type=doc_type or None,
@@ -1927,6 +1945,8 @@ async def export_accounting(request: Request):
     import tempfile
 
     user = request.state.user
+    if not _check_tier_feature(user, "accounting_export"):
+        return RedirectResponse("/pricing", status_code=303)
     form = await request.form()
     date_from = form.get("acc_date_from", "")
     date_to = form.get("acc_date_to", "")

@@ -5,7 +5,12 @@
     <h2>Eksports</h2>
 </div>
 
-<div class="page-body">
+<div class="page-body{% if not tier_limits.accounting_export %} page-gated{% endif %}">
+    {% if not tier_limits.accounting_export %}
+    {% set gate_feature = "Dokumentu eksports" %}
+    {% set gate_description = "Eksportējiet dokumentus PDF, e-rēķinu un grāmatvedības formātos. Pieejams Sākums un Bizness plānos." %}
+    {% include "_upgrade_gate.html" %}
+    {% endif %}
     {% if request.query_params.get('error') == 'no_docs' %}
     <div class="alert alert-danger">Norādītajā periodā nav atrasts neviens dokuments.</div>
     {% endif %}

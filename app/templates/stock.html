@@ -5,7 +5,12 @@
     <h2>Noliktava</h2>
 </div>
 
-<div class="page-body">
+<div class="page-body{% if tier not in ('business', 'admin') %} page-gated{% endif %}">
+    {% if tier not in ('business', 'admin') %}
+    {% set gate_feature = "Noliktavas pārvaldība" %}
+    {% set gate_description = "Izsekojiet krājumu atlikumus un kustību reāllaikā. Pieejams Bizness plānā." %}
+    {% include "_upgrade_gate.html" %}
+    {% endif %}
     {% if not stock_enabled %}
     <div class="alert alert-info">
         Noliktavas uzskaite ir izslēgta. Ieslēdziet to <a href="/settings">iestatījumos</a>, lai izsekotu krājumus.

@@ -206,6 +206,16 @@ body {
 
 .sidebar-nav a.active svg { opacity: 1; }
 
+.sidebar-lock {
+    font-size: 9px;
+    font-weight: 700;
+    background: rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.5);
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: auto;
+    letter-spacing: 0.5px;
+}
 .sidebar-divider {
     height: 1px;
     background: rgba(255,255,255,0.08);

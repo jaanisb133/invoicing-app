@@ -1,0 +1,50 @@
+{#
+  Upgrade gate overlay. Include on pages restricted by tier.
+  Required context: gate_feature (str), gate_description (str)
+  Uses tier_limits from _base_context.
+#}
+<div class="upgrade-gate-overlay">
+    <div class="upgrade-gate-content">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <h3 style="margin:16px 0 8px;font-size:20px;font-weight:700">{{ gate_feature }}</h3>
+        <p style="color:var(--text-light);font-size:14px;margin-bottom:20px;max-width:400px">
+            {{ gate_description }}
+        </p>
+        <a href="/pricing" class="btn btn-primary" style="padding:10px 28px;font-size:14px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Uzlabot plānu
+        </a>
+    </div>
+</div>
+
+<style>
+    .upgrade-gate-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.85);
+        backdrop-filter: blur(3px);
+        border-radius: var(--radius-lg);
+    }
+    [data-theme="dark"] .upgrade-gate-overlay {
+        background: rgba(30,30,30,0.88);
+    }
+    .upgrade-gate-content {
+        text-align: center;
+        padding: 32px;
+    }
+    .page-gated {
+        position: relative;
+        min-height: 300px;
+    }
+    .page-gated > *:not(.upgrade-gate-overlay) {
+        opacity: 0.3;
+        pointer-events: none;
+        user-select: none;
+    }
+</style>
