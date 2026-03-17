@@ -1,29 +1,23 @@
 <footer class="public-footer">
     <div class="public-footer-inner">
-        <div class="public-footer-links">
-            <a href="/pricing">Cenas</a>
-            <a href="/terms">Noteikumi</a>
-            <a href="/contacts">Kontakti</a>
+        <div class="public-footer-left">
+            <div class="public-footer-copy">&copy; 2025 SIA "VN Media", Reģ. Nr. 40203511357</div>
+            <div class="public-footer-links">
+                <a href="/pricing">Cenas</a>
+                <a href="/terms">Noteikumi</a>
+                <a href="/contacts">Kontakti</a>
+            </div>
         </div>
-        <div class="public-footer-cards">
-            <span style="font-size:12px;color:var(--text-light);margin-right:8px">Pieņemam:</span>
-            <div class="footer-card-logo"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Visa_Brandmark_Blue_RGB_2021.png" alt="Visa" height="18"></div>
-            <div class="footer-card-logo"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/ma_symbol.svg" alt="Mastercard" height="22"></div>
-            <div class="footer-card-logo"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Google_Pay_Logo.svg.png" alt="Google Pay" height="18"></div>
-            <div class="footer-card-logo"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Apple_Pay_Mark_RGB_041619.svg" alt="Apple Pay" height="18"></div>
-        </div>
-        <div class="public-footer-cards" style="margin-top:-8px">
-            <span style="font-size:12px;color:var(--text-light);margin-right:8px">Partneri:</span>
-            <div class="footer-card-logo"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Our_logotype_626px.webp" alt="EveryPay" height="16"></div>
-            <div class="footer-card-logo"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/seb_k_45mm150dpi.jpg" alt="SEB" height="20"></div>
-            <div class="footer-card-logo"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Citadele_logo_bg.jpg" alt="Citadele" height="20"></div>
-            <div class="footer-card-logo"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/lhv-logo.svg" alt="LHV" height="18"></div>
-        </div>
-        <div class="public-footer-everypay">
-            Maksājumu apstrādi nodrošina <strong>EveryPay</strong> sadarbībā ar <strong>SEB banku</strong>
-        </div>
-        <div class="public-footer-copy">
-            &copy; 2025 SIA "VN Media", Reģ. Nr. 40203511357
+        <div class="public-footer-logos">
+            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Visa_Brandmark_Blue_RGB_2021.png" alt="Visa" height="12">
+            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/ma_symbol.svg" alt="Mastercard" height="16">
+            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Google_Pay_Logo.svg.png" alt="Google Pay" height="12">
+            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Apple_Pay_Mark_RGB_041619.svg" alt="Apple Pay" height="12">
+            <span class="footer-sep"></span>
+            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Our_logotype_626px.webp" alt="EveryPay" height="11">
+            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/seb_k_45mm150dpi.jpg" alt="SEB" height="14">
+            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Citadele_logo_bg.jpg" alt="Citadele" height="14">
+            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/lhv-logo.svg" alt="LHV" height="12">
         </div>
     </div>
 </footer>
@@ -32,57 +26,53 @@
     .public-footer {
         border-top: 1px solid var(--border);
         background: var(--bg-card);
-        padding: 32px 24px 24px;
+        padding: 16px 24px;
         margin-top: auto;
     }
     .public-footer-inner {
         max-width: 960px;
         margin: 0 auto;
         display: flex;
-        flex-direction: column;
         align-items: center;
+        justify-content: space-between;
         gap: 16px;
-        text-align: center;
+    }
+    .public-footer-left {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+    .public-footer-copy {
+        font-size: 11px;
+        color: var(--text-light);
+        white-space: nowrap;
     }
     .public-footer-links {
         display: flex;
-        gap: 24px;
+        gap: 16px;
     }
     .public-footer-links a {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
         color: var(--text-light);
         text-decoration: none;
         transition: color 0.15s;
     }
     .public-footer-links a:hover { color: var(--text); }
-    .public-footer-cards {
+    .public-footer-logos {
         display: flex;
         align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        justify-content: center;
+        gap: 8px;
+        opacity: 0.6;
     }
-    .footer-card-logo {
-        display: inline-flex;
-        align-items: center;
-        gap: 3px;
-        background: white;
-        border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        padding: 4px 8px;
-        height: 30px;
+    .public-footer-logos:hover { opacity: 1; }
+    .footer-sep {
+        width: 1px;
+        height: 14px;
+        background: var(--border);
     }
-    [data-theme="dark"] .footer-card-logo {
-        background: #2a2a2a;
-        border-color: #444;
-    }
-    .public-footer-everypay {
-        font-size: 12px;
-        color: var(--text-light);
-    }
-    .public-footer-copy {
-        font-size: 12px;
-        color: var(--text-light);
+    @media (max-width: 700px) {
+        .public-footer-inner { flex-direction: column; align-items: flex-start; }
+        .public-footer-left { flex-direction: column; align-items: flex-start; gap: 8px; }
     }
 </style>
