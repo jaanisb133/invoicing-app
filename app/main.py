@@ -238,7 +238,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        if (path.startswith("/static") or path in ("/login", "/register", "/pricing")
+        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms")
                 or path == "/stripe/webhook"):
             return await call_next(request)
 
