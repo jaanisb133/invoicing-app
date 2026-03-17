@@ -3,7 +3,7 @@
 <div class="page-header">
     <h2>Mans abonements</h2>
 </div>
-<div class="page-body" style="max-width:960px">
+<div class="page-body">
     <!-- Current subscription info -->
     <div class="card" style="margin-bottom:28px">
         <div class="card-body" style="padding:24px">
@@ -71,21 +71,49 @@
     {% include "_pricing_content.html" %}
 </div>
 
-{% if upgrade %}
+<style>
+    .pricing-grid .card {
+        transition: transform 0.15s, box-shadow 0.15s;
+        cursor: default;
+    }
+    .pricing-grid .card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+    [data-theme="dark"] .pricing-grid .card:hover {
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .pricing-grid .card.current-plan {
+        border: 2px solid var(--accent) !important;
+        background: var(--accent-soft);
+    }
+</style>
+
 <script>
-// Auto-submit checkout for the selected plan after registration
 document.addEventListener('DOMContentLoaded', function() {
-    var tier = '{{ upgrade }}';
-    var cycle = '{{ upgrade_cycle }}';
-    if (tier === 'starter' || tier === 'business') {
-        var form = document.querySelector('form[action="/billing/checkout"] input[value="' + tier + '"]');
-        if (form) {
-            var cycleInput = form.parentElement.querySelector('.cycle-input');
-            if (cycleInput) cycleInput.value = cycle;
-            form.parentElement.submit();
+    // Highlight current plan card
+    var currentTier = '{{ current_user.tier }}';
+    var tiers = ['free', 'starter', 'business'];
+    var cards = document.querySelectorAll('.pricing-grid .card');
+    tiers.forEach(function(tier, i) {
+        if (tier === currentTier && cards[i]) {
+            cards[i].classList.add('current-plan');
+        }
+    });
+
+    {% if upgrade %}
+    // Auto-submit checkout for the selected plan after registration
+    var upgradeTier = '{{ upgrade }}';
+    var upgradeCycle = '{{ upgrade_cycle }}';
+    if (upgradeTier === 'starter' || upgradeTier === 'business') {
+        var input = document.querySelector('form[action="/billing/checkout"] input[value="' + upgradeTier + '"]');
+        if (input) {
+            var cycleInput = input.parentElement.querySelector('.cycle-input');
+            if (cycleInput) cycleInput.value = upgradeCycle;
+            input.parentElement.submit();
         }
     }
+    {% endif %}
 });
 </script>
-{% endif %}
 {% endblock %}

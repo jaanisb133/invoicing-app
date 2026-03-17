@@ -75,9 +75,16 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <span class="tier-badge tier-{{ user.tier or 'free' }}">
-                                    {{ tiers.get(user.tier or 'free', {}).get('label', 'Bezmaksas') }}
-                                </span>
+                                <form method="post" action="/users/{{ user.id }}/tier" style="display:inline">
+                                    <select name="tier" class="form-control" style="width:auto;display:inline;padding:4px 8px;font-size:12px"
+                                            onchange="this.form.submit()">
+                                        {% for tier_key, tier_val in tiers.items() %}
+                                        <option value="{{ tier_key }}" {% if (user.tier or 'free') == tier_key %}selected{% endif %}>
+                                            {{ tier_val.label }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </form>
                             </td>
                             <td class="text-muted">{{ user.created_at[:10] if user.created_at else '' }}</td>
                             <td>

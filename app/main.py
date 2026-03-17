@@ -828,6 +828,20 @@ async def delete_user(request: Request, user_id: int):
     return RedirectResponse("/users?success=Lietotājs dzēsts", status_code=303)
 
 
+@app.post("/users/{user_id}/tier")
+async def change_user_tier(request: Request, user_id: int, tier: str = Form(...)):
+    user = request.state.user
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403)
+    if tier not in db.TIER_LIMITS:
+        return RedirectResponse("/users?error=Nederīgs plāns", status_code=303)
+    db.update_user_subscription(user_id, tier)
+    target = db.get_user(user_id)
+    name = target["username"] if target else str(user_id)
+    label = db.TIER_LIMITS[tier]["label"]
+    return RedirectResponse(f"/users?success=Lietotāja {name} plāns mainīts uz {label}", status_code=303)
+
+
 # =============================================================================
 # Dashboard
 # =============================================================================
