@@ -136,7 +136,10 @@
    - `frequency, next_run, send_email, active`
    - `items_json` (serialized line items), `created_at`
 
-10. **settings** — Global system settings
+10. **email_log** — Tracks emails sent per user (for monthly limit enforcement)
+    - `id, user_id, document_id, recipient, sent_at`
+
+11. **settings** — Global system settings
     - `key, value`
 
 ---
@@ -197,9 +200,9 @@
 ### Phase 8: Monetization
 - Brevo API email integration (with SMTP fallback)
 - Stripe subscription billing with 3 tiers:
-  - **Free:** 50 docs, 20 clients, 50 products, 5 emails/month
-  - **Starter (€9.99/mo):** 500 docs, 100 clients, 200 products, 50 emails/month, recurring
-  - **Business (€19.99/mo):** 5000 docs, 500 clients, 1000 products, unlimited emails, all templates
+  - **Free:** 5 docs, 3 clients, 3 products, 0 emails, no recurring, classic template only
+  - **Starter (€9.99/mo):** 500 docs, 100 clients, 200 products, 50 emails/month, recurring, all templates, e-invoice, export
+  - **Business (€19.99/mo):** 5000 docs, 500 clients, 1000 products, unlimited emails, all features
 - Stripe webhooks (customer.created, subscription.updated, subscription.deleted)
 - Customer portal access for subscription management
 - Pricing page (public + authenticated versions)
@@ -247,6 +250,32 @@
 - **Payment means:** Includes bank account (IBAN) and credit transfer info from seller settings
 - **XML structure:** CustomizationID, ProfileID, InvoiceTypeCode (380), parties with EndpointID, TaxTotal, LegalMonetaryTotal, InvoiceLines
 - **VID reference:** https://www.vid.gov.lv/lv/e-rekini
+
+### Phase 12: UI Action Menus & Tier Gating
+- **Document view page** — consolidated 6+ action buttons into cleaner layout:
+  - **Split download button** with dropdown: PDF download (main button) + chevron opens dropdown with PDF and E-rēķins XML options
+  - **3-dot menu** for remaining actions: Nosūtīt klientam, Rediģēt, Periodiskais rēķins, Atzīmēt kā apmaksātu/izrakstītu
+  - Both menus use `position: fixed` dropdowns with viewport clamping (same pattern as document list)
+- **Document list 3-dot menu** — added two new actions:
+  - "Nosūtīt klientam" — opens send-email modal with client email pre-filled from JS lookup map
+  - "Periodiskais rēķins" — opens recurring invoice modal
+  - Both use shared modals at page level, populated dynamically via `data-action` / `data-doc-id` / `data-client-id` attributes
+  - Fixed click handler bug: switched from inline `onclick` on `<a>` tags (swallowed by centralized handler) to `data-action` buttons handled explicitly
+- **Dashboard 3-dot menu** — replaced simple "Skatīt" button with full menu matching documents list:
+  - Skatīt, Rediģēt, Lejupielādēt PDF, E-rēķins XML, Nosūtīt klientam, Periodiskais rēķins, status toggle, Dzēst
+  - Added status column to dashboard table (when status tracking enabled)
+  - Reduced recent docs from 10 to 5
+  - Added send-email and recurring-invoice modals
+- **Free plan gating** on all 3 pages (document view, document list, dashboard):
+  - "Nosūtīt klientam" disabled with PRO badge for free users → links to /pricing
+  - "Periodiskais rēķins" disabled with PRO badge for free users → links to /pricing
+  - Template flags: `email_enabled` and `recurring_enabled` passed from all 3 route handlers
+- **Email usage tracking:**
+  - New `email_log` table records every sent email (user, document, recipient, timestamp)
+  - `get_emails_sent_this_month()` counts emails in current calendar month
+  - `log_email_sent()` records successful sends
+  - Send endpoint enforces limits: free plan blocked entirely, starter capped at 50/month, business/admin unlimited
+  - Error message shown when monthly limit exceeded
 
 ---
 
@@ -506,6 +535,7 @@ The project has ~50 commits on the main branch, progressing from:
 8. Stripe billing + Brevo email integration
 9. Stability fixes
 10. E-invoice export (PEPPOL BIS Billing 3.0 / LVS EN 16931-1:2017)
+11. UI action menus (split download button, 3-dot menus on all doc pages) + tier gating + email tracking
 
 ---
 
@@ -513,7 +543,7 @@ The project has ~50 commits on the main branch, progressing from:
 
 These are areas that may need attention in future sessions:
 - Stripe price IDs need to be configured in `.env` for billing to work
-- Email sending works (Brevo API configured, manual sending verified; recurring invoice emails not yet tested)
+- Recurring invoice auto-emails not yet tested in production
 - Database migrations strategy for schema changes
 - Automated backups for the SQLite database
 - Rate limiting / abuse prevention
@@ -522,3 +552,4 @@ These are areas that may need attention in future sessions:
 - Dashboard chart visualizations
 - Client-side form validation improvements
 - Automated testing (no tests exist currently)
+- SEB e-commerce compliance (plan exists but not yet implemented)
