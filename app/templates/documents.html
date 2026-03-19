@@ -9,10 +9,10 @@
 }
 .row-menu-trigger:hover { background: var(--bg-secondary, #f3f4f6); color: #111827; border-color: var(--border-color, #e5e7eb); }
 .row-menu-dropdown {
-    display: none; position: absolute; right: 0; top: 100%; margin-top: 4px;
+    display: none; position: fixed;
     background: var(--bg-primary, #fff); border: 1px solid var(--border-color, #e5e7eb);
     border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 220px;
-    z-index: 50; padding: 4px 0; white-space: nowrap;
+    z-index: 9999; padding: 4px 0; white-space: nowrap;
 }
 .row-menu-wrapper.open .row-menu-dropdown { display: block; }
 .row-menu-item {
@@ -253,14 +253,46 @@ function setLastMonth() {
     document.getElementById('filterForm').submit();
 }
 
+function positionDropdown(trigger, dropdown) {
+    const rect = trigger.getBoundingClientRect();
+    dropdown.style.left = '';
+    dropdown.style.right = '';
+    dropdown.style.top = '';
+    dropdown.style.bottom = '';
+    // Show briefly to measure
+    dropdown.style.visibility = 'hidden';
+    dropdown.style.display = 'block';
+    const dh = dropdown.offsetHeight;
+    const dw = dropdown.offsetWidth;
+    dropdown.style.display = '';
+    dropdown.style.visibility = '';
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < dh + 8 && rect.top > dh + 8) {
+        dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+    } else {
+        dropdown.style.top = (rect.bottom + 4) + 'px';
+    }
+    const rightPos = window.innerWidth - rect.right;
+    if (rightPos + rect.width < dw) {
+        dropdown.style.left = Math.max(8, rect.left) + 'px';
+    } else {
+        dropdown.style.right = rightPos + 'px';
+    }
+}
+
 document.addEventListener('click', function(e) {
     const trigger = e.target.closest('.row-menu-trigger');
     if (trigger) {
         e.stopPropagation();
         const wrapper = trigger.closest('.row-menu-wrapper');
+        const dropdown = wrapper.querySelector('.row-menu-dropdown');
         const wasOpen = wrapper.classList.contains('open');
         document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
-        if (!wasOpen) wrapper.classList.add('open');
+        if (!wasOpen) {
+            positionDropdown(trigger, dropdown);
+            wrapper.classList.add('open');
+        }
         return;
     }
     if (!e.target.closest('.row-menu-dropdown')) {
