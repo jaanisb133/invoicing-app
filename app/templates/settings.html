@@ -24,14 +24,35 @@
         <div class="card">
             <div class="card-header">Uzņēmuma informācija</div>
             <div class="card-body">
+                <div class="form-group">
+                    <label>Veids</label>
+                    <div style="display:flex;gap:8px">
+                        <label class="radio-card {% if settings.get('entity_type', 'business') == 'business' %}selected{% endif %}" style="flex:1;margin:0" id="sTypeBusinessCard">
+                            <input type="radio" name="entity_type" value="business"
+                                   {% if settings.get('entity_type', 'business') == 'business' %}checked{% endif %}
+                                   onchange="toggleSettingsEntityType()">
+                            <div class="radio-card-content" style="padding:10px 14px">
+                                <strong>Uzņēmums</strong>
+                            </div>
+                        </label>
+                        <label class="radio-card {% if settings.get('entity_type') == 'individual' %}selected{% endif %}" style="flex:1;margin:0" id="sTypeIndividualCard">
+                            <input type="radio" name="entity_type" value="individual"
+                                   {% if settings.get('entity_type') == 'individual' %}checked{% endif %}
+                                   onchange="toggleSettingsEntityType()">
+                            <div class="radio-card-content" style="padding:10px 14px">
+                                <strong>Privātpersona</strong>
+                            </div>
+                        </label>
+                    </div>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Vārds / Uzņēmuma nosaukums *</label>
+                        <label id="sNameLabel">{% if settings.get('entity_type') == 'individual' %}Vārds, Uzvārds *{% else %}Uzņēmuma nosaukums *{% endif %}</label>
                         <input type="text" name="company_name" class="form-control"
                                value="{{ settings.get('company_name', '') or current_user.display_name or '' }}" required>
                     </div>
                     <div class="form-group">
-                        <label>Reģistrācijas numurs</label>
+                        <label id="sRegLabel">{% if settings.get('entity_type') == 'individual' %}Personas kods{% else %}Reģistrācijas numurs{% endif %}</label>
                         <input type="text" name="reg_number" class="form-control"
                                value="{{ settings.get('reg_number', '') }}">
                     </div>
@@ -173,7 +194,7 @@
                         <label>Noklusējuma šablons</label>
                         <select name="default_template" class="form-control">
                             <option value="minimal" {% if settings.get('default_template', 'minimal') == 'minimal' %}selected{% endif %}>Minimālā</option>
-                            <option value="classic" {% if settings.get('default_template') == 'classic' %}selected{% endif %} {% if not tier_limits.all_templates %}disabled{% endif %}>Klasiskā{% if not tier_limits.all_templates %} (PRO){% endif %}</option>
+                            <option value="classic" {% if settings.get('default_template') == 'classic' %}selected{% endif %}>Klasiskā</option>
                             <option value="modern" {% if settings.get('default_template') == 'modern' %}selected{% endif %} {% if not tier_limits.all_templates %}disabled{% endif %}>Modernā{% if not tier_limits.all_templates %} (PRO){% endif %}</option>
                         </select>
                     </div>
@@ -386,6 +407,14 @@ function toggleVatFields() {
     document.querySelectorAll('.vat-field').forEach(el => {
         el.style.display = isVat ? '' : 'none';
     });
+}
+
+function toggleSettingsEntityType() {
+    const isBusiness = document.querySelector('input[name="entity_type"]:checked').value === 'business';
+    document.getElementById('sTypeBusinessCard').classList.toggle('selected', isBusiness);
+    document.getElementById('sTypeIndividualCard').classList.toggle('selected', !isBusiness);
+    document.getElementById('sNameLabel').textContent = isBusiness ? 'Uzņēmuma nosaukums *' : 'Vārds, Uzvārds *';
+    document.getElementById('sRegLabel').textContent = isBusiness ? 'Reģistrācijas numurs' : 'Personas kods';
 }
 
 updateNumberPreview();

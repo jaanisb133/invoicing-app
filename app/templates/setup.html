@@ -66,16 +66,35 @@
 
         <form method="post" action="/setup">
             <div class="card">
-                <div class="card-header">Uzņēmuma informācija</div>
+                <div class="card-header">Jūsu informācija</div>
                 <div class="card-body">
                     <div class="form-group">
-                        <label>Vārds / Uzņēmuma nosaukums *</label>
+                        <label>Veids *</label>
+                        <div style="display:flex;gap:8px">
+                            <label class="radio-card selected" style="flex:1;margin:0" id="typeBusinessCard">
+                                <input type="radio" name="entity_type" value="business" checked
+                                       onchange="toggleEntityType()">
+                                <div class="radio-card-content" style="padding:10px 14px">
+                                    <strong>Uzņēmums</strong>
+                                </div>
+                            </label>
+                            <label class="radio-card" style="flex:1;margin:0" id="typeIndividualCard">
+                                <input type="radio" name="entity_type" value="individual"
+                                       onchange="toggleEntityType()">
+                                <div class="radio-card-content" style="padding:10px 14px">
+                                    <strong>Privātpersona</strong>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label id="nameLabel">Uzņēmuma nosaukums *</label>
                         <input type="text" name="company_name" class="form-control"
                                value="{{ display_name or '' }}" required>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Reģistrācijas numurs</label>
+                            <label id="regLabel">Reģistrācijas numurs</label>
                             <input type="text" name="reg_number" class="form-control">
                         </div>
                         <div class="form-group">
@@ -83,7 +102,7 @@
                             <input type="text" name="legal_address" class="form-control">
                         </div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" id="vatPayerGroup">
                         <div style="margin-top:4px">
                             <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
                                 <input type="hidden" name="is_vat_payer" value="0">
@@ -187,6 +206,19 @@
     </div>
 
     <script>
+    function toggleEntityType() {
+        const isBusiness = document.querySelector('input[name="entity_type"]:checked').value === 'business';
+        document.getElementById('typeBusinessCard').classList.toggle('selected', isBusiness);
+        document.getElementById('typeIndividualCard').classList.toggle('selected', !isBusiness);
+        document.getElementById('nameLabel').textContent = isBusiness ? 'Uzņēmuma nosaukums *' : 'Vārds, Uzvārds *';
+        document.getElementById('regLabel').textContent = isBusiness ? 'Reģistrācijas numurs' : 'Personas kods';
+        // Individuals typically aren't VAT payers
+        if (!isBusiness) {
+            document.getElementById('vatPayerToggle').checked = false;
+            document.getElementById('vatFields').style.display = 'none';
+        }
+    }
+
     function updateSetupPreview() {
         const type = document.querySelector('input[name="invoice_number_type"]:checked').value;
         const sep = document.getElementById('setupSep').value;

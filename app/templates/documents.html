@@ -13,6 +13,15 @@
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger">{{ request.query_params.get('error') | safe }}</div>
     {% endif %}
+    <div class="usage-section" style="margin-bottom:16px">
+        <div class="usage-item">
+            <div class="usage-label">Dokumenti</div>
+            <div class="usage-bar">
+                <div class="usage-fill" style="width: {{ [(usage.documents / limits.max_documents * 100) | int, 100] | min }}%"></div>
+            </div>
+            <div class="usage-count">{{ usage.documents }} / {{ limits.max_documents }}</div>
+        </div>
+    </div>
     <div class="card">
         <div class="card-body">
             <form method="get" action="/documents" class="filters-bar" id="filterForm">

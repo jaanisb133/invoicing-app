@@ -572,6 +572,7 @@ async def setup_page(request: Request):
 @app.post("/setup")
 async def save_setup(
     request: Request,
+    entity_type: str = Form("business"),
     company_name: str = Form(""),
     reg_number: str = Form(""),
     vat_number: str = Form(""),
@@ -586,6 +587,7 @@ async def save_setup(
 ):
     user = request.state.user
     settings_dict = {
+        "entity_type": entity_type,
         "company_name": company_name,
         "reg_number": reg_number,
         "vat_number": vat_number,
@@ -943,6 +945,7 @@ async def settings_page(request: Request):
 @app.post("/settings")
 async def save_settings(
     request: Request,
+    entity_type: str = Form("business"),
     company_name: str = Form(""),
     reg_number: str = Form(""),
     vat_number: str = Form(""),
@@ -969,6 +972,7 @@ async def save_settings(
 ):
     user = request.state.user
     settings_dict = {
+        "entity_type": entity_type,
         "company_name": company_name,
         "reg_number": reg_number,
         "vat_number": vat_number if is_vat_payer == "1" else "",
@@ -1065,9 +1069,13 @@ async def products_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
     products = db.get_all_products(user["id"])
+    usage = db.get_user_resource_counts(user["id"])
+    limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "products": products,
         "units": UNITS,
+        "usage": usage,
+        "limits": limits,
         "page": "products",
     })
     return templates.TemplateResponse("products.html", ctx)
@@ -1107,8 +1115,12 @@ async def clients_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
     clients = db.get_all_clients(user["id"])
+    usage = db.get_user_resource_counts(user["id"])
+    limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "clients": clients,
+        "usage": usage,
+        "limits": limits,
         "page": "clients",
     })
     return templates.TemplateResponse("clients.html", ctx)
@@ -1186,10 +1198,14 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
     )
     clients = db.get_all_clients(user["id"])
     settings = _user_settings(user["id"])
+    usage = db.get_user_resource_counts(user["id"])
+    limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "documents": docs,
         "clients": clients,
         "settings": settings,
+        "usage": usage,
+        "limits": limits,
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to,
                      "status": status},

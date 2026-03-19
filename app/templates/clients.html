@@ -12,6 +12,15 @@
     {% if request.query_params.get('error') == 'limit' %}
     <div class="alert alert-danger">Klientu limits sasniegts ({{ tier_limits.max_clients }}). <a href="/pricing">Uzlabojiet plānu</a>, lai pievienotu vairāk.</div>
     {% endif %}
+    <div class="usage-section" style="margin-bottom:16px">
+        <div class="usage-item">
+            <div class="usage-label">Klienti</div>
+            <div class="usage-bar">
+                <div class="usage-fill" style="width: {{ [(usage.clients / limits.max_clients * 100) | int, 100] | min }}%"></div>
+            </div>
+            <div class="usage-count">{{ usage.clients }} / {{ limits.max_clients }}</div>
+        </div>
+    </div>
     <div class="card">
         <div class="card-body">
             {% if clients %}
