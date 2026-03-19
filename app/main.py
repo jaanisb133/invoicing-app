@@ -1206,6 +1206,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         "settings": settings,
         "usage": usage,
         "limits": limits,
+        "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to,
                      "status": status},
@@ -1414,6 +1415,8 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "selected_template": template,
         "has_logo": _get_logo_path(user["id"]) is not None,
         "default_email_body": default_email_body,
+        "all_templates": _check_tier_feature(user, "all_templates"),
+        "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "page": "documents",
     })
     return templates.TemplateResponse("document_view.html", ctx)

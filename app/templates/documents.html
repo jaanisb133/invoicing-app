@@ -26,6 +26,11 @@
 .row-menu-danger { color: #dc2626 !important; }
 .row-menu-danger:hover { background: #fef2f2 !important; }
 .row-menu-divider { height: 1px; background: var(--border-color, #e5e7eb); margin: 4px 0; }
+.row-menu-disabled { opacity: 0.5; }
+.badge-pro-menu {
+    display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 4px;
+    border-radius: 3px; background: #f59e0b; color: #fff; vertical-align: middle; line-height: 1.3;
+}
 </style>
 <div class="page-header">
     <h2>Dokumenti</h2>
@@ -160,10 +165,17 @@
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                             Lejupielādēt PDF
                                         </a>
+                                        {% if einvoice_enabled %}
                                         <a href="/documents/{{ doc.id }}/einvoice" class="row-menu-item" target="_blank">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                                             Lejupielādēt E-rēķinu (XML)
                                         </a>
+                                        {% else %}
+                                        <a href="/pricing" class="row-menu-item row-menu-disabled">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                            E-rēķins (XML) <span class="badge-pro-menu">PRO</span>
+                                        </a>
+                                        {% endif %}
                                         <div class="row-menu-divider"></div>
                                         <form method="post" action="/documents/{{ doc.id }}/delete"
                                               onsubmit="return confirm('Vai tiešām dzēst dokumentu {{ doc.doc_number }}?')">
