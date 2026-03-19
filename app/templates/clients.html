@@ -77,24 +77,22 @@
                 <label>Nosaukums *</label>
                 <input type="text" name="name" class="form-control" required>
             </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Reģistrācijas Nr.</label>
-                    <input type="text" name="reg_number" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>PVN Nr.</label>
-                    <input type="text" name="vat_number" class="form-control"
-                           oninput="if(this.value.trim()) document.getElementById('ac_vat_payer').checked=true">
-                </div>
+            <div class="form-group">
+                <label>Reģistrācijas Nr.</label>
+                <input type="text" name="reg_number" class="form-control">
             </div>
             <div class="form-group">
                 <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
                     <input type="hidden" name="vat_payer" value="0">
                     <input type="checkbox" name="vat_payer" id="ac_vat_payer" value="1"
-                           style="width:18px;height:18px;cursor:pointer">
+                           style="width:18px;height:18px;cursor:pointer"
+                           onchange="document.getElementById('ac_vat_group').style.display=this.checked?'':'none'">
                     Ir PVN maksātājs?
                 </label>
+            </div>
+            <div class="form-group" id="ac_vat_group" style="display:none">
+                <label>PVN Nr.</label>
+                <input type="text" name="vat_number" class="form-control">
             </div>
             <div class="form-group">
                 <label>Juridiskā adrese</label>
@@ -142,24 +140,22 @@
                 <label>Nosaukums *</label>
                 <input type="text" name="name" id="ec_name" class="form-control" required>
             </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Reģistrācijas Nr.</label>
-                    <input type="text" name="reg_number" id="ec_reg_number" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>PVN Nr.</label>
-                    <input type="text" name="vat_number" id="ec_vat_number" class="form-control"
-                           oninput="if(this.value.trim()) document.getElementById('ec_vat_payer').checked=true">
-                </div>
+            <div class="form-group">
+                <label>Reģistrācijas Nr.</label>
+                <input type="text" name="reg_number" id="ec_reg_number" class="form-control">
             </div>
             <div class="form-group">
                 <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
                     <input type="hidden" name="vat_payer" value="0">
                     <input type="checkbox" name="vat_payer" id="ec_vat_payer" value="1"
-                           style="width:18px;height:18px;cursor:pointer">
+                           style="width:18px;height:18px;cursor:pointer"
+                           onchange="document.getElementById('ec_vat_group').style.display=this.checked?'':'none'">
                     Ir PVN maksātājs?
                 </label>
+            </div>
+            <div class="form-group" id="ec_vat_group" style="display:none">
+                <label>PVN Nr.</label>
+                <input type="text" name="vat_number" id="ec_vat_number" class="form-control">
             </div>
             <div class="form-group">
                 <label>Juridiskā adrese</label>
@@ -209,6 +205,7 @@ function editClient(c) {
         document.getElementById('ec_' + f).value = c[f] || '';
     });
     document.getElementById('ec_vat_payer').checked = !!c.vat_payer;
+    document.getElementById('ec_vat_group').style.display = c.vat_payer ? '' : 'none';
     document.getElementById('editClientModal').classList.add('active');
 }
 </script>

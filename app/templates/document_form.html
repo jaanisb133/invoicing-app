@@ -174,23 +174,21 @@
             <label>Nosaukums *</label>
             <input type="text" id="qc_name" class="form-control" required>
         </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Reģ. Nr.</label>
-                <input type="text" id="qc_reg_number" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>PVN Nr.</label>
-                <input type="text" id="qc_vat_number" class="form-control"
-                       oninput="if(this.value.trim()) document.getElementById('qc_vat_payer').checked=true">
-            </div>
+        <div class="form-group">
+            <label>Reģ. Nr.</label>
+            <input type="text" id="qc_reg_number" class="form-control">
         </div>
         <div class="form-group">
             <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
                 <input type="checkbox" id="qc_vat_payer" value="1"
-                       style="width:18px;height:18px;cursor:pointer">
+                       style="width:18px;height:18px;cursor:pointer"
+                       onchange="document.getElementById('qc_vat_group').style.display=this.checked?'':'none'">
                 Ir PVN maksātājs?
             </label>
+        </div>
+        <div class="form-group" id="qc_vat_group" style="display:none">
+            <label>PVN Nr.</label>
+            <input type="text" id="qc_vat_number" class="form-control">
         </div>
         <div class="form-group">
             <label>Juridiskā adrese</label>
@@ -312,7 +310,7 @@ function addItemRow(presetProduct, presetUnit, presetQty, presetPrice) {
                 <select name="items[${idx}][product_id]" class="form-control" onchange="onProductChange(this, ${idx})" required>
                     ${productOptions}
                 </select>
-                <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddProduct()" style="flex-shrink:0;font-size:14px;padding:4px 8px">+</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddProduct(this)" style="flex-shrink:0;font-size:14px;padding:4px 8px">+</button>
             </div>
             <div class="stock-hint" id="stock-hint-${idx}"></div>
         </td>
@@ -696,7 +694,9 @@ function showQuickAddClient() {
     document.getElementById('qc_name').focus();
 }
 
-function showQuickAddProduct() {
+let quickAddProductTargetRow = null;
+function showQuickAddProduct(rowBtn) {
+    quickAddProductTargetRow = rowBtn ? rowBtn.closest('.item-row') : null;
     document.getElementById('quickAddProductModal').classList.add('active');
     document.getElementById('qp_name').focus();
 }
@@ -731,6 +731,7 @@ async function quickAddClient() {
         id => document.getElementById(id).value = ''
     );
     document.getElementById('qc_vat_payer').checked = false;
+    document.getElementById('qc_vat_group').style.display = 'none';
     updatePreview();
 }
 
@@ -756,8 +757,17 @@ async function quickAddProduct() {
         select.add(opt);
     });
 
+    if (quickAddProductTargetRow) {
+        const sel = quickAddProductTargetRow.querySelector('select[name*="product_id"]');
+        if (sel) {
+            sel.value = product.id;
+            sel.dispatchEvent(new Event('change'));
+        }
+    }
+
     document.getElementById('quickAddProductModal').classList.remove('active');
     document.getElementById('qp_name').value = '';
+    quickAddProductTargetRow = null;
 }
 
 // Initialize

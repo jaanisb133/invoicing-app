@@ -1,6 +1,32 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+.row-menu-wrapper { position: relative; display: inline-block; }
+.row-menu-trigger {
+    background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+    padding: 4px 6px; color: #6b7280; display: flex; align-items: center; transition: all 0.15s;
+}
+.row-menu-trigger:hover { background: var(--bg-secondary, #f3f4f6); color: #111827; border-color: var(--border-color, #e5e7eb); }
+.row-menu-dropdown {
+    display: none; position: absolute; right: 0; top: 100%; margin-top: 4px;
+    background: var(--bg-primary, #fff); border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 220px;
+    z-index: 50; padding: 4px 0; white-space: nowrap;
+}
+.row-menu-wrapper.open .row-menu-dropdown { display: block; }
+.row-menu-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+    font-size: 14px; color: var(--text-primary, #111827); text-decoration: none;
+    cursor: pointer; transition: background 0.1s; border: none; background: none;
+    width: 100%; text-align: left; font-family: inherit;
+}
+.row-menu-item:hover { background: var(--bg-secondary, #f3f4f6); }
+.row-menu-item svg { flex-shrink: 0; opacity: 0.6; }
+.row-menu-danger { color: #dc2626 !important; }
+.row-menu-danger:hover { background: #fef2f2 !important; }
+.row-menu-divider { height: 1px; background: var(--border-color, #e5e7eb); margin: 4px 0; }
+</style>
 <div class="page-header">
     <h2>Dokumenti</h2>
     <div class="btn-group">
@@ -117,13 +143,36 @@
                             </td>
                             {% endif %}
                             <td>
-                                <div class="btn-group">
-                                    <a href="/documents/{{ doc.id }}" class="btn btn-outline btn-sm">Skatīt</a>
-                                    <a href="/documents/{{ doc.id }}/pdf" class="btn btn-outline btn-sm">PDF</a>
-                                    <form method="post" action="/documents/{{ doc.id }}/delete"
-                                          onsubmit="return confirm('Vai tiešām dzēst dokumentu {{ doc.doc_number }}?')">
-                                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
-                                    </form>
+                                <div class="row-menu-wrapper">
+                                    <button type="button" class="row-menu-trigger" aria-label="Darbības">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                                    </button>
+                                    <div class="row-menu-dropdown">
+                                        <a href="/documents/{{ doc.id }}" class="row-menu-item">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                            Skatīt
+                                        </a>
+                                        <a href="/documents/{{ doc.id }}/edit" class="row-menu-item">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                            Rediģēt
+                                        </a>
+                                        <a href="/documents/{{ doc.id }}/pdf" class="row-menu-item" target="_blank">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                            Lejupielādēt PDF
+                                        </a>
+                                        <a href="/documents/{{ doc.id }}/einvoice" class="row-menu-item" target="_blank">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                            Lejupielādēt E-rēķinu (XML)
+                                        </a>
+                                        <div class="row-menu-divider"></div>
+                                        <form method="post" action="/documents/{{ doc.id }}/delete"
+                                              onsubmit="return confirm('Vai tiešām dzēst dokumentu {{ doc.doc_number }}?')">
+                                            <button type="submit" class="row-menu-item row-menu-danger">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                                Dzēst
+                                            </button>
+                                        </form>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -191,5 +240,20 @@ function setLastMonth() {
     document.getElementById('dateTo').value = lastStr;
     document.getElementById('filterForm').submit();
 }
+
+document.addEventListener('click', function(e) {
+    const trigger = e.target.closest('.row-menu-trigger');
+    if (trigger) {
+        e.stopPropagation();
+        const wrapper = trigger.closest('.row-menu-wrapper');
+        const wasOpen = wrapper.classList.contains('open');
+        document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+        if (!wasOpen) wrapper.classList.add('open');
+        return;
+    }
+    if (!e.target.closest('.row-menu-dropdown')) {
+        document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+    }
+});
 </script>
 {% endblock %}
