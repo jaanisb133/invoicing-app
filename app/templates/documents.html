@@ -179,6 +179,15 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
                                         </a>
                                         {% endif %}
                                         <div class="row-menu-divider"></div>
+                                        <a href="#" class="row-menu-item" onclick="event.preventDefault();openListSendModal({{ doc.id }}, {{ doc.client_id }}, {{ doc.doc_number | tojson }})">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                            Nosūtīt klientam
+                                        </a>
+                                        <a href="#" class="row-menu-item" onclick="event.preventDefault();openListRecurringModal({{ doc.id }}, {{ doc.doc_number | tojson }})">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                                            Periodiskais rēķins
+                                        </a>
+                                        <div class="row-menu-divider"></div>
                                         <form method="post" action="/documents/{{ doc.id }}/delete"
                                               onsubmit="return confirm('Vai tiešām dzēst dokumentu {{ doc.doc_number }}?')">
                                             <button type="submit" class="row-menu-item row-menu-danger">
@@ -200,6 +209,57 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
         </div>
     </div>
 </div>
+<!-- Send Email Modal (list page) -->
+<div class="modal-overlay" id="listSendModal">
+    <div class="modal" style="max-width:480px">
+        <div class="modal-title">Nosūtīt dokumentu pa e-pastu</div>
+        <form method="post" id="listSendForm" action="">
+            <input type="hidden" name="template" value="classic">
+            <div class="form-group">
+                <label>Saņēmēja e-pasts</label>
+                <input type="email" name="email" id="listSendEmail" class="form-control"
+                       required placeholder="klients@epasts.lv">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('listSendModal').classList.remove('active')">Atcelt</button>
+                <button type="submit" class="btn btn-primary">Nosūtīt</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Schedule Recurring Modal (list page) -->
+<div class="modal-overlay" id="listRecurringModal">
+    <div class="modal">
+        <div class="modal-title">Izveidot periodisku rēķinu</div>
+        <form method="post" id="listRecurringForm" action="">
+            <input type="hidden" name="template" value="classic">
+            <div class="form-group">
+                <label>Biežums</label>
+                <select name="frequency" class="form-control">
+                    <option value="monthly">Katru mēnesi</option>
+                    <option value="bimonthly">Katrus 2 mēnešus</option>
+                    <option value="quarterly">Katru ceturksni</option>
+                    <option value="halfyearly">Katrus 6 mēnešus</option>
+                    <option value="yearly">Katru gadu</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Pirmā izpilde</label>
+                <input type="date" name="next_run" class="form-control" value="">
+            </div>
+            <div class="form-group" style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" name="send_email" value="1" id="listRecSendEmail">
+                <label for="listRecSendEmail" style="margin:0;font-weight:400">Automātiski nosūtīt pa e-pastu</label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('listRecurringModal').classList.remove('active')">Atcelt</button>
+                <button type="submit" class="btn btn-primary">Izveidot</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -253,6 +313,26 @@ function setLastMonth() {
     document.getElementById('dateFrom').value = first;
     document.getElementById('dateTo').value = lastStr;
     document.getElementById('filterForm').submit();
+}
+
+// Client email lookup for send modal
+const clientEmailMap = {
+    {% for c in clients %}{{ c.id }}: {{ (c.email or '') | tojson }},{% endfor %}
+};
+
+function openListSendModal(docId, clientId, docNumber) {
+    document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+    document.getElementById('listSendForm').action = '/documents/' + docId + '/send';
+    document.getElementById('listSendEmail').value = clientEmailMap[clientId] || '';
+    document.getElementById('listSendModal').classList.add('active');
+    var emailInput = document.getElementById('listSendEmail');
+    if (!emailInput.value) emailInput.focus();
+}
+
+function openListRecurringModal(docId, docNumber) {
+    document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+    document.getElementById('listRecurringForm').action = '/recurring/from-document/' + docId;
+    document.getElementById('listRecurringModal').classList.add('active');
 }
 
 function positionDropdown(trigger, dropdown) {
