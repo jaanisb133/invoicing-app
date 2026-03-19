@@ -47,7 +47,7 @@
 ├── run.py                         # Entry point (uvicorn runner)
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                    # FastAPI app — 60+ routes
+│   ├── main.py                    # FastAPI app — 80+ routes
 │   ├── database.py                # SQLite layer (1156 lines)
 │   ├── pdf_generator.py           # PDF generation (788 lines, 3 templates)
 │   ├── einvoice.py                # E-invoice XML generator (PEPPOL BIS 3.0)
@@ -77,8 +77,13 @@
 │       ├── set_password.html      # Admin-forced password change
 │       ├── billing_success.html
 │       ├── users.html             # Admin user management
+│       ├── setup.html             # First-time onboarding (company info)
+│       ├── contacts.html          # SEB compliance: company contact info
+│       ├── terms.html             # SEB compliance: payment terms & policies
 │       ├── _public_navbar.html
-│       └── _pricing_content.html  # Reusable pricing tier cards (11KB)
+│       ├── _public_footer.html    # Footer with payment/bank logos
+│       ├── _pricing_content.html  # Reusable pricing tier cards (11KB)
+│       └── _upgrade_gate.html     # Reusable PRO upgrade overlay
 ├── deploy/
 │   ├── setup-server.sh            # Full production setup script
 │   ├── vrekini.nginx.conf         # Nginx config (HTTPS, security headers)
@@ -99,7 +104,7 @@
 ### Tables
 
 1. **users** — User accounts & subscription info
-   - `id, username, email, password_hash, display_name`
+   - `id, username, email, password_hash, display_name, phone`
    - `must_change_password, is_admin, tier` (free/starter/business/admin)
    - `subscription_status, subscription_start, subscription_end, billing_cycle`
    - `stripe_customer_id, stripe_subscription_id`
@@ -212,6 +217,49 @@
 - Fixed pricing page crash for logged-in users
 - Removed old desktop/ directory artifacts
 
+### Phase 9b: SEB E-Commerce Compliance & Subscription Revamp
+- **SEB compliance pages** (required for payment processing):
+  - `/contacts` — company info (SIA "VN Media", reg number 40203543358, address, email, phone)
+  - `/terms` — payment methods, 3D Secure info, refund/return policy, support hours
+  - Both pages accessible without authentication
+  - Public footer (`_public_footer.html`) with payment logos (Visa, Mastercard, Google Pay, Apple Pay) and partner logos (EveryPay, SEB, Citadele, LHV)
+  - Footer rendered on all public pages (login, register, pricing, contacts, terms)
+- **Pricing & subscription revamp:**
+  - Full-width subscription management page ("Mans abonements") at `/pricing` (authenticated)
+  - Current plan highlighted with border/background
+  - Usage bars showing docs/clients/products consumed vs. limit
+  - Plan/billing cycle passed through registration → auto-checkout after signup
+  - Admin can change any user's tier via dropdown in `/users` panel (`POST /users/{id}/tier`)
+- **Entity type switcher:**
+  - Individual ("Fiziska persona") vs. business ("Juridiska persona") toggle
+  - Available in `/setup` onboarding and `/settings`
+  - Changes registration label: "Reģ.Nr." for business, "Personas kods" for individual
+  - Affects invoice PDF party labels
+- **Simplified onboarding:**
+  - New `/setup` page shown on first login (replaces old onboarding gate)
+  - Collects: entity type, company name, reg number, legal address, bank details
+  - Mobile zoom prevention (viewport meta, 16px minimum font on inputs)
+- **VAT payer toggle:**
+  - User-level setting "Ir PVN maksātājs?" in setup and settings
+  - Non-VAT payers: PVN fields hidden throughout the app, 0% VAT on documents
+  - VAT payers: full PVN number field and VAT rate selection visible
+- **Phone field** added to users table, registration form, and account page
+  - Included in e-invoice XML contact details (PEPPOL BIS 3.0)
+
+### Phase 9c: Tier-Based Feature Gating
+- **PRO badges** in sidebar navigation for restricted features
+- **Blurred overlay** (`_upgrade_gate.html`) with lock icon and upgrade CTA on:
+  - Recurring invoices page (free plan)
+  - Export page (free plan)
+  - Stock management page (free plan)
+- **Template restrictions:**
+  - Free plan: classic template only
+  - All templates visible/previewable on document view, but download gated
+  - PRO templates show "Uzlabot plānu" (upgrade) button instead of download
+  - E-invoice XML button shows PRO badge for free users
+- **Backend enforcement** on all gated API routes (returns 403 for unauthorized tiers)
+- **Clickable document rows** — clicking a row navigates to document view (ignores clicks on menus/badges/buttons)
+
 ### Phase 10: Accounting Export & Document Enhancements
 - **Accounting export** (`POST /export/accounting`) — generates Excel (.xlsx) via openpyxl with 2 sheets:
   - Sheet 1 "Dokumenti": one row per document with configurable columns
@@ -284,7 +332,8 @@
 ### Authentication
 - `GET/POST /login`, `/register`, `/set-password`, `/logout`
 
-### Dashboard & Account
+### Onboarding & Account
+- `GET /setup`, `POST /setup` — First-time onboarding
 - `GET /` — Dashboard
 - `GET /account`, `POST /account/profile`, `POST /account/password`
 
@@ -302,10 +351,14 @@
 - `GET /clients`, `POST /clients/add`, `POST /clients/{id}/edit`, `POST /clients/{id}/delete`
 - `POST /api/products/add`, `POST /api/clients/add` — Quick-add API endpoints
 
+### Public Pages (SEB Compliance)
+- `GET /contacts` — Company contact information
+- `GET /terms` — Payment terms, refund policy, security info
+
 ### Settings & Admin
 - `GET/POST /settings`, `POST /settings/logo`, `POST /settings/logo/delete`
 - `GET /api/logo` — Retrieve logo image
-- `GET /users`, `POST /users/add`, `POST /users/{id}/delete`
+- `GET /users`, `POST /users/add`, `POST /users/{id}/delete`, `POST /users/{id}/tier`
 
 ### Stock, Recurring, Export
 - `GET /stock`, `GET /api/stock/{product_id}`
@@ -524,7 +577,7 @@ STRIPE_PRICE_BUSINESS_YEARLY=<price_id>
 
 ## 12. Git History Summary
 
-The project has ~50 commits on the main branch, progressing from:
+The project has ~70 commits on the main branch, progressing from:
 1. v1 desktop prototype
 2. FastAPI web app with 3 PDF templates
 3. Auth system + multi-tenant SaaS
@@ -534,8 +587,13 @@ The project has ~50 commits on the main branch, progressing from:
 7. Production deployment (nginx, systemd, SSL)
 8. Stripe billing + Brevo email integration
 9. Stability fixes
-10. E-invoice export (PEPPOL BIS Billing 3.0 / LVS EN 16931-1:2017)
-11. UI action menus (split download button, 3-dot menus on all doc pages) + tier gating + email tracking
+10. SEB e-commerce compliance (contacts, terms, footer, payment logos)
+11. Subscription revamp (usage bars, plan highlighting, admin tier control)
+12. Entity type switcher, simplified onboarding, VAT payer toggle
+13. Tier-based feature gating (PRO badges, blurred overlays, template restrictions)
+14. Accounting export with custom preset builder
+15. E-invoice export (PEPPOL BIS Billing 3.0 / LVS EN 16931-1:2017)
+16. UI action menus (split download button, 3-dot menus on all doc pages) + email tracking
 
 ---
 
@@ -552,4 +610,5 @@ These are areas that may need attention in future sessions:
 - Dashboard chart visualizations
 - Client-side form validation improvements
 - Automated testing (no tests exist currently)
-- SEB e-commerce compliance (plan exists but not yet implemented)
+- SEB e-commerce compliance pages are built but SEB/EveryPay payment integration not yet connected
+- Actual payment processing setup with EveryPay/SEB (currently Stripe only)
