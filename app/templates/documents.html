@@ -25,6 +25,8 @@
 .row-menu-item svg { flex-shrink: 0; opacity: 0.6; }
 .row-menu-danger { color: #dc2626 !important; }
 .row-menu-danger:hover { background: #fef2f2 !important; }
+tr.clickable-row { cursor: pointer; }
+tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
 .row-menu-divider { height: 1px; background: var(--border-color, #e5e7eb); margin: 4px 0; }
 .row-menu-disabled { opacity: 0.5; }
 .badge-pro-menu {
@@ -124,7 +126,7 @@
                     </thead>
                     <tbody>
                         {% for doc in documents %}
-                        <tr>
+                        <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
                             <td>{{ doc.doc_number }}</td>
                             <td>
                                 {% if doc.doc_type == 'buy' %}
@@ -267,37 +269,51 @@ function positionDropdown(trigger, dropdown) {
     dropdown.style.display = '';
     dropdown.style.visibility = '';
 
+    // Vertical: prefer below, flip up if not enough space
     const spaceBelow = window.innerHeight - rect.bottom;
+    var top;
     if (spaceBelow < dh + 8 && rect.top > dh + 8) {
-        dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        top = rect.top - dh - 4;
     } else {
-        dropdown.style.top = (rect.bottom + 4) + 'px';
+        top = rect.bottom + 4;
     }
-    const rightPos = window.innerWidth - rect.right;
-    if (rightPos + rect.width < dw) {
-        dropdown.style.left = Math.max(8, rect.left) + 'px';
-    } else {
-        dropdown.style.right = rightPos + 'px';
-    }
+    // Clamp to viewport
+    top = Math.max(8, Math.min(top, window.innerHeight - dh - 8));
+    dropdown.style.top = top + 'px';
+
+    // Horizontal: align right edge to trigger, clamp within viewport
+    var left = rect.right - dw;
+    left = Math.max(8, Math.min(left, window.innerWidth - dw - 8));
+    dropdown.style.left = left + 'px';
 }
 
 document.addEventListener('click', function(e) {
-    const trigger = e.target.closest('.row-menu-trigger');
-    if (trigger) {
-        e.stopPropagation();
-        const wrapper = trigger.closest('.row-menu-wrapper');
-        const dropdown = wrapper.querySelector('.row-menu-dropdown');
-        const wasOpen = wrapper.classList.contains('open');
-        document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
-        if (!wasOpen) {
-            positionDropdown(trigger, dropdown);
-            wrapper.classList.add('open');
+    // Ignore clicks on interactive elements inside row
+    if (e.target.closest('.row-menu-wrapper') || e.target.closest('a') || e.target.closest('button') || e.target.closest('form')) {
+        // Handle menu trigger
+        const trigger = e.target.closest('.row-menu-trigger');
+        if (trigger) {
+            e.stopPropagation();
+            const wrapper = trigger.closest('.row-menu-wrapper');
+            const dropdown = wrapper.querySelector('.row-menu-dropdown');
+            const wasOpen = wrapper.classList.contains('open');
+            document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+            if (!wasOpen) {
+                positionDropdown(trigger, dropdown);
+                wrapper.classList.add('open');
+            }
         }
         return;
     }
-    if (!e.target.closest('.row-menu-dropdown')) {
-        document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+    // Close any open menus
+    document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+    // Clickable row navigation
+    const row = e.target.closest('tr.clickable-row');
+    if (row && row.dataset.href) {
+        window.location.href = row.dataset.href;
     }
 });
+window.addEventListener('scroll', function() { document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open')); }, true);
+window.addEventListener('resize', function() { document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open')); });
 </script>
 {% endblock %}
