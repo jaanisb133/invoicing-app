@@ -457,6 +457,7 @@ function getPreviewData() {
         if (parts.length === 3) displayDate = parts[2] + '.' + parts[1] + '.' + parts[0];
     }
 
+    const entityType = companySettings.entity_type || 'business';
     const company = {
         name: companySettings.company_name || '(Jūsu uzņēmums)',
         reg: companySettings.reg_number || '',
@@ -464,6 +465,7 @@ function getPreviewData() {
         addr: companySettings.legal_address || '',
         bank: companySettings.bank_name || '',
         account: companySettings.bank_account || '',
+        isOwn: true,
     };
     const client = clientInfo ? {
         name: clientInfo.name,
@@ -472,7 +474,8 @@ function getPreviewData() {
         addr: clientInfo.legal_address || '',
         bank: clientInfo.bank_name || '',
         account: clientInfo.bank_account || '',
-    } : { name: '—', reg: '', vat: '', addr: '', bank: '', account: '' };
+        isOwn: false,
+    } : { name: '—', reg: '', vat: '', addr: '', bank: '', account: '', isOwn: false };
 
     const supplier = docType === 'buy' ? client : company;
     const buyer = docType === 'buy' ? company : client;
@@ -501,7 +504,10 @@ function getPreviewData() {
 
 function partyLines(info, showVat) {
     let html = '<strong>' + info.name + '</strong>';
-    if (info.reg) html += '<br>Reģ.Nr. / P.k.: ' + info.reg;
+    if (info.reg) {
+        const regLabel = info.isOwn ? (entityType === 'individual' ? 'P.k.:' : 'Reģ.Nr.:') : 'Reģ.Nr. / P.k.:';
+        html += '<br>' + regLabel + ' ' + info.reg;
+    }
     if (showVat && info.vat) html += '<br>PVN Nr.: ' + info.vat;
     if (info.addr) html += '<br>' + info.addr;
     if (info.bank) html += '<br>Banka: ' + info.bank;

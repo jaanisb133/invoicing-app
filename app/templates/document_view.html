@@ -184,6 +184,7 @@ const docData = {
     hasLogo: {{ 'true' if has_logo else 'false' }},
     electronicDoc: {{ 'true' if settings.get('electronic_doc', '0') == '1' else 'false' }},
     logoWidth: {{ settings.get('logo_width', '100') }},
+    entityType: {{ settings.get('entity_type', 'business') | tojson }},
     supplier: {
         {% if doc.doc_type == 'buy' %}
         name: {{ client.name | tojson }},
@@ -192,7 +193,7 @@ const docData = {
         addr: {{ (client.legal_address or '') | tojson }},
         bank: {{ (client.bank_name or '') | tojson }},
         account: {{ (client.bank_account or '') | tojson }},
-        isCompany: false
+        isOwn: false
         {% else %}
         name: {{ settings.get('company_name', '') | tojson }},
         reg: {{ settings.get('reg_number', '') | tojson }},
@@ -200,7 +201,7 @@ const docData = {
         addr: {{ settings.get('legal_address', '') | tojson }},
         bank: {{ settings.get('bank_name', '') | tojson }},
         account: {{ settings.get('bank_account', '') | tojson }},
-        isCompany: true
+        isOwn: true
         {% endif %}
     },
     buyer: {
@@ -211,7 +212,7 @@ const docData = {
         addr: {{ (client.legal_address or '') | tojson }},
         bank: {{ (client.bank_name or '') | tojson }},
         account: {{ (client.bank_account or '') | tojson }},
-        isCompany: false
+        isOwn: false
         {% else %}
         name: {{ settings.get('company_name', '') | tojson }},
         reg: {{ settings.get('reg_number', '') | tojson }},
@@ -219,7 +220,7 @@ const docData = {
         addr: {{ settings.get('legal_address', '') | tojson }},
         bank: {{ settings.get('bank_name', '') | tojson }},
         account: {{ settings.get('bank_account', '') | tojson }},
-        isCompany: true
+        isOwn: true
         {% endif %}
     },
     items: [
@@ -245,7 +246,10 @@ function logoHtml(invert) {
 function partyLines(info) {
     let html = '';
     html += '<strong>' + info.name + '</strong>';
-    if (info.reg) html += '<br>Reģ.Nr. / P.k.: ' + info.reg;
+    if (info.reg) {
+        const regLabel = info.isOwn ? (docData.entityType === 'individual' ? 'P.k.:' : 'Reģ.Nr.:') : 'Reģ.Nr. / P.k.:';
+        html += '<br>' + regLabel + ' ' + info.reg;
+    }
     if (docData.isVatPayer && info.vat) html += '<br>PVN Nr.: ' + info.vat;
     if (info.addr) html += '<br>' + info.addr;
     if (info.bank) html += '<br>Banka: ' + info.bank;

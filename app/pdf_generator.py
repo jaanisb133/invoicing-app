@@ -168,6 +168,8 @@ def _get_doc_data(doc_id):
     else:
         doc_type_label = settings.get("sell_doc_name", "Rēķins")
 
+    entity_type = settings.get("entity_type", "business")
+
     def party_info(source_client, from_settings=False):
         if from_settings:
             return {
@@ -177,6 +179,7 @@ def _get_doc_data(doc_id):
                 "addr": (settings.get("legal_address", "") or "").strip(),
                 "bank": (settings.get("bank_name", "") or "").strip(),
                 "account": (settings.get("bank_account", "") or "").strip(),
+                "is_own": True,
             }
         return {
             "name": (source_client["name"] if source_client else "").strip(),
@@ -185,6 +188,7 @@ def _get_doc_data(doc_id):
             "addr": ((source_client["legal_address"] or "") if source_client else "").strip(),
             "bank": ((source_client["bank_name"] or "") if source_client else "").strip(),
             "account": ((source_client["bank_account"] or "") if source_client else "").strip(),
+            "is_own": False,
         }
 
     if doc["doc_type"] == "buy":
@@ -228,6 +232,7 @@ def _get_doc_data(doc_id):
         "vat_amount": vat_amount,
         "total": total,
         "is_vat_payer": is_vat_payer,
+        "entity_type": entity_type,
     }
 
 
@@ -242,12 +247,16 @@ def generate_invoice_pdf(doc_id, template="minimal"):
     return generators[template](doc_id)
 
 
-def _party_lines(info, FONT_BOLD, style, show_vat=True):
+def _party_lines(info, FONT_BOLD, style, show_vat=True, entity_type="business"):
     """Build a list of Paragraph elements for a party info block."""
     lines = []
     lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", style))
     if info['reg']:
-        lines.append(Paragraph(f"Reģ.Nr. / P.k.: {info['reg']}", style))
+        if info.get('is_own'):
+            reg_label = "P.k.:" if entity_type == "individual" else "Reģ.Nr.:"
+        else:
+            reg_label = "Reģ.Nr. / P.k.:"
+        lines.append(Paragraph(f"{reg_label} {info['reg']}", style))
     if show_vat and info['vat']:
         lines.append(Paragraph(f"PVN Nr.: {info['vat']}", style))
     if info['addr']:
@@ -324,9 +333,9 @@ def _generate_classic(doc_id):
     # Parties (each side independent — different line counts don't affect each other)
     show_vat = data["is_vat_payer"]
     s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", section_label)] + \
-              _party_lines(data['supplier'], FONT_BOLD, normal, show_vat=show_vat)
+              _party_lines(data['supplier'], FONT_BOLD, normal, show_vat=show_vat, entity_type=data['entity_type'])
     b_lines = [Paragraph("SAŅĒMĒJS / PIRCĒJS", section_label)] + \
-              _party_lines(data['buyer'], FONT_BOLD, normal, show_vat=show_vat)
+              _party_lines(data['buyer'], FONT_BOLD, normal, show_vat=show_vat, entity_type=data['entity_type'])
 
     parties_table = Table([[s_lines, b_lines]], colWidths=[85 * mm, 85 * mm])
     parties_table.setStyle(TableStyle([
@@ -518,9 +527,9 @@ def _generate_modern(doc_id):
     # Parties (each side independent — different line counts don't affect each other)
     show_vat = data["is_vat_payer"]
     s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", styles["section"])] + \
-              _party_lines(data['supplier'], FONT_BOLD, styles["normal"], show_vat=show_vat)
+              _party_lines(data['supplier'], FONT_BOLD, styles["normal"], show_vat=show_vat, entity_type=data['entity_type'])
     b_lines = [Paragraph("SAŅĒMĒJS / PIRCĒJS", styles["section"])] + \
-              _party_lines(data['buyer'], FONT_BOLD, styles["normal"], show_vat=show_vat)
+              _party_lines(data['buyer'], FONT_BOLD, styles["normal"], show_vat=show_vat, entity_type=data['entity_type'])
 
     party_table = Table([[s_lines, b_lines]], colWidths=[87 * mm, 87 * mm])
     party_table.setStyle(TableStyle([
@@ -693,11 +702,16 @@ def _generate_minimal(doc_id):
 
     # Parties
     show_vat = data["is_vat_payer"]
+    entity_type = data["entity_type"]
     def _min_party_block(title, info):
         lines = [Paragraph(title, styles["label"])]
         lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", styles["value"]))
         if info['reg']:
-            lines.append(Paragraph(f"Reģ.Nr. / P.k.: {info['reg']}", styles["value"]))
+            if info.get('is_own'):
+                reg_label = "P.k.:" if entity_type == "individual" else "Reģ.Nr.:"
+            else:
+                reg_label = "Reģ.Nr. / P.k.:"
+            lines.append(Paragraph(f"{reg_label} {info['reg']}", styles["value"]))
         if show_vat and info['vat']:
             lines.append(Paragraph(f"PVN {info['vat']}", styles["value"]))
         if info['addr']:
