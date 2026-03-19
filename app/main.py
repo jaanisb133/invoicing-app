@@ -923,6 +923,8 @@ async def dashboard(request: Request):
         "settings": settings,
         "stats": stats,
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
+        "recurring_enabled": _check_tier_feature(user, "recurring"),
+        "email_enabled": user.get("tier", "free") != "free",
         "page": "dashboard",
     })
     return templates.TemplateResponse("dashboard.html", ctx)
@@ -1210,6 +1212,8 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         "usage": usage,
         "limits": limits,
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
+        "recurring_enabled": _check_tier_feature(user, "recurring"),
+        "email_enabled": user.get("tier", "free") != "free",
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to,
                      "status": status},
@@ -1420,6 +1424,8 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "default_email_body": default_email_body,
         "all_templates": _check_tier_feature(user, "all_templates"),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
+        "recurring_enabled": _check_tier_feature(user, "recurring"),
+        "email_enabled": user.get("tier", "free") != "free",
         "page": "documents",
     })
     return templates.TemplateResponse("document_view.html", ctx)
@@ -1465,6 +1471,22 @@ async def send_document_email(request: Request, doc_id: int):
             status_code=303
         )
 
+    # Check email tier limit
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    max_emails = limits.get("max_emails_month", 0)
+    if max_emails > 0:
+        sent_count = db.get_emails_sent_this_month(user["id"])
+        if sent_count >= max_emails:
+            return RedirectResponse(
+                f"/documents/{doc_id}?error=Sasniegts e-pastu limits šim mēnesim ({max_emails}).&template={template}",
+                status_code=303
+            )
+    elif not _check_tier_feature(user, "recurring"):
+        # max_emails_month == 0 and no recurring means free plan (no emails)
+        # For business/admin, max_emails_month == 0 means unlimited
+        if user.get("tier", "free") == "free":
+            return RedirectResponse("/pricing", status_code=303)
+
     # Generate PDF
     filepath = generate_invoice_pdf(doc_id, template=template)
 
@@ -1507,6 +1529,9 @@ async def send_document_email(request: Request, doc_id: int):
             f"/documents/{doc_id}?error=E-pasta sūtīšanas kļūda: {str(e)}&template={template}",
             status_code=303
         )
+
+    # Log the email send
+    db.log_email_sent(user["id"], doc_id, recipient_email)
 
     # Save the email as client's email if not already set
     if client and not client.get("email"):

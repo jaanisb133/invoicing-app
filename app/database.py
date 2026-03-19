@@ -167,6 +167,15 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (client_id) REFERENCES clients(id)
         );
+
+        CREATE TABLE IF NOT EXISTS email_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            document_id INTEGER,
+            recipient TEXT NOT NULL,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
     """)
 
     conn.commit()
@@ -1101,6 +1110,30 @@ def get_user_resource_counts(user_id: int) -> dict:
         "clients": clients["cnt"] if clients else 0,
         "products": products["cnt"] if products else 0,
     }
+
+
+def get_emails_sent_this_month(user_id: int) -> int:
+    """Count emails sent by user in the current calendar month."""
+    conn = get_connection()
+    today = datetime.date.today()
+    month_start = today.replace(day=1).isoformat()
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM email_log WHERE user_id = ? AND sent_at >= ?",
+        (user_id, month_start)
+    ).fetchone()
+    conn.close()
+    return row["cnt"] if row else 0
+
+
+def log_email_sent(user_id: int, document_id: int, recipient: str):
+    """Record an email send event."""
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO email_log (user_id, document_id, recipient) VALUES (?, ?, ?)",
+        (user_id, document_id, recipient)
+    )
+    conn.commit()
+    conn.close()
 
 
 # --- Recurring Invoices ---

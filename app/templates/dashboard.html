@@ -182,14 +182,28 @@
                                         </a>
                                         {% endif %}
                                         <div class="dash-menu-divider"></div>
+                                        {% if email_enabled %}
                                         <button type="button" class="dash-menu-item" data-dash-action="send" data-doc-id="{{ doc.id }}" data-client-id="{{ doc.client_id }}">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                                             Nosūtīt klientam
                                         </button>
+                                        {% else %}
+                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                            Nosūtīt klientam <span class="badge-pro-menu">PRO</span>
+                                        </a>
+                                        {% endif %}
+                                        {% if recurring_enabled %}
                                         <button type="button" class="dash-menu-item" data-dash-action="recurring" data-doc-id="{{ doc.id }}">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                                             Periodiskais rēķins
                                         </button>
+                                        {% else %}
+                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                                            Periodiskais rēķins <span class="badge-pro-menu">PRO</span>
+                                        </a>
+                                        {% endif %}
                                         {% if settings.get('status_tracking', '0') == '1' %}
                                         <div class="dash-menu-divider"></div>
                                         <button type="button" class="dash-menu-item" data-dash-action="status" data-doc-id="{{ doc.id }}">
