@@ -74,8 +74,8 @@
                                 <label>PDF veidne</label>
                                 <select name="template" id="templateSelect" class="form-control" onchange="updatePreview()">
                                     {% for key, label in templates.items() %}
-                                    {% if tier_limits.all_templates or key != 'modern' %}
-                                    <option value="{{ key }}" {% if key == settings.get('default_template', 'minimal') %}selected{% endif %}>{{ label }}</option>
+                                    {% if tier_limits.all_templates or key == 'classic' %}
+                                    <option value="{{ key }}" {% if key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
                                     {% else %}
                                     <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
                                     {% endif %}

@@ -193,7 +193,7 @@
                     <div class="form-group" style="max-width:200px">
                         <label>Noklusējuma šablons</label>
                         <select name="default_template" class="form-control">
-                            <option value="minimal" {% if settings.get('default_template', 'minimal') == 'minimal' %}selected{% endif %}>Minimālā</option>
+                            <option value="minimal" {% if settings.get('default_template', 'minimal') == 'minimal' %}selected{% endif %} {% if not tier_limits.all_templates %}disabled{% endif %}>Minimālā{% if not tier_limits.all_templates %} (PRO){% endif %}</option>
                             <option value="classic" {% if settings.get('default_template') == 'classic' %}selected{% endif %}>Klasiskā</option>
                             <option value="modern" {% if settings.get('default_template') == 'modern' %}selected{% endif %} {% if not tier_limits.all_templates %}disabled{% endif %}>Modernā{% if not tier_limits.all_templates %} (PRO){% endif %}</option>
                         </select>
