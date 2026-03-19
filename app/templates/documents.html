@@ -289,7 +289,7 @@ function positionDropdown(trigger, dropdown) {
 
 document.addEventListener('click', function(e) {
     // Ignore clicks on interactive elements inside row
-    if (e.target.closest('.row-menu-wrapper') || e.target.closest('a') || e.target.closest('button') || e.target.closest('form')) {
+    if (e.target.closest('.row-menu-wrapper') || e.target.closest('a') || e.target.closest('button') || e.target.closest('form') || e.target.closest('[onclick]')) {
         // Handle menu trigger
         const trigger = e.target.closest('.row-menu-trigger');
         if (trigger) {

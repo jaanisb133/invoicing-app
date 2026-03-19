@@ -247,6 +247,7 @@ const docType = "{{ doc_type }}";
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
 const companySettings = {{ settings | tojson }};
 const isVatPayer = companySettings.is_vat_payer !== '0';
+const entityType = companySettings.entity_type || 'business';
 const editMode = {{ 'true' if edit_mode else 'false' }};
 const editItems = {{ edit_items | tojson if edit_mode else '[]' }};
 const editDocNumber = "{{ doc.doc_number if edit_mode else '' }}";
@@ -455,7 +456,6 @@ function getPreviewData() {
         if (parts.length === 3) displayDate = parts[2] + '.' + parts[1] + '.' + parts[0];
     }
 
-    const entityType = companySettings.entity_type || 'business';
     const company = {
         name: companySettings.company_name || '(Jūsu uzņēmums)',
         reg: companySettings.reg_number || '',
