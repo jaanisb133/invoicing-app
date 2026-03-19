@@ -230,7 +230,8 @@ const docData = {
     subtotal: Number({{ "%.2f" | format(subtotal) }}),
     vatRate: {{ doc.vat_rate }},
     vatAmount: Number({{ "%.2f" | format(vat_amount) }}),
-    total: Number({{ "%.2f" | format(total) }})
+    total: Number({{ "%.2f" | format(total) }}),
+    isVatPayer: {{ 'true' if settings.get('is_vat_payer', '1') == '1' else 'false' }}
 };
 
 function logoHtml(invert) {
@@ -245,7 +246,7 @@ function partyLines(info) {
     let html = '';
     html += '<strong>' + info.name + '</strong>';
     if (info.reg) html += '<br>Reģ.Nr. / P.k.: ' + info.reg;
-    if (info.vat) html += '<br>PVN Nr.: ' + info.vat;
+    if (docData.isVatPayer && info.vat) html += '<br>PVN Nr.: ' + info.vat;
     if (info.addr) html += '<br>' + info.addr;
     if (info.bank) html += '<br>Banka: ' + info.bank;
     if (info.account) html += '<br>Konts: ' + info.account;
@@ -321,8 +322,8 @@ function renderClassic(d) {
         </table>
         </div>
         <div style="text-align:right;font-size:13px">
-            <div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
-            <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>
+            ${d.isVatPayer ? `<div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
+            <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
             <div style="font-size:16px;font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
@@ -369,8 +370,8 @@ function renderModern(d) {
             </table>
             </div>
             <div style="text-align:right;font-size:13px">
-                <div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
-                <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>
+                ${d.isVatPayer ? `<div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
+                <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
                 <div style="font-size:17px;font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${d.total.toFixed(2)} EUR</div>
             </div>
             ${d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
@@ -412,8 +413,8 @@ function renderMinimal(d) {
         </table>
         </div>
         <div style="text-align:right;font-size:13px">
-            <div style="color:#9ca3af">Bez PVN: ${d.subtotal.toFixed(2)} EUR</div>
-            <div style="color:#9ca3af">PVN ${d.vatRate}%: ${d.vatAmount.toFixed(2)} EUR</div>
+            ${d.isVatPayer ? `<div style="color:#9ca3af">Bez PVN: ${d.subtotal.toFixed(2)} EUR</div>
+            <div style="color:#9ca3af">PVN ${d.vatRate}%: ${d.vatAmount.toFixed(2)} EUR</div>` : ''}
             <div style="font-size:15px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:12px 0 6px"><div style="font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}

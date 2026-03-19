@@ -259,10 +259,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return RedirectResponse("/set-password", status_code=303)
 
         # Check if user needs to complete initial business setup
-        setup_exempt = {"/settings", "/logout", "/set-password"}
+        setup_exempt = {"/settings", "/setup", "/logout", "/set-password"}
         if path not in setup_exempt and not path.startswith("/static") and not path.startswith("/api/"):
             if not db.get_user_setting(user["id"], "company_name"):
-                return RedirectResponse("/settings?setup=1", status_code=303)
+                return RedirectResponse("/setup", status_code=303)
 
         request.state.user = user
         return await call_next(request)
@@ -490,6 +490,7 @@ async def register(request: Request,
         "invoice_number_separator": "-",
         "invoice_number_digits": "3",
         "default_vat_rate": "21",
+        "is_vat_payer": "1",
         "stock_enabled": "0",
         "buy_doc_prefix": "",
         "sell_doc_prefix": "",
@@ -550,6 +551,55 @@ async def logout(request: Request):
     response = RedirectResponse("/login", status_code=303)
     response.delete_cookie(SESSION_COOKIE)
     return response
+
+
+# =============================================================================
+# Initial Setup (simplified onboarding)
+# =============================================================================
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request):
+    user = request.state.user
+    # If already set up, go to dashboard
+    if db.get_user_setting(user["id"], "company_name"):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("setup.html", {
+        "request": request,
+        "display_name": user.get("display_name") or "",
+    })
+
+
+@app.post("/setup")
+async def save_setup(
+    request: Request,
+    company_name: str = Form(""),
+    reg_number: str = Form(""),
+    vat_number: str = Form(""),
+    legal_address: str = Form(""),
+    bank_name: str = Form(""),
+    bank_account: str = Form(""),
+    is_vat_payer: str = Form("0"),
+    default_vat_rate: str = Form("21"),
+    invoice_number_type: str = Form("type1"),
+    invoice_number_separator: str = Form("-"),
+    invoice_number_digits: str = Form("3"),
+):
+    user = request.state.user
+    settings_dict = {
+        "company_name": company_name,
+        "reg_number": reg_number,
+        "vat_number": vat_number,
+        "legal_address": legal_address,
+        "bank_name": bank_name,
+        "bank_account": bank_account,
+        "is_vat_payer": is_vat_payer,
+        "default_vat_rate": default_vat_rate if is_vat_payer == "1" else "0",
+        "invoice_number_type": invoice_number_type,
+        "invoice_number_separator": invoice_number_separator,
+        "invoice_number_digits": invoice_number_digits,
+    }
+    db.save_all_user_settings(user["id"], settings_dict)
+    return RedirectResponse("/", status_code=303)
 
 
 # =============================================================================
@@ -905,6 +955,7 @@ async def save_settings(
     buy_doc_name: str = Form("Rēķins"),
     sell_doc_name: str = Form("Rēķins"),
     default_vat_rate: str = Form("21"),
+    is_vat_payer: str = Form("0"),
     payment_due_days: str = Form(""),
     stock_enabled: str = Form("0"),
     electronic_doc: str = Form("0"),
@@ -920,16 +971,17 @@ async def save_settings(
     settings_dict = {
         "company_name": company_name,
         "reg_number": reg_number,
-        "vat_number": vat_number,
+        "vat_number": vat_number if is_vat_payer == "1" else "",
         "legal_address": legal_address,
         "bank_name": bank_name,
         "bank_account": bank_account,
+        "is_vat_payer": is_vat_payer,
         "use_prefixes": use_prefixes,
         "buy_doc_prefix": buy_doc_prefix,
         "sell_doc_prefix": sell_doc_prefix,
         "buy_doc_name": buy_doc_name,
         "sell_doc_name": sell_doc_name,
-        "default_vat_rate": default_vat_rate,
+        "default_vat_rate": default_vat_rate if is_vat_payer == "1" else "0",
         "payment_due_days": payment_due_days,
         "stock_enabled": stock_enabled,
         "electronic_doc": electronic_doc,

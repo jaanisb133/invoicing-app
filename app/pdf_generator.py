@@ -211,6 +211,8 @@ def _get_doc_data(doc_id):
         except Exception:
             display_due_date = raw_due
 
+    is_vat_payer = settings.get("is_vat_payer", "1") == "1"
+
     return {
         "doc": doc,
         "items": items,
@@ -225,6 +227,7 @@ def _get_doc_data(doc_id):
         "vat_rate": vat_rate,
         "vat_amount": vat_amount,
         "total": total,
+        "is_vat_payer": is_vat_payer,
     }
 
 
@@ -239,13 +242,13 @@ def generate_invoice_pdf(doc_id, template="minimal"):
     return generators[template](doc_id)
 
 
-def _party_lines(info, FONT_BOLD, style):
+def _party_lines(info, FONT_BOLD, style, show_vat=True):
     """Build a list of Paragraph elements for a party info block."""
     lines = []
     lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", style))
     if info['reg']:
         lines.append(Paragraph(f"Reģ.Nr. / P.k.: {info['reg']}", style))
-    if info['vat']:
+    if show_vat and info['vat']:
         lines.append(Paragraph(f"PVN Nr.: {info['vat']}", style))
     if info['addr']:
         lines.append(Paragraph(info['addr'], style))
@@ -319,10 +322,11 @@ def _generate_classic(doc_id):
     elements.append(HRFlowable(width="100%", thickness=0.5, color=C_BORDER, spaceAfter=6 * mm))
 
     # Parties (each side independent — different line counts don't affect each other)
+    show_vat = data["is_vat_payer"]
     s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", section_label)] + \
-              _party_lines(data['supplier'], FONT_BOLD, normal)
+              _party_lines(data['supplier'], FONT_BOLD, normal, show_vat=show_vat)
     b_lines = [Paragraph("SAŅĒMĒJS / PIRCĒJS", section_label)] + \
-              _party_lines(data['buyer'], FONT_BOLD, normal)
+              _party_lines(data['buyer'], FONT_BOLD, normal, show_vat=show_vat)
 
     parties_table = Table([[s_lines, b_lines]], colWidths=[85 * mm, 85 * mm])
     parties_table.setStyle(TableStyle([
@@ -392,21 +396,34 @@ def _generate_classic(doc_id):
     grand_val = ParagraphStyle('GV', fontSize=11, leading=15, fontName=FONT_BOLD,
                                textColor=C_BLACK, alignment=TA_RIGHT)
 
-    totals_data = [
-        [Paragraph("Summa bez PVN:", total_label),
-         Paragraph(f"{data['subtotal']:.2f} EUR", total_val)],
-        [Paragraph(f"PVN ({data['vat_rate']:.0f}%):", total_label),
-         Paragraph(f"{data['vat_amount']:.2f} EUR", total_val)],
-        [Paragraph("Kopā ar PVN:", grand_label),
-         Paragraph(f"{data['total']:.2f} EUR", grand_val)],
-    ]
-    totals_table = Table(totals_data, colWidths=[128 * mm, 42 * mm])
-    totals_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('LINEABOVE', (0, 2), (-1, 2), 0.75, C_DARK),
-    ]))
+    if data["is_vat_payer"]:
+        totals_data = [
+            [Paragraph("Summa bez PVN:", total_label),
+             Paragraph(f"{data['subtotal']:.2f} EUR", total_val)],
+            [Paragraph(f"PVN ({data['vat_rate']:.0f}%):", total_label),
+             Paragraph(f"{data['vat_amount']:.2f} EUR", total_val)],
+            [Paragraph("Kopā ar PVN:", grand_label),
+             Paragraph(f"{data['total']:.2f} EUR", grand_val)],
+        ]
+        totals_table = Table(totals_data, colWidths=[128 * mm, 42 * mm])
+        totals_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LINEABOVE', (0, 2), (-1, 2), 0.75, C_DARK),
+        ]))
+    else:
+        totals_data = [
+            [Paragraph("Kopā:", grand_label),
+             Paragraph(f"{data['total']:.2f} EUR", grand_val)],
+        ]
+        totals_table = Table(totals_data, colWidths=[128 * mm, 42 * mm])
+        totals_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LINEABOVE', (0, 0), (-1, 0), 0.75, C_DARK),
+        ]))
     elements.append(totals_table)
 
     if doc["notes"]:
@@ -499,10 +516,11 @@ def _generate_modern(doc_id):
     elements.append(Spacer(1, 7 * mm))
 
     # Parties (each side independent — different line counts don't affect each other)
+    show_vat = data["is_vat_payer"]
     s_lines = [Paragraph("PIEGĀDĀTĀJS / PĀRDEVĒJS", styles["section"])] + \
-              _party_lines(data['supplier'], FONT_BOLD, styles["normal"])
+              _party_lines(data['supplier'], FONT_BOLD, styles["normal"], show_vat=show_vat)
     b_lines = [Paragraph("SAŅĒMĒJS / PIRCĒJS", styles["section"])] + \
-              _party_lines(data['buyer'], FONT_BOLD, styles["normal"])
+              _party_lines(data['buyer'], FONT_BOLD, styles["normal"], show_vat=show_vat)
 
     party_table = Table([[s_lines, b_lines]], colWidths=[87 * mm, 87 * mm])
     party_table.setStyle(TableStyle([
@@ -566,21 +584,34 @@ def _generate_modern(doc_id):
     elements.append(Spacer(1, 5 * mm))
 
     # Totals
-    totals_data = [
-        [Paragraph("Summa bez PVN:", styles["total_label"]),
-         Paragraph(f"{data['subtotal']:.2f} EUR", styles["total_value"])],
-        [Paragraph(f"PVN ({data['vat_rate']:.0f}%):", styles["total_label"]),
-         Paragraph(f"{data['vat_amount']:.2f} EUR", styles["total_value"])],
-        [Paragraph("KOPĀ AR PVN:", styles["grand_label"]),
-         Paragraph(f"{data['total']:.2f} EUR", styles["grand_value"])],
-    ]
-    totals_table = Table(totals_data, colWidths=[128 * mm, 40 * mm])
-    totals_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('LINEABOVE', (0, 2), (-1, 2), 1, C_BLACK),
-    ]))
+    if data["is_vat_payer"]:
+        totals_data = [
+            [Paragraph("Summa bez PVN:", styles["total_label"]),
+             Paragraph(f"{data['subtotal']:.2f} EUR", styles["total_value"])],
+            [Paragraph(f"PVN ({data['vat_rate']:.0f}%):", styles["total_label"]),
+             Paragraph(f"{data['vat_amount']:.2f} EUR", styles["total_value"])],
+            [Paragraph("KOPĀ AR PVN:", styles["grand_label"]),
+             Paragraph(f"{data['total']:.2f} EUR", styles["grand_value"])],
+        ]
+        totals_table = Table(totals_data, colWidths=[128 * mm, 40 * mm])
+        totals_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LINEABOVE', (0, 2), (-1, 2), 1, C_BLACK),
+        ]))
+    else:
+        totals_data = [
+            [Paragraph("KOPĀ:", styles["grand_label"]),
+             Paragraph(f"{data['total']:.2f} EUR", styles["grand_value"])],
+        ]
+        totals_table = Table(totals_data, colWidths=[128 * mm, 40 * mm])
+        totals_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LINEABOVE', (0, 0), (-1, 0), 1, C_BLACK),
+        ]))
     elements.append(totals_table)
 
     if doc["notes"]:
@@ -661,12 +692,13 @@ def _generate_minimal(doc_id):
     elements.append(HRFlowable(width="100%", thickness=0.25, color=C_BORDER, spaceAfter=6 * mm))
 
     # Parties
+    show_vat = data["is_vat_payer"]
     def _min_party_block(title, info):
         lines = [Paragraph(title, styles["label"])]
         lines.append(Paragraph(f"<font name='{FONT_BOLD}'>{info['name']}</font>", styles["value"]))
         if info['reg']:
             lines.append(Paragraph(f"Reģ.Nr. / P.k.: {info['reg']}", styles["value"]))
-        if info['vat']:
+        if show_vat and info['vat']:
             lines.append(Paragraph(f"PVN {info['vat']}", styles["value"]))
         if info['addr']:
             lines.append(Paragraph(info['addr'], styles["value"]))
@@ -747,19 +779,31 @@ def _generate_minimal(doc_id):
     tr_bold = ParagraphStyle('TRB', fontSize=10.5, leading=15, fontName=FONT_BOLD,
                              textColor=C_BLACK, alignment=TA_RIGHT)
 
-    totals_data = [
-        [Paragraph("Bez PVN", tr), Paragraph(f"{data['subtotal']:.2f} EUR", tr)],
-        [Paragraph(f"PVN {data['vat_rate']:.0f}%", tr),
-         Paragraph(f"{data['vat_amount']:.2f} EUR", tr)],
-        [Paragraph("Kopā", tr_bold), Paragraph(f"{data['total']:.2f} EUR", tr_bold)],
-    ]
-    totals_table = Table(totals_data, colWidths=[118 * mm, 36 * mm])
-    totals_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
-        ('LINEABOVE', (1, 2), (1, 2), 0.5, C_BLACK),
-    ]))
+    if data["is_vat_payer"]:
+        totals_data = [
+            [Paragraph("Bez PVN", tr), Paragraph(f"{data['subtotal']:.2f} EUR", tr)],
+            [Paragraph(f"PVN {data['vat_rate']:.0f}%", tr),
+             Paragraph(f"{data['vat_amount']:.2f} EUR", tr)],
+            [Paragraph("Kopā", tr_bold), Paragraph(f"{data['total']:.2f} EUR", tr_bold)],
+        ]
+        totals_table = Table(totals_data, colWidths=[118 * mm, 36 * mm])
+        totals_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 1.5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
+            ('LINEABOVE', (1, 2), (1, 2), 0.5, C_BLACK),
+        ]))
+    else:
+        totals_data = [
+            [Paragraph("Kopā", tr_bold), Paragraph(f"{data['total']:.2f} EUR", tr_bold)],
+        ]
+        totals_table = Table(totals_data, colWidths=[118 * mm, 36 * mm])
+        totals_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 1.5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
+            ('LINEABOVE', (1, 0), (1, 0), 0.5, C_BLACK),
+        ]))
     elements.append(totals_table)
 
     if doc["notes"]:
