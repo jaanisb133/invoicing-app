@@ -911,15 +911,18 @@ async def dashboard(request: Request):
     uid = user["id"]
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
-    recent_docs = db.get_documents(uid)[:10]
+    recent_docs = db.get_documents(uid)[:5]
+    clients = db.get_all_clients(uid)
     stock = db.get_stock(uid) if stock_on else []
     stats = db.get_dashboard_stats(uid)
 
     ctx.update({
         "recent_docs": recent_docs,
+        "clients": clients,
         "stock": stock,
         "settings": settings,
         "stats": stats,
+        "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "page": "dashboard",
     })
     return templates.TemplateResponse("dashboard.html", ctx)
