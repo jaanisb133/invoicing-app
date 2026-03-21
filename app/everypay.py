@@ -104,6 +104,8 @@ def initiate_payment(
         auth=_auth(),
         timeout=30,
     )
+    if resp.status_code >= 400:
+        logger.error("EveryPay oneoff error %s: %s", resp.status_code, resp.text)
     resp.raise_for_status()
     data = resp.json()
     logger.info("Payment initiated: ref=%s state=%s",
