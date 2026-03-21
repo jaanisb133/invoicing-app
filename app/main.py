@@ -1345,6 +1345,7 @@ async def add_client(
     contact_person: str = Form(""),
     phone: str = Form(""),
     email: str = Form(""),
+    client_type: str = Form("business"),
 ):
     user = request.state.user
     if reg_number:
@@ -1355,7 +1356,7 @@ async def add_client(
     if not allowed:
         return RedirectResponse(f"/clients?error=limit", status_code=303)
     db.add_client(user["id"], name, reg_number, vat_number, int(vat_payer), legal_address,
-                  bank_name, bank_account, contact_person, phone, email)
+                  bank_name, bank_account, contact_person, phone, email, client_type=client_type)
     return RedirectResponse("/clients", status_code=303)
 
 
@@ -1373,12 +1374,14 @@ async def edit_client(
     contact_person: str = Form(""),
     phone: str = Form(""),
     email: str = Form(""),
+    client_type: str = Form("business"),
 ):
     user = request.state.user
     db.update_client(user["id"], client_id, name=name, reg_number=reg_number,
                      vat_number=vat_number, vat_payer=int(vat_payer), legal_address=legal_address,
                      bank_name=bank_name, bank_account=bank_account,
-                     contact_person=contact_person, phone=phone, email=email)
+                     contact_person=contact_person, phone=phone, email=email,
+                     client_type=client_type)
     return RedirectResponse("/clients", status_code=303)
 
 
@@ -2441,6 +2444,7 @@ async def api_add_client(request: Request):
         legal_address=data.get("legal_address", ""),
         bank_name=data.get("bank_name", ""),
         bank_account=data.get("bank_account", ""),
+        client_type=data.get("client_type", "business"),
     )
     client = db.get_client(client_id)
     return JSONResponse(client)

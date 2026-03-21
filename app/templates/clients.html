@@ -76,6 +76,21 @@
         <div class="modal-title">Pievienot klientu</div>
         <form method="post" action="/clients/add">
             <div class="form-group">
+                <div class="client-type-toggle" style="display:flex;gap:0;border:1px solid var(--border-color, #d1d5db);border-radius:8px;overflow:hidden;margin-bottom:4px">
+                    <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #111827);color:#fff;transition:all 0.2s" id="ac_type_business_label">
+                        <input type="radio" name="client_type" value="business" checked
+                               onchange="acToggleClientType('business')" style="display:none">
+                        Juridiska persona
+                    </label>
+                    <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #111827);transition:all 0.2s" id="ac_type_individual_label">
+                        <input type="radio" name="client_type" value="individual"
+                               onchange="acToggleClientType('individual')" style="display:none">
+                        Fiziska persona
+                    </label>
+                </div>
+            </div>
+            <!-- Business name with registry search -->
+            <div class="form-group" id="ac_business_name_group">
                 <label>Nosaukums *</label>
                 <div class="registry-wrapper">
                     <input type="text" name="name" id="ac_name" class="form-control" required
@@ -84,8 +99,21 @@
                 </div>
                 <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
             </div>
+            <!-- Individual name fields -->
+            <div id="ac_individual_name_group" style="display:none">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Vārds *</label>
+                        <input type="text" id="ac_first_name" class="form-control" placeholder="Vārds">
+                    </div>
+                    <div class="form-group">
+                        <label>Uzvārds *</label>
+                        <input type="text" id="ac_last_name" class="form-control" placeholder="Uzvārds">
+                    </div>
+                </div>
+            </div>
             <div class="form-group">
-                <label>Reģistrācijas Nr.</label>
+                <label id="ac_reg_label">Reģistrācijas Nr.</label>
                 <input type="text" name="reg_number" id="ac_reg_number" class="form-control">
             </div>
             <div class="form-group">
@@ -146,11 +174,39 @@
         <div class="modal-title">Rediģēt klientu</div>
         <form method="post" id="editClientForm">
             <div class="form-group">
+                <div class="client-type-toggle" style="display:flex;gap:0;border:1px solid var(--border-color, #d1d5db);border-radius:8px;overflow:hidden;margin-bottom:4px">
+                    <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #111827);color:#fff;transition:all 0.2s" id="ec_type_business_label">
+                        <input type="radio" name="client_type" value="business" checked
+                               onchange="ecToggleClientType('business')" style="display:none">
+                        Juridiska persona
+                    </label>
+                    <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #111827);transition:all 0.2s" id="ec_type_individual_label">
+                        <input type="radio" name="client_type" value="individual"
+                               onchange="ecToggleClientType('individual')" style="display:none">
+                        Fiziska persona
+                    </label>
+                </div>
+            </div>
+            <!-- Business name -->
+            <div class="form-group" id="ec_business_name_group">
                 <label>Nosaukums *</label>
                 <input type="text" name="name" id="ec_name" class="form-control" required>
             </div>
+            <!-- Individual name fields -->
+            <div id="ec_individual_name_group" style="display:none">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Vārds *</label>
+                        <input type="text" id="ec_first_name" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Uzvārds *</label>
+                        <input type="text" id="ec_last_name" class="form-control">
+                    </div>
+                </div>
+            </div>
             <div class="form-group">
-                <label>Reģistrācijas Nr.</label>
+                <label id="ec_reg_label">Reģistrācijas Nr.</label>
                 <input type="text" name="reg_number" id="ec_reg_number" class="form-control">
             </div>
             <div class="form-group">
@@ -208,6 +264,96 @@
 
 {% block scripts %}
 <script>
+/* --- Client Type Toggle (Add Modal) --- */
+function acToggleClientType(type) {
+    const bizLabel = document.getElementById('ac_type_business_label');
+    const indLabel = document.getElementById('ac_type_individual_label');
+    const bizGroup = document.getElementById('ac_business_name_group');
+    const indGroup = document.getElementById('ac_individual_name_group');
+    const regLabel = document.getElementById('ac_reg_label');
+    const nameInput = document.getElementById('ac_name');
+    if (type === 'business') {
+        bizLabel.style.background = 'var(--bg-primary, #111827)';
+        bizLabel.style.color = '#fff';
+        indLabel.style.background = 'transparent';
+        indLabel.style.color = 'var(--text-primary, #111827)';
+        bizGroup.style.display = '';
+        indGroup.style.display = 'none';
+        nameInput.required = true;
+        document.getElementById('ac_first_name').required = false;
+        document.getElementById('ac_last_name').required = false;
+        regLabel.textContent = 'Reģistrācijas Nr.';
+    } else {
+        indLabel.style.background = 'var(--bg-primary, #111827)';
+        indLabel.style.color = '#fff';
+        bizLabel.style.background = 'transparent';
+        bizLabel.style.color = 'var(--text-primary, #111827)';
+        bizGroup.style.display = 'none';
+        indGroup.style.display = '';
+        nameInput.required = false;
+        document.getElementById('ac_first_name').required = true;
+        document.getElementById('ac_last_name').required = true;
+        regLabel.textContent = 'Personas kods';
+    }
+}
+
+/* --- Client Type Toggle (Edit Modal) --- */
+function ecToggleClientType(type) {
+    const bizLabel = document.getElementById('ec_type_business_label');
+    const indLabel = document.getElementById('ec_type_individual_label');
+    const bizGroup = document.getElementById('ec_business_name_group');
+    const indGroup = document.getElementById('ec_individual_name_group');
+    const regLabel = document.getElementById('ec_reg_label');
+    const nameInput = document.getElementById('ec_name');
+    if (type === 'business') {
+        bizLabel.style.background = 'var(--bg-primary, #111827)';
+        bizLabel.style.color = '#fff';
+        indLabel.style.background = 'transparent';
+        indLabel.style.color = 'var(--text-primary, #111827)';
+        bizGroup.style.display = '';
+        indGroup.style.display = 'none';
+        nameInput.required = true;
+        document.getElementById('ec_first_name').required = false;
+        document.getElementById('ec_last_name').required = false;
+        regLabel.textContent = 'Reģistrācijas Nr.';
+    } else {
+        indLabel.style.background = 'var(--bg-primary, #111827)';
+        indLabel.style.color = '#fff';
+        bizLabel.style.background = 'transparent';
+        bizLabel.style.color = 'var(--text-primary, #111827)';
+        bizGroup.style.display = 'none';
+        indGroup.style.display = '';
+        nameInput.required = false;
+        document.getElementById('ec_first_name').required = true;
+        document.getElementById('ec_last_name').required = true;
+        regLabel.textContent = 'Personas kods';
+    }
+}
+
+/* --- Form submit: merge first+last name for individuals --- */
+document.querySelector('#addClientModal form').addEventListener('submit', function(e) {
+    const type = document.querySelector('#addClientModal input[name="client_type"]:checked').value;
+    if (type === 'individual') {
+        const first = document.getElementById('ac_first_name').value.trim();
+        const last = document.getElementById('ac_last_name').value.trim();
+        if (!first || !last) { e.preventDefault(); return; }
+        document.getElementById('ac_name').value = first + ' ' + last;
+        document.getElementById('ac_name').required = false;
+    }
+});
+
+document.getElementById('editClientForm').addEventListener('submit', function(e) {
+    const type = document.querySelector('#editClientModal input[name="client_type"]:checked').value;
+    if (type === 'individual') {
+        const first = document.getElementById('ec_first_name').value.trim();
+        const last = document.getElementById('ec_last_name').value.trim();
+        if (!first || !last) { e.preventDefault(); return; }
+        document.getElementById('ec_name').value = first + ' ' + last;
+        document.getElementById('ec_name').required = false;
+    }
+});
+
+/* --- Edit Client --- */
 function editClient(c) {
     document.getElementById('editClientForm').action = '/clients/' + c.id + '/edit';
     const fields = ['name', 'reg_number', 'vat_number', 'legal_address',
@@ -218,6 +364,22 @@ function editClient(c) {
     document.getElementById('ec_vat_payer').checked = !!c.vat_payer;
     document.getElementById('ec_vat_group').style.display = c.vat_payer ? '' : 'none';
     document.getElementById('ec_vat_status').textContent = '';
+
+    // Set client type toggle
+    const clientType = c.client_type || 'business';
+    document.querySelector('#editClientModal input[name="client_type"][value="' + clientType + '"]').checked = true;
+    ecToggleClientType(clientType);
+
+    // For individuals, split name into first/last
+    if (clientType === 'individual') {
+        const parts = (c.name || '').split(' ');
+        document.getElementById('ec_first_name').value = parts[0] || '';
+        document.getElementById('ec_last_name').value = parts.slice(1).join(' ') || '';
+    } else {
+        document.getElementById('ec_first_name').value = '';
+        document.getElementById('ec_last_name').value = '';
+    }
+
     document.getElementById('editClientModal').classList.add('active');
 }
 

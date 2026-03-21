@@ -227,6 +227,8 @@ def _run_migrations():
     client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
     if "vat_payer" not in client_cols:
         cursor.execute("ALTER TABLE clients ADD COLUMN vat_payer INTEGER NOT NULL DEFAULT 0")
+    if "client_type" not in client_cols:
+        cursor.execute("ALTER TABLE clients ADD COLUMN client_type TEXT NOT NULL DEFAULT 'business'")
 
     # Create user_settings table if not exists
     cursor.execute("""
@@ -420,14 +422,15 @@ def get_product(product_id):
 # --- Clients (per-user) ---
 
 def add_client(user_id, name, reg_number="", vat_number="", vat_payer=0, legal_address="",
-               bank_name="", bank_account="", contact_person="", phone="", email=""):
+               bank_name="", bank_account="", contact_person="", phone="", email="",
+               client_type="business"):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO clients (user_id, name, reg_number, vat_number, vat_payer, legal_address,
-           bank_name, bank_account, contact_person, phone, email)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           bank_name, bank_account, contact_person, phone, email, client_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (user_id, name, reg_number, vat_number, int(vat_payer), legal_address,
-         bank_name, bank_account, contact_person, phone, email)
+         bank_name, bank_account, contact_person, phone, email, client_type)
     )
     client_id = cursor.lastrowid
     conn.commit()
@@ -437,7 +440,8 @@ def add_client(user_id, name, reg_number="", vat_number="", vat_payer=0, legal_a
 
 def update_client(user_id, client_id, **kwargs):
     allowed_fields = {"name", "reg_number", "vat_number", "vat_payer", "legal_address",
-                      "bank_name", "bank_account", "contact_person", "phone", "email"}
+                      "bank_name", "bank_account", "contact_person", "phone", "email",
+                      "client_type"}
     conn = get_connection()
     for key, value in kwargs.items():
         if key in allowed_fields:

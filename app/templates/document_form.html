@@ -171,6 +171,21 @@
     <div class="modal">
         <div class="modal-title">Ātrā klienta pievienošana</div>
         <div class="form-group">
+            <div class="client-type-toggle" style="display:flex;gap:0;border:1px solid var(--border-color, #d1d5db);border-radius:8px;overflow:hidden;margin-bottom:4px">
+                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #111827);color:#fff;transition:all 0.2s" id="qc_type_business_label">
+                    <input type="radio" name="qc_client_type" value="business" checked
+                           onchange="qcToggleClientType('business')" style="display:none">
+                    Juridiska persona
+                </label>
+                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #111827);transition:all 0.2s" id="qc_type_individual_label">
+                    <input type="radio" name="qc_client_type" value="individual"
+                           onchange="qcToggleClientType('individual')" style="display:none">
+                    Fiziska persona
+                </label>
+            </div>
+        </div>
+        <!-- Business name with registry search -->
+        <div class="form-group" id="qc_business_name_group">
             <label>Nosaukums *</label>
             <div class="registry-wrapper">
                 <input type="text" id="qc_name" class="form-control" required
@@ -179,8 +194,21 @@
             </div>
             <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
         </div>
+        <!-- Individual name fields -->
+        <div id="qc_individual_name_group" style="display:none">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Vārds *</label>
+                    <input type="text" id="qc_first_name" class="form-control" placeholder="Vārds">
+                </div>
+                <div class="form-group">
+                    <label>Uzvārds *</label>
+                    <input type="text" id="qc_last_name" class="form-control" placeholder="Uzvārds">
+                </div>
+            </div>
+        </div>
         <div class="form-group">
-            <label>Reģ. Nr.</label>
+            <label id="qc_reg_label">Reģ. Nr.</label>
             <input type="text" id="qc_reg_number" class="form-control">
         </div>
         <div class="form-group">
@@ -698,7 +726,36 @@ function updatePreview() {
 
 function showQuickAddClient() {
     document.getElementById('quickAddClientModal').classList.add('active');
+    // Reset to business mode
+    document.querySelector('#quickAddClientModal input[name="qc_client_type"][value="business"]').checked = true;
+    qcToggleClientType('business');
     document.getElementById('qc_name').focus();
+}
+
+/* --- Quick-Add Client Type Toggle --- */
+function qcToggleClientType(type) {
+    const bizLabel = document.getElementById('qc_type_business_label');
+    const indLabel = document.getElementById('qc_type_individual_label');
+    const bizGroup = document.getElementById('qc_business_name_group');
+    const indGroup = document.getElementById('qc_individual_name_group');
+    const regLabel = document.getElementById('qc_reg_label');
+    if (type === 'business') {
+        bizLabel.style.background = 'var(--bg-primary, #111827)';
+        bizLabel.style.color = '#fff';
+        indLabel.style.background = 'transparent';
+        indLabel.style.color = 'var(--text-primary, #111827)';
+        bizGroup.style.display = '';
+        indGroup.style.display = 'none';
+        regLabel.textContent = 'Reģ. Nr.';
+    } else {
+        indLabel.style.background = 'var(--bg-primary, #111827)';
+        indLabel.style.color = '#fff';
+        bizLabel.style.background = 'transparent';
+        bizLabel.style.color = 'var(--text-primary, #111827)';
+        bizGroup.style.display = 'none';
+        indGroup.style.display = '';
+        regLabel.textContent = 'Personas kods';
+    }
 }
 
 /* --- Registry Autocomplete (Quick Add Client) --- */
@@ -802,8 +859,19 @@ function showQuickAddProduct(rowBtn) {
 }
 
 async function quickAddClient() {
+    const clientType = document.querySelector('#quickAddClientModal input[name="qc_client_type"]:checked').value;
+    let name;
+    if (clientType === 'individual') {
+        const first = (document.getElementById('qc_first_name') || {}).value || '';
+        const last = (document.getElementById('qc_last_name') || {}).value || '';
+        if (!first.trim() || !last.trim()) { alert('Lūdzu aizpildiet vārdu un uzvārdu'); return; }
+        name = first.trim() + ' ' + last.trim();
+    } else {
+        name = document.getElementById('qc_name').value;
+    }
     const data = {
-        name: document.getElementById('qc_name').value,
+        name: name,
+        client_type: clientType,
         reg_number: document.getElementById('qc_reg_number').value,
         vat_number: document.getElementById('qc_vat_number').value,
         vat_payer: document.getElementById('qc_vat_payer').checked ? 1 : 0,
@@ -852,6 +920,8 @@ async function quickAddClient() {
     ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_bank_name', 'qc_bank_account'].forEach(
         id => document.getElementById(id).value = ''
     );
+    if (document.getElementById('qc_first_name')) document.getElementById('qc_first_name').value = '';
+    if (document.getElementById('qc_last_name')) document.getElementById('qc_last_name').value = '';
     document.getElementById('qc_vat_payer').checked = false;
     document.getElementById('qc_vat_group').style.display = 'none';
     updatePreview();
