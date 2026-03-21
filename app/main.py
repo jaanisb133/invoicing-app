@@ -12,6 +12,8 @@ import datetime
 import asyncio
 import logging
 import smtplib
+import time
+from collections import defaultdict
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -37,6 +39,36 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 UNITS = ["kg", "gab", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
+
+
+# --- Simple in-memory rate limiter ---
+class RateLimiter:
+    """IP-based sliding window rate limiter."""
+
+    def __init__(self):
+        self._hits = defaultdict(list)
+
+    def is_allowed(self, key, max_requests, window_seconds):
+        """Return True if the request is allowed, False if rate limited."""
+        now = time.monotonic()
+        hits = self._hits[key]
+        # Prune old entries
+        cutoff = now - window_seconds
+        self._hits[key] = hits = [t for t in hits if t > cutoff]
+        if len(hits) >= max_requests:
+            return False
+        hits.append(now)
+        return True
+
+
+_rate_limiter = RateLimiter()
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 # --- Centralised email configuration ---
 # Emails are sent from a single V-Rēķini address; Reply-To is set to
@@ -261,7 +293,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Check if user needs to complete initial business setup
         setup_exempt = {"/settings", "/setup", "/logout", "/set-password"}
-        if path not in setup_exempt and not path.startswith("/static") and not path.startswith("/api/"):
+        if path not in setup_exempt and not path.startswith("/static") and not path.startswith("/api/") and not path.startswith("/settings/logo"):
             if not db.get_user_setting(user["id"], "company_name"):
                 return RedirectResponse("/setup", status_code=303)
 
@@ -419,6 +451,16 @@ async def login_page(request: Request, error: str = "", message: str = ""):
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    # Rate limit: 10 login attempts per minute per IP
+    ip = _get_client_ip(request)
+    if not _rate_limiter.is_allowed(f"login:{ip}", 10, 60):
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Pārāk daudz mēģinājumu. Lūdzu, uzgaidiet.",
+            "username": username,
+            "page": "login",
+        })
+
     user = db.authenticate_user(username, password)
     if not user:
         return templates.TemplateResponse("login.html", {
@@ -467,6 +509,15 @@ async def register(request: Request,
                    vat_number: str = Form(""),
                    legal_address: str = Form(""),
                    is_vat_payer: str = Form("0")):
+    # Rate limit: 5 registrations per hour per IP
+    ip = _get_client_ip(request)
+    if not _rate_limiter.is_allowed(f"register:{ip}", 5, 3600):
+        return templates.TemplateResponse("register.html", {
+            "request": request, "page": "register", "plan": plan, "cycle": cycle,
+            "entity_type": entity_type, "email": email,
+            "error": "Pārāk daudz reģistrāciju. Lūdzu, mēģiniet vēlāk.",
+        })
+
     # For individuals, build display_name from first + last name
     if entity_type == "individual":
         display_name = f"{first_name.strip()} {last_name.strip()}".strip()
@@ -510,7 +561,8 @@ async def register(request: Request,
         tier="free",
     )
 
-    # Set default settings for new user, including business info from registration
+    # Save registration data as settings (but NOT company_name — that's set
+    # during onboarding to gate the setup-complete check in middleware)
     is_business = entity_type == "business"
     db.save_all_user_settings(user_id, {
         "invoice_number_type": "type1",
@@ -525,7 +577,7 @@ async def register(request: Request,
         "sell_doc_name": "Rēķins",
         "default_template": "minimal",
         "entity_type": entity_type,
-        "company_name": display_name,
+        "_reg_company_name": display_name,
         "reg_number": reg_number if is_business else "",
         "vat_number": vat_number if (is_business and is_vat_payer == "1") else "",
         "legal_address": legal_address if is_business else "",
@@ -595,9 +647,16 @@ async def setup_page(request: Request):
     # If already set up, go to dashboard
     if db.get_user_setting(user["id"], "company_name"):
         return RedirectResponse("/", status_code=303)
+    settings = db.get_all_user_settings(user["id"])
+    # Use _reg_company_name from registration as the company name for pre-fill
+    if not settings.get("company_name") and settings.get("_reg_company_name"):
+        settings["company_name"] = settings["_reg_company_name"]
+    has_logo = bool(_get_logo_path(user["id"]))
     return templates.TemplateResponse("setup.html", {
         "request": request,
         "display_name": user.get("display_name") or "",
+        "settings": settings,
+        "has_logo": has_logo,
     })
 
 
@@ -616,6 +675,8 @@ async def save_setup(
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form("-"),
     invoice_number_digits: str = Form("3"),
+    electronic_doc: str = Form("0"),
+    payment_due_days: str = Form(""),
 ):
     user = request.state.user
     settings_dict = {
@@ -631,6 +692,8 @@ async def save_setup(
         "invoice_number_type": invoice_number_type,
         "invoice_number_separator": invoice_number_separator,
         "invoice_number_digits": invoice_number_digits,
+        "electronic_doc": electronic_doc,
+        "payment_due_days": payment_due_days,
     }
     db.save_all_user_settings(user["id"], settings_dict)
     return RedirectResponse("/", status_code=303)
@@ -1074,7 +1137,9 @@ async def upload_logo(request: Request, logo: UploadFile = File(...)):
         f.write(content)
 
     db.set_user_setting(uid, "logo_filename", filename)
-    return RedirectResponse("/settings?saved=1", status_code=303)
+    # Support redirect back to setup/onboarding
+    redirect = request.query_params.get("redirect", "/settings?saved=1")
+    return RedirectResponse(redirect, status_code=303)
 
 
 @app.post("/settings/logo/delete")
@@ -1085,7 +1150,8 @@ async def delete_logo(request: Request):
     if path and os.path.exists(path):
         os.remove(path)
     db.set_user_setting(uid, "logo_filename", "")
-    return RedirectResponse("/settings?saved=1", status_code=303)
+    redirect = request.query_params.get("redirect", "/settings?saved=1")
+    return RedirectResponse(redirect, status_code=303)
 
 
 @app.get("/api/logo")
@@ -2313,6 +2379,10 @@ async def api_invoice_preview(request: Request,
 async def api_registry_search(request: Request, q: str = ""):
     """Search the Latvian business registry by name or registration number.
     Public endpoint — registry data is already publicly available."""
+    # Rate limit: 30 requests per minute per IP
+    ip = _get_client_ip(request)
+    if not _rate_limiter.is_allowed(f"registry:{ip}", 30, 60):
+        return JSONResponse({"error": "Rate limited"}, status_code=429)
     results = registry.search(q, limit=15)
     return JSONResponse(results)
 

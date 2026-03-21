@@ -49,11 +49,118 @@
             color: var(--text-light);
             margin: 0;
         }
-        .setup-step {
+        /* Progress steps */
+        .setup-progress {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            margin-bottom: 28px;
+        }
+        .setup-progress-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-lighter);
+        }
+        .setup-progress-step.active { color: var(--primary); }
+        .setup-progress-step.done { color: var(--success, #22c55e); }
+        .setup-progress-dot {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            border: 2px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-lighter);
+            flex-shrink: 0;
+        }
+        .setup-progress-step.active .setup-progress-dot {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: white;
+        }
+        .setup-progress-step.done .setup-progress-dot {
+            border-color: var(--success, #22c55e);
+            background: var(--success, #22c55e);
+            color: white;
+        }
+        .setup-progress-line {
+            width: 40px;
+            height: 2px;
+            background: var(--border);
+            margin: 0 8px;
+            flex-shrink: 0;
+        }
+        .setup-progress-line.done { background: var(--success, #22c55e); }
+        /* Step content */
+        .setup-step { display: none; }
+        .setup-step.active { display: block; }
+        /* Actions */
+        .setup-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .setup-actions .btn { flex: 1; padding: 12px 20px; font-size: 14px; }
+        .setup-actions .btn-skip {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-light);
+            cursor: pointer;
+            border-radius: var(--radius);
+            font-size: 13px;
+            padding: 12px 20px;
+        }
+        .setup-actions .btn-skip:hover { background: var(--bg-hover); }
+        .skip-hint {
+            text-align: center;
+            margin-top: 10px;
             font-size: 12px;
             color: var(--text-lighter);
-            margin-bottom: 6px;
         }
+        /* Logo upload area for setup */
+        .setup-logo-area {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 16px;
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: border-color .15s;
+        }
+        .setup-logo-area:hover { border-color: var(--primary-light); }
+        .setup-logo-placeholder {
+            width: 100px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-lighter);
+            font-size: 12px;
+            background: var(--bg);
+            border-radius: var(--radius);
+            flex-shrink: 0;
+        }
+        .setup-logo-text { font-size: 13px; color: var(--text-light); }
+        .setup-logo-text strong { color: var(--text); display: block; margin-bottom: 2px; }
+        /* Prefilled info display */
+        .prefilled-info {
+            background: var(--bg);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+        .prefilled-info .label { color: var(--text-lighter); font-size: 12px; }
+        .prefilled-info .value { font-weight: 600; color: var(--text); }
     </style>
 </head>
 <body>
@@ -61,162 +168,257 @@
         <div class="setup-header">
             <div class="logo">VR</div>
             <h1>Laipni lūdzam!</h1>
-            <p>Aizpildiet uzņēmuma informāciju, lai sāktu lietot sistēmu.</p>
+            <p>Pabeidziet konta iestatīšanu — tas aizņems tikai minūti.</p>
         </div>
 
-        <form method="post" action="/setup">
-            <div class="card">
-                <div class="card-header">Jūsu informācija</div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <label>Veids *</label>
-                        <div style="display:flex;gap:8px">
-                            <label class="radio-card selected" style="flex:1;margin:0" id="typeBusinessCard">
-                                <input type="radio" name="entity_type" value="business" checked
-                                       onchange="toggleEntityType()">
-                                <div class="radio-card-content" style="padding:10px 14px">
-                                    <strong>Uzņēmums</strong>
+        <!-- Progress indicator -->
+        <div class="setup-progress">
+            <div class="setup-progress-step active" id="prog1">
+                <div class="setup-progress-dot">1</div>
+                <span class="hide-mobile">Detaļas</span>
+            </div>
+            <div class="setup-progress-line" id="progLine1"></div>
+            <div class="setup-progress-step" id="prog2">
+                <div class="setup-progress-dot">2</div>
+                <span class="hide-mobile">Dokumenti</span>
+            </div>
+            <div class="setup-progress-line" id="progLine2"></div>
+            <div class="setup-progress-step" id="prog3">
+                <div class="setup-progress-dot">3</div>
+                <span class="hide-mobile">Numerācija</span>
+            </div>
+        </div>
+
+        <form method="post" action="/setup" id="setupForm">
+            <!-- ==================== STEP 1: Business details ==================== -->
+            <div class="setup-step active" id="step1">
+                <div class="card">
+                    <div class="card-header">
+                        {% if settings.get('entity_type') == 'individual' %}Personīgā informācija{% else %}Uzņēmuma informācija{% endif %}
+                    </div>
+                    <div class="card-body">
+                        {% if settings.get('company_name') or settings.get('reg_number') or settings.get('legal_address') %}
+                        <div class="prefilled-info">
+                            <div style="display:flex;gap:24px;flex-wrap:wrap">
+                                {% if settings.get('company_name') %}
+                                <div>
+                                    <div class="label">{% if settings.get('entity_type') == 'individual' %}Vārds{% else %}Nosaukums{% endif %}</div>
+                                    <div class="value">{{ settings.get('company_name', '') }}</div>
                                 </div>
-                            </label>
-                            <label class="radio-card" style="flex:1;margin:0" id="typeIndividualCard">
-                                <input type="radio" name="entity_type" value="individual"
-                                       onchange="toggleEntityType()">
-                                <div class="radio-card-content" style="padding:10px 14px">
-                                    <strong>Privātpersona</strong>
+                                {% endif %}
+                                {% if settings.get('reg_number') %}
+                                <div>
+                                    <div class="label">Reģ. Nr.</div>
+                                    <div class="value">{{ settings.get('reg_number', '') }}</div>
                                 </div>
-                            </label>
+                                {% endif %}
+                                {% if settings.get('legal_address') %}
+                                <div>
+                                    <div class="label">Adrese</div>
+                                    <div class="value">{{ settings.get('legal_address', '') }}</div>
+                                </div>
+                                {% endif %}
+                                {% if settings.get('vat_number') %}
+                                <div>
+                                    <div class="label">PVN Nr.</div>
+                                    <div class="value">{{ settings.get('vat_number', '') }}</div>
+                                </div>
+                                {% endif %}
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label id="nameLabel">Uzņēmuma nosaukums *</label>
-                        <input type="text" name="company_name" class="form-control"
-                               value="{{ display_name or '' }}" required>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label id="regLabel">Reģistrācijas numurs</label>
-                            <input type="text" name="reg_number" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label>Juridiskā adrese</label>
-                            <input type="text" name="legal_address" class="form-control">
-                        </div>
-                    </div>
-                    <div class="form-group" id="vatPayerGroup">
-                        <div style="margin-top:4px">
-                            <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                                <input type="hidden" name="is_vat_payer" value="0">
-                                <input type="checkbox" id="vatPayerToggle" name="is_vat_payer" value="1"
-                                       checked
-                                       onchange="document.getElementById('vatFields').style.display=this.checked?'':'none'"
-                                       style="width:18px;height:18px;cursor:pointer">
-                                Esmu PVN maksātājs
-                            </label>
-                            <span style="font-size:12px;color:var(--text-light)">
-                                Ja neesat PVN maksātājs, PVN aprēķini un lauks netiks rādīti dokumentos
-                            </span>
-                        </div>
-                    </div>
-                    <div id="vatFields">
+                        {% endif %}
+
+                        <!-- Hidden fields to preserve registration data -->
+                        <input type="hidden" name="entity_type" value="{{ settings.get('entity_type', 'business') }}">
+                        <input type="hidden" name="company_name" value="{{ settings.get('company_name', '') or display_name }}">
+                        <input type="hidden" name="reg_number" value="{{ settings.get('reg_number', '') }}">
+                        <input type="hidden" name="legal_address" value="{{ settings.get('legal_address', '') }}">
+                        <input type="hidden" name="is_vat_payer" value="{{ settings.get('is_vat_payer', '0') }}">
+                        <input type="hidden" name="vat_number" value="{{ settings.get('vat_number', '') }}">
+
                         <div class="form-row">
                             <div class="form-group">
-                                <label>PVN numurs</label>
-                                <input type="text" name="vat_number" class="form-control" placeholder="LV...">
+                                <label>Banka</label>
+                                <input type="text" name="bank_name" class="form-control"
+                                       value="{{ settings.get('bank_name', '') }}" placeholder="piem. Swedbank">
                             </div>
                             <div class="form-group">
+                                <label>Bankas konts</label>
+                                <input type="text" name="bank_account" class="form-control"
+                                       value="{{ settings.get('bank_account', '') }}" placeholder="piem. LV00HABA0000000000">
+                            </div>
+                        </div>
+
+                        <!-- Logo upload -->
+                        <div class="form-group">
+                            <label>Logotips</label>
+                            <div class="setup-logo-area" onclick="document.getElementById('setupLogoInput').click()" id="logoArea">
+                                {% if has_logo %}
+                                <img src="/api/logo" alt="Logo" style="max-height:50px;max-width:100px;border-radius:var(--radius)">
+                                {% else %}
+                                <div class="setup-logo-placeholder">Nav logotipa</div>
+                                {% endif %}
+                                <div class="setup-logo-text">
+                                    <strong>{% if has_logo %}Mainīt logotipu{% else %}Augšupielādēt logotipu{% endif %}</strong>
+                                    PNG, JPG vai GIF. Ieteicamais: 300x150px.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setup-actions">
+                    <button type="button" class="btn-skip" onclick="goToStep(2)">Izlaist</button>
+                    <button type="button" class="btn btn-primary" onclick="goToStep(2)">Tālāk</button>
+                </div>
+                <div class="skip-hint">Varat mainīt vēlāk iestatījumos</div>
+            </div>
+
+            <!-- ==================== STEP 2: Document settings ==================== -->
+            <div class="setup-step" id="step2">
+                <div class="card">
+                    <div class="card-header">Dokumentu iestatījumi</div>
+                    <div class="card-body">
+                        {% if settings.get('is_vat_payer', '0') == '1' %}
+                        <div class="form-row">
+                            <div class="form-group" style="max-width:150px">
                                 <label>PVN likme (%)</label>
-                                <input type="text" name="default_vat_rate" class="form-control" value="21">
+                                <input type="text" name="default_vat_rate" id="setupVatRate" class="form-control" value="{{ settings.get('default_vat_rate', '21') }}">
+                            </div>
+                            <div class="form-group" style="max-width:200px">
+                                <label>Apmaksas termiņš (dienas)</label>
+                                <input type="number" name="payment_due_days" class="form-control" min="0"
+                                       value="{{ settings.get('payment_due_days', '') }}" placeholder="piem. 7">
+                                <span style="font-size:12px;color:var(--text-light)">No rēķina datuma</span>
                             </div>
                         </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Banka</label>
-                            <input type="text" name="bank_name" class="form-control">
+                        {% else %}
+                        <input type="hidden" name="default_vat_rate" value="0">
+                        <div class="form-group" style="max-width:200px">
+                            <label>Apmaksas termiņš (dienas)</label>
+                            <input type="number" name="payment_due_days" class="form-control" min="0"
+                                   value="{{ settings.get('payment_due_days', '') }}" placeholder="piem. 7">
+                            <span style="font-size:12px;color:var(--text-light)">No rēķina datuma</span>
                         </div>
+                        {% endif %}
+
                         <div class="form-group">
-                            <label>Bankas konts</label>
-                            <input type="text" name="bank_account" class="form-control">
+                            <label>Parakstu lauks dokumentos</label>
+                            <div style="margin-top:4px">
+                                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                                    <input type="hidden" name="electronic_doc" value="0">
+                                    <input type="checkbox" name="electronic_doc" value="1"
+                                           style="width:18px;height:18px;cursor:pointer">
+                                    Elektronisks dokuments (bez paraksta laukiem)
+                                </label>
+                                <span style="font-size:12px;color:var(--text-light)">
+                                    Parakstu vietā tiks norādīts: "Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta"
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                <div class="setup-actions">
+                    <button type="button" class="btn-skip" onclick="goToStep(3)">Izlaist</button>
+                    <button type="button" class="btn btn-primary" onclick="goToStep(3)">Tālāk</button>
+                </div>
+                <div class="skip-hint">Varat mainīt vēlāk iestatījumos</div>
             </div>
 
-            <div class="card">
-                <div class="card-header">Rēķinu numerācija</div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <label>Numerācijas tips</label>
-                        <div class="number-type-options">
-                            <label class="radio-card selected">
-                                <input type="radio" name="invoice_number_type" value="type1" checked
-                                       onchange="updateSetupPreview()">
-                                <div class="radio-card-content">
-                                    <strong>Tips 1 — Gads + numurs</strong>
-                                    <span class="radio-card-example">26-001, 26-002, ...</span>
-                                </div>
-                            </label>
-                            <label class="radio-card">
-                                <input type="radio" name="invoice_number_type" value="type2"
-                                       onchange="updateSetupPreview()">
-                                <div class="radio-card-content">
-                                    <strong>Tips 2 — Numurs/diena-mēnesis</strong>
-                                    <span class="radio-card-example">01/09-03, 02/09-03, ...</span>
-                                </div>
-                            </label>
-                            <label class="radio-card">
-                                <input type="radio" name="invoice_number_type" value="type3"
-                                       onchange="updateSetupPreview()">
-                                <div class="radio-card-content">
-                                    <strong>Tips 3 — Vienkāršs numurs</strong>
-                                    <span class="radio-card-example">001, 002, 003, ...</span>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                    <div id="setupType1Options">
-                        <div class="form-row">
-                            <div class="form-group" id="setupSepGroup">
-                                <label>Atdalītājs</label>
-                                <input type="text" name="invoice_number_separator" id="setupSep" class="form-control"
-                                       value="-" maxlength="3" style="max-width:100px" oninput="updateSetupPreview()">
-                            </div>
-                            <div class="form-group">
-                                <label>Minimālais ciparu skaits</label>
-                                <select name="invoice_number_digits" id="setupDigits" class="form-control"
-                                        style="max-width:100px" onchange="updateSetupPreview()">
-                                    <option value="2">2 (01)</option>
-                                    <option value="3" selected>3 (001)</option>
-                                    <option value="4">4 (0001)</option>
-                                    <option value="5">5 (00001)</option>
-                                </select>
+            <!-- ==================== STEP 3: Invoice numbering ==================== -->
+            <div class="setup-step" id="step3">
+                <div class="card">
+                    <div class="card-header">Rēķinu numerācija</div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>Numerācijas tips</label>
+                            <div class="number-type-options">
+                                <label class="radio-card selected">
+                                    <input type="radio" name="invoice_number_type" value="type1" checked
+                                           onchange="updateSetupPreview()">
+                                    <div class="radio-card-content">
+                                        <strong>Tips 1 — Gads + numurs</strong>
+                                        <span class="radio-card-example">26-001, 26-002, ...</span>
+                                    </div>
+                                </label>
+                                <label class="radio-card">
+                                    <input type="radio" name="invoice_number_type" value="type2"
+                                           onchange="updateSetupPreview()">
+                                    <div class="radio-card-content">
+                                        <strong>Tips 2 — Numurs/diena-mēnesis</strong>
+                                        <span class="radio-card-example">01/09-03, 02/09-03, ...</span>
+                                    </div>
+                                </label>
+                                <label class="radio-card">
+                                    <input type="radio" name="invoice_number_type" value="type3"
+                                           onchange="updateSetupPreview()">
+                                    <div class="radio-card-content">
+                                        <strong>Tips 3 — Vienkāršs numurs</strong>
+                                        <span class="radio-card-example">001, 002, 003, ...</span>
+                                    </div>
+                                </label>
                             </div>
                         </div>
-                    </div>
-                    <div class="preview-box" id="setupPreview">
-                        <strong>Piemērs:</strong> <span id="setupPreviewText">...</span>
+                        <div id="setupType1Options">
+                            <div class="form-row">
+                                <div class="form-group" id="setupSepGroup">
+                                    <label>Atdalītājs</label>
+                                    <input type="text" name="invoice_number_separator" id="setupSep" class="form-control"
+                                           value="-" maxlength="3" style="max-width:100px" oninput="updateSetupPreview()">
+                                </div>
+                                <div class="form-group">
+                                    <label>Minimālais ciparu skaits</label>
+                                    <select name="invoice_number_digits" id="setupDigits" class="form-control"
+                                            style="max-width:100px" onchange="updateSetupPreview()">
+                                        <option value="2">2 (01)</option>
+                                        <option value="3" selected>3 (001)</option>
+                                        <option value="4">4 (0001)</option>
+                                        <option value="5">5 (00001)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="preview-box" id="setupPreview">
+                            <strong>Piemērs:</strong> <span id="setupPreviewText">...</span>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <button type="submit" class="btn btn-primary" style="width:100%;font-size:15px;padding:14px 28px">
-                Sākt lietot V-Rēķini
-            </button>
+                <div class="setup-actions">
+                    <button type="submit" class="btn btn-primary" style="flex:1">Sākt lietot V-Rēķini</button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Hidden logo form (separate because it needs multipart) -->
+        <form method="post" action="/settings/logo?redirect=/setup" enctype="multipart/form-data" id="logoForm" style="display:none">
+            <input type="file" name="logo" id="setupLogoInput" accept=".png,.jpg,.jpeg,.gif"
+                   onchange="document.getElementById('logoForm').submit()">
         </form>
     </div>
 
     <script>
-    function toggleEntityType() {
-        const isBusiness = document.querySelector('input[name="entity_type"]:checked').value === 'business';
-        document.getElementById('typeBusinessCard').classList.toggle('selected', isBusiness);
-        document.getElementById('typeIndividualCard').classList.toggle('selected', !isBusiness);
-        document.getElementById('nameLabel').textContent = isBusiness ? 'Uzņēmuma nosaukums *' : 'Vārds, Uzvārds *';
-        document.getElementById('regLabel').textContent = isBusiness ? 'Reģistrācijas numurs' : 'Personas kods';
-        // Individuals typically aren't VAT payers
-        if (!isBusiness) {
-            document.getElementById('vatPayerToggle').checked = false;
-            document.getElementById('vatFields').style.display = 'none';
+    let currentStep = 1;
+
+    function goToStep(step) {
+        // Hide current
+        document.getElementById('step' + currentStep).classList.remove('active');
+        // Mark previous as done in progress
+        for (let i = 1; i < step; i++) {
+            document.getElementById('prog' + i).classList.remove('active');
+            document.getElementById('prog' + i).classList.add('done');
+            document.getElementById('prog' + i).querySelector('.setup-progress-dot').innerHTML = '&#x2713;';
+            if (document.getElementById('progLine' + i)) {
+                document.getElementById('progLine' + i).classList.add('done');
+            }
         }
+        // Show new step
+        document.getElementById('step' + step).classList.add('active');
+        document.getElementById('prog' + step).classList.add('active');
+        document.getElementById('prog' + step).classList.remove('done');
+        currentStep = step;
+        window.scrollTo(0, 0);
     }
 
     function updateSetupPreview() {
@@ -229,7 +431,7 @@
         opts.style.display = (type === 'type2') ? 'none' : '';
         sepGroup.style.display = (type === 'type3') ? 'none' : '';
 
-        document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected'));
+        document.querySelectorAll('#step3 .radio-card').forEach(c => c.classList.remove('selected'));
         document.querySelector('input[name="invoice_number_type"]:checked').closest('.radio-card').classList.add('selected');
 
         const y = new Date().getFullYear() % 100;
@@ -240,13 +442,13 @@
         if (type === 'type1') {
             const n1 = '1'.padStart(digits, '0');
             const n2 = '2'.padStart(digits, '0');
-            preview = `${y}${sep}${n1}, ${y}${sep}${n2}, ...`;
+            preview = y + sep + n1 + ', ' + y + sep + n2 + ', ...';
         } else if (type === 'type2') {
-            preview = `01/${d}-${m}, 02/${d}-${m}, ... (katru dienu no jauna)`;
+            preview = '01/' + d + '-' + m + ', 02/' + d + '-' + m + ', ... (katru dienu no jauna)';
         } else {
             const n1 = '1'.padStart(digits, '0');
             const n2 = '2'.padStart(digits, '0');
-            preview = `${n1}, ${n2}, ...`;
+            preview = n1 + ', ' + n2 + ', ...';
         }
         document.getElementById('setupPreviewText').textContent = preview;
     }
