@@ -19,7 +19,7 @@
             align-items: center;
             justify-content: center;
         }
-        .login-container { width: 100%; max-width: 440px; padding: 20px; }
+        .login-container { width: 100%; max-width: 480px; padding: 20px; }
         .login-card {
             background: var(--bg-card);
             border-radius: var(--radius-lg);
@@ -32,6 +32,17 @@
         .login-card .btn-primary { width: 100%; padding: 10px 16px; font-size: 14px; margin-top: 8px; }
         .login-footer { text-align: center; margin-top: 16px; font-size: 14px; color: var(--text-light); }
         .login-footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+        .entity-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+        .entity-toggle label {
+            flex: 1; margin: 0; cursor: pointer;
+            border: 2px solid var(--border); border-radius: var(--radius);
+            padding: 10px 14px; text-align: center; font-weight: 600; font-size: 14px;
+            background: var(--bg-card); color: var(--text); transition: all .15s;
+        }
+        .entity-toggle label:hover { border-color: var(--primary-light); }
+        .entity-toggle label.selected { border-color: var(--primary); background: var(--primary-bg, rgba(37,99,235,.06)); color: var(--primary); }
+        .entity-toggle input[type="radio"] { display: none; }
+        .registry-hint { font-size: 12px; color: var(--text-lighter); margin-top: 2px; }
     </style>
 </head>
 <body>
@@ -55,11 +66,80 @@
             <form method="post" action="/register">
                 <input type="hidden" name="plan" value="{{ plan or '' }}">
                 <input type="hidden" name="cycle" value="{{ cycle or 'monthly' }}">
-                <div class="form-group">
-                    <label for="display_name">Vārds / Uzņēmuma nosaukums</label>
-                    <input type="text" id="display_name" name="display_name" class="form-control"
-                           value="{{ display_name or '' }}" required autofocus>
+
+                <!-- Entity type selector -->
+                <div class="entity-toggle">
+                    <label id="regTypeBusiness" class="{% if (entity_type or 'business') == 'business' %}selected{% endif %}">
+                        <input type="radio" name="entity_type" value="business"
+                               {% if (entity_type or 'business') == 'business' %}checked{% endif %}
+                               onchange="toggleRegEntityType()">
+                        Uzņēmums
+                    </label>
+                    <label id="regTypeIndividual" class="{% if entity_type == 'individual' %}selected{% endif %}">
+                        <input type="radio" name="entity_type" value="individual"
+                               {% if entity_type == 'individual' %}checked{% endif %}
+                               onchange="toggleRegEntityType()">
+                        Privātpersona
+                    </label>
                 </div>
+
+                <!-- Business name with registry search -->
+                <div id="regBusinessFields">
+                    <div class="form-group">
+                        <label for="reg_business_name">Uzņēmuma nosaukums *</label>
+                        <div class="registry-wrapper">
+                            <input type="text" id="reg_business_name" name="display_name" class="form-control"
+                                   value="{{ display_name or '' }}" required autocomplete="off"
+                                   placeholder="Sāciet rakstīt uzņēmuma nosaukumu...">
+                            <div class="registry-dropdown" id="reg_registry_dropdown"></div>
+                        </div>
+                        <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="reg_reg_number">Reģistrācijas Nr.</label>
+                            <input type="text" id="reg_reg_number" name="reg_number" class="form-control"
+                                   value="{{ reg_number or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg_legal_address">Juridiskā adrese</label>
+                            <input type="text" id="reg_legal_address" name="legal_address" class="form-control"
+                                   value="{{ legal_address or '' }}">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                            <input type="hidden" name="is_vat_payer" value="0">
+                            <input type="checkbox" name="is_vat_payer" id="reg_vat_payer" value="1"
+                                   {% if (is_vat_payer or '1') == '1' %}checked{% endif %}
+                                   style="width:18px;height:18px;cursor:pointer"
+                                   onchange="document.getElementById('reg_vat_group').style.display=this.checked?'':'none'">
+                            Esmu PVN maksātājs
+                        </label>
+                    </div>
+                    <div class="form-group" id="reg_vat_group" style="{% if (is_vat_payer or '1') != '1' %}display:none{% endif %}">
+                        <label for="reg_vat_number">PVN Nr.</label>
+                        <input type="text" id="reg_vat_number" name="vat_number" class="form-control"
+                               value="{{ vat_number or '' }}">
+                    </div>
+                </div>
+
+                <!-- Individual name fields -->
+                <div id="regIndividualFields" style="display:none">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="reg_first_name">Vārds *</label>
+                            <input type="text" id="reg_first_name" class="form-control"
+                                   value="{{ first_name or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg_last_name">Uzvārds *</label>
+                            <input type="text" id="reg_last_name" class="form-control"
+                                   value="{{ last_name or '' }}">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="email">E-pasts</label>
                     <input type="email" id="email" name="email" class="form-control"
@@ -91,5 +171,109 @@
     </div>
     </div>
     {% include "_public_footer.html" %}
+
+<script>
+function toggleRegEntityType() {
+    const isBusiness = document.querySelector('input[name="entity_type"]:checked').value === 'business';
+    document.getElementById('regBusinessFields').style.display = isBusiness ? '' : 'none';
+    document.getElementById('regIndividualFields').style.display = isBusiness ? 'none' : '';
+    document.getElementById('regTypeBusiness').classList.toggle('selected', isBusiness);
+    document.getElementById('regTypeIndividual').classList.toggle('selected', !isBusiness);
+
+    // Toggle required attributes and name attributes
+    const bizName = document.getElementById('reg_business_name');
+    const firstName = document.getElementById('reg_first_name');
+    const lastName = document.getElementById('reg_last_name');
+
+    if (isBusiness) {
+        bizName.required = true;
+        bizName.name = 'display_name';
+        firstName.removeAttribute('name');
+        lastName.removeAttribute('name');
+        firstName.required = false;
+        lastName.required = false;
+    } else {
+        bizName.required = false;
+        bizName.removeAttribute('name');
+        firstName.name = 'first_name';
+        lastName.name = 'last_name';
+        firstName.required = true;
+        lastName.required = true;
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleRegEntityType();
+});
+
+/* --- Registry Autocomplete for Registration --- */
+let _regRegTimer = null;
+let _regRegIdx = -1;
+const regNameInput = document.getElementById('reg_business_name');
+const regDropdown = document.getElementById('reg_registry_dropdown');
+
+regNameInput.addEventListener('input', function() {
+    clearTimeout(_regRegTimer);
+    const q = this.value.trim();
+    if (q.length < 2) { regDropdown.classList.remove('active'); return; }
+    _regRegTimer = setTimeout(() => regRegistrySearch(q), 250);
+});
+
+regNameInput.addEventListener('keydown', function(e) {
+    const items = regDropdown.querySelectorAll('.registry-item');
+    if (!regDropdown.classList.contains('active') || !items.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); _regRegIdx = Math.min(_regRegIdx + 1, items.length - 1); regHighlight(items); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); _regRegIdx = Math.max(_regRegIdx - 1, 0); regHighlight(items); }
+    else if (e.key === 'Enter' && _regRegIdx >= 0) { e.preventDefault(); items[_regRegIdx].click(); }
+    else if (e.key === 'Escape') { regDropdown.classList.remove('active'); }
+});
+
+function regHighlight(items) {
+    items.forEach((el, i) => el.classList.toggle('selected', i === _regRegIdx));
+    if (_regRegIdx >= 0 && items[_regRegIdx]) items[_regRegIdx].scrollIntoView({block: 'nearest'});
+}
+
+async function regRegistrySearch(q) {
+    try {
+        const resp = await fetch('/api/registry/search?q=' + encodeURIComponent(q));
+        const data = await resp.json();
+        if (!data.length) { regDropdown.classList.remove('active'); return; }
+        regDropdown.innerHTML = data.map(b => `
+            <div class="registry-item" data-regcode="${b.regcode}" data-name="${b.name.replace(/"/g, '&quot;')}"
+                 data-address="${(b.address||'').replace(/"/g, '&quot;')}" data-type="${(b.type_text||'').replace(/"/g, '&quot;')}">
+                <div class="registry-item-name">${b.name}</div>
+                <div class="registry-item-details"><span class="registry-item-regcode">${b.regcode}</span> <span class="registry-item-type">${b.type_text || ''}</span></div>
+                ${b.address ? '<div class="registry-item-details">' + b.address + '</div>' : ''}
+            </div>
+        `).join('');
+        regDropdown.querySelectorAll('.registry-item').forEach(el => {
+            el.addEventListener('click', () => selectRegRegistryItem(el));
+        });
+        _regRegIdx = -1;
+        regDropdown.classList.add('active');
+    } catch(e) { regDropdown.classList.remove('active'); }
+}
+
+function selectRegRegistryItem(el) {
+    document.getElementById('reg_business_name').value = el.dataset.name;
+    document.getElementById('reg_reg_number').value = el.dataset.regcode;
+    document.getElementById('reg_legal_address').value = el.dataset.address;
+    // Auto-set VAT payer status based on entity type
+    const type = (el.dataset.type || '').toLowerCase();
+    const isBiz = type.includes('sabiedr') || type.includes('akciju') || type.includes('komersants');
+    document.getElementById('reg_vat_payer').checked = isBiz;
+    document.getElementById('reg_vat_group').style.display = isBiz ? '' : 'none';
+    document.getElementById('reg_vat_number').value = isBiz ? 'LV' + el.dataset.regcode : '';
+    regDropdown.classList.remove('active');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.registry-wrapper')) {
+        regDropdown.classList.remove('active');
+    }
+});
+</script>
 </body>
 </html>

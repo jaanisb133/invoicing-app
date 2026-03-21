@@ -447,23 +447,43 @@ async def register_page(request: Request, error: str = "", plan: str = "", cycle
         "page": "register",
         "plan": plan,
         "cycle": cycle,
+        "entity_type": "business",
     })
 
 
 @app.post("/register")
 async def register(request: Request,
                    email: str = Form(...),
-                   display_name: str = Form(...),
+                   display_name: str = Form(""),
+                   first_name: str = Form(""),
+                   last_name: str = Form(""),
                    phone: str = Form(""),
                    password: str = Form(...),
                    confirm_password: str = Form(...),
                    plan: str = Form(""),
-                   cycle: str = Form("monthly")):
+                   cycle: str = Form("monthly"),
+                   entity_type: str = Form("business"),
+                   reg_number: str = Form(""),
+                   vat_number: str = Form(""),
+                   legal_address: str = Form(""),
+                   is_vat_payer: str = Form("0")):
+    # For individuals, build display_name from first + last name
+    if entity_type == "individual":
+        display_name = f"{first_name.strip()} {last_name.strip()}".strip()
+
     error_ctx = {
         "request": request, "page": "register",
         "email": email, "display_name": display_name, "phone": phone,
-        "plan": plan, "cycle": cycle,
+        "plan": plan, "cycle": cycle, "entity_type": entity_type,
+        "first_name": first_name, "last_name": last_name,
+        "reg_number": reg_number, "vat_number": vat_number,
+        "legal_address": legal_address, "is_vat_payer": is_vat_payer,
     }
+
+    if not display_name:
+        err = "Lūdzu norādiet vārdu un uzvārdu." if entity_type == "individual" else "Lūdzu norādiet uzņēmuma nosaukumu."
+        return templates.TemplateResponse("register.html", {**error_ctx, "error": err})
+
     if password != confirm_password:
         return templates.TemplateResponse("register.html", {**error_ctx, "error": "Paroles nesakrīt."})
 
@@ -490,19 +510,25 @@ async def register(request: Request,
         tier="free",
     )
 
-    # Set default settings for new user
+    # Set default settings for new user, including business info from registration
+    is_business = entity_type == "business"
     db.save_all_user_settings(user_id, {
         "invoice_number_type": "type1",
         "invoice_number_separator": "-",
         "invoice_number_digits": "3",
-        "default_vat_rate": "21",
-        "is_vat_payer": "1",
+        "default_vat_rate": "21" if (is_business and is_vat_payer == "1") else "0",
+        "is_vat_payer": is_vat_payer if is_business else "0",
         "stock_enabled": "0",
         "buy_doc_prefix": "",
         "sell_doc_prefix": "",
         "buy_doc_name": "Rēķins",
         "sell_doc_name": "Rēķins",
         "default_template": "minimal",
+        "entity_type": entity_type,
+        "company_name": display_name,
+        "reg_number": reg_number if is_business else "",
+        "vat_number": vat_number if (is_business and is_vat_payer == "1") else "",
+        "legal_address": legal_address if is_business else "",
     })
 
     # If a paid plan was selected during registration, redirect to subscription page
