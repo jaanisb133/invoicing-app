@@ -823,8 +823,10 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     if not amount or not everypay.is_configured():
         return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
-    # Build order reference: user_id-tier-cycle-timestamp
-    order_ref = f"sub-{user['id']}-{tier}-{cycle}-{int(datetime.datetime.now().timestamp())}"
+    # Build order reference: VR-{counter}-{plan label}
+    tier_label = db.TIER_LIMITS[tier]["label"]
+    counter = db.next_payment_counter()
+    order_ref = f"VR-{counter:04d}-{tier_label}"
     base_url = str(request.base_url).rstrip("/")
     customer_url = f"{base_url}/billing/return"
     client_ip = _get_client_ip(request)
@@ -851,6 +853,7 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     # Store pending payment info in user settings for verification on return
     db.save_all_user_settings(user["id"], {
         "_pending_payment_ref": payment_ref,
+        "_pending_order_ref": order_ref,
         "_pending_tier": tier,
         "_pending_cycle": cycle,
     })
@@ -908,6 +911,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
         # Clean up pending settings
         db.save_all_user_settings(user["id"], {
             "_pending_payment_ref": "",
+            "_pending_order_ref": "",
             "_pending_tier": "",
             "_pending_cycle": "",
         })
@@ -932,6 +936,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
         # Payment failed or abandoned
         db.save_all_user_settings(user["id"], {
             "_pending_payment_ref": "",
+            "_pending_order_ref": "",
             "_pending_tier": "",
             "_pending_cycle": "",
         })
@@ -958,17 +963,13 @@ async def everypay_callback(request: Request,
 
     payment_state = status.get("payment_state", "")
 
-    # Parse user_id from order_reference: sub-{user_id}-{tier}-{cycle}-{ts}
-    parts = order_reference.split("-") if order_reference else []
-    if len(parts) >= 4 and parts[0] == "sub":
-        try:
-            user_id = int(parts[1])
-            tier = parts[2]
-            cycle = parts[3]
-        except (ValueError, IndexError):
-            return JSONResponse({"status": "ok", "note": "unparseable order_reference"})
-    else:
-        return JSONResponse({"status": "ok", "note": "unknown order_reference format"})
+    # Look up user by pending order reference
+    pending = db.find_user_by_pending_order_ref(order_reference) if order_reference else None
+    if not pending:
+        return JSONResponse({"status": "ok", "note": "unknown order_reference"})
+    user_id = pending["user_id"]
+    tier = pending["tier"]
+    cycle = pending["cycle"]
 
     if event_name == "status_updated" and payment_state == "settled":
         cc_details = status.get("cc_details", {})

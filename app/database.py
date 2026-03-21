@@ -307,6 +307,42 @@ def save_all_user_settings(user_id, settings_dict):
     conn.close()
 
 
+def next_payment_counter():
+    """Return the next sequential payment number (global, across all users)."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key = 'payment_counter'"
+    ).fetchone()
+    counter = int(row["value"]) + 1 if row else 1
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('payment_counter', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = ?",
+        (str(counter), str(counter))
+    )
+    conn.commit()
+    conn.close()
+    return counter
+
+
+def find_user_by_pending_order_ref(order_ref):
+    """Find user_id, tier, cycle from a pending order reference stored in user_settings."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT user_id FROM user_settings WHERE key = '_pending_order_ref' AND value = ?",
+        (order_ref,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return None
+    user_id = row["user_id"]
+    settings = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM user_settings WHERE user_id = ? AND key IN ('_pending_tier', '_pending_cycle')",
+        (user_id,)
+    ).fetchall()}
+    conn.close()
+    return {"user_id": user_id, "tier": settings.get("_pending_tier", ""), "cycle": settings.get("_pending_cycle", "")}
+
+
 # Legacy compatibility
 def get_all_settings():
     conn = get_connection()
