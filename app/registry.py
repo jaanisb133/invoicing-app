@@ -11,11 +11,20 @@ License: Free for any use (commercial included), updated daily.
 import csv
 import io
 import os
+import re
 import sqlite3
 import urllib.request
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize(name):
+    """Strip quotes, punctuation, and collapse whitespace for fuzzy matching."""
+    # Remove all non-alphanumeric characters (keep letters, digits, spaces)
+    s = re.sub(r'[^\w\s]', ' ', name, flags=re.UNICODE)
+    # Collapse multiple spaces
+    return re.sub(r'\s+', ' ', s).strip().upper()
 
 REGISTRY_CSV_URL = "https://dati.ur.gov.lv/register/register.csv"
 
@@ -42,13 +51,32 @@ def init_registry_db():
         CREATE TABLE IF NOT EXISTS businesses (
             regcode TEXT PRIMARY KEY,
             name TEXT NOT NULL,
+            name_normalized TEXT NOT NULL DEFAULT '',
             type_text TEXT NOT NULL DEFAULT '',
             address TEXT NOT NULL DEFAULT '',
             registered TEXT NOT NULL DEFAULT '',
             terminated TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_businesses_name ON businesses(name COLLATE NOCASE);
+        CREATE INDEX IF NOT EXISTS idx_businesses_name_norm ON businesses(name_normalized);
     """)
+    # Migration: add name_normalized column if missing (existing DBs)
+    try:
+        conn.execute("SELECT name_normalized FROM businesses LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE businesses ADD COLUMN name_normalized TEXT NOT NULL DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_name_norm ON businesses(name_normalized)")
+
+    # Backfill empty name_normalized values (after migration or first run with new schema)
+    empty_count = conn.execute("SELECT COUNT(*) FROM businesses WHERE name_normalized = ''").fetchone()[0]
+    if empty_count > 0:
+        logger.info("Backfilling %d normalized names...", empty_count)
+        rows = conn.execute("SELECT regcode, name FROM businesses WHERE name_normalized = ''").fetchall()
+        batch = [(_normalize(row["name"]), row["regcode"]) for row in rows]
+        conn.executemany("UPDATE businesses SET name_normalized = ? WHERE regcode = ?", batch)
+        conn.commit()
+        logger.info("Backfill complete.")
+
     conn.close()
 
 
@@ -94,6 +122,7 @@ def import_from_csv(csv_path=None):
         batch.append((
             regcode,
             name,
+            _normalize(name),
             (row.get("type_text") or row.get("type") or "").strip(),
             (row.get("address") or "").strip(),
             (row.get("registered") or "").strip(),
@@ -101,7 +130,7 @@ def import_from_csv(csv_path=None):
         ))
         if len(batch) >= 5000:
             conn.executemany(
-                "INSERT OR REPLACE INTO businesses (regcode, name, type_text, address, registered, terminated) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO businesses (regcode, name, name_normalized, type_text, address, registered, terminated) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 batch,
             )
             count += len(batch)
@@ -109,7 +138,7 @@ def import_from_csv(csv_path=None):
 
     if batch:
         conn.executemany(
-            "INSERT OR REPLACE INTO businesses (regcode, name, type_text, address, registered, terminated) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO businesses (regcode, name, name_normalized, type_text, address, registered, terminated) VALUES (?, ?, ?, ?, ?, ?, ?)",
             batch,
         )
         count += len(batch)
@@ -147,13 +176,15 @@ def search(query, limit=15):
             (query + "%", limit),
         ).fetchall()
     else:
-        # Search by name — prioritize starts-with, then contains
+        # Normalize query: strip punctuation so "a consult" matches "A CONSULT"
+        norm_query = _normalize(query)
+        # Search by normalized name — prioritize starts-with, then contains
         rows = conn.execute(
             "SELECT regcode, name, type_text, address FROM businesses "
-            "WHERE name LIKE ? AND terminated = '' "
-            "ORDER BY CASE WHEN name LIKE ? THEN 0 ELSE 1 END, name "
+            "WHERE name_normalized LIKE ? AND terminated = '' "
+            "ORDER BY CASE WHEN name_normalized LIKE ? THEN 0 ELSE 1 END, name "
             "LIMIT ?",
-            ("%" + query + "%", query + "%", limit),
+            ("%" + norm_query + "%", norm_query + "%", limit),
         ).fetchall()
 
     conn.close()
