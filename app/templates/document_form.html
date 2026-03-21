@@ -736,9 +736,10 @@ function showQuickAddClient() {
             if (!data.length) { dropdown.classList.remove('active'); return; }
             dropdown.innerHTML = data.map(b => `
                 <div class="registry-item" data-regcode="${b.regcode}" data-name="${b.name.replace(/"/g, '&quot;')}"
-                     data-address="${(b.address||'').replace(/"/g, '&quot;')}">
+                     data-address="${(b.address||'').replace(/"/g, '&quot;')}" data-type="${(b.type_text||'').replace(/"/g, '&quot;')}">
                     <div class="registry-item-name">${b.name}</div>
-                    <div class="registry-item-details">${b.regcode} &middot; ${b.type_text || ''} &middot; ${b.address || ''}</div>
+                    <div class="registry-item-details"><span class="registry-item-regcode">${b.regcode}</span> <span class="registry-item-type">${b.type_text || ''}</span></div>
+                    ${b.address ? '<div class="registry-item-details">' + b.address + '</div>' : ''}
                 </div>
             `).join('');
             dropdown.querySelectorAll('.registry-item').forEach(el => {
@@ -746,6 +747,14 @@ function showQuickAddClient() {
                     document.getElementById('qc_name').value = el.dataset.name;
                     document.getElementById('qc_reg_number').value = el.dataset.regcode;
                     document.getElementById('qc_legal_address').value = el.dataset.address;
+                    // Auto-check VAT payer and fill VAT number for business entities
+                    const type = (el.dataset.type || '').toLowerCase();
+                    const isBusiness = type.includes('sabiedr') || type.includes('akciju') || type.includes('komersants');
+                    if (isBusiness && el.dataset.regcode) {
+                        document.getElementById('qc_vat_payer').checked = true;
+                        document.getElementById('qc_vat_group').style.display = '';
+                        document.getElementById('qc_vat_number').value = 'LV' + el.dataset.regcode;
+                    }
                     dropdown.classList.remove('active');
                 });
             });
