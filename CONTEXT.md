@@ -760,7 +760,41 @@ Full SEB E-commerce API v4 docs: https://support.ecommerce.sebgroup.com/lv/
 
 ---
 
-## 14. What to Work On Next (Potential)
+## 14. Session: EveryPay Payment Fix & UI Polish (2026-03-21)
+
+### EveryPay 400 Error — Recurring Tokens on Demo Account
+- **Problem:** `POST /billing/checkout` returned 400 from EveryPay demo API (`igw-seb-demo.every-pay.com`) with error: `"Recurring payments are not allowed for this processing account"`
+- **Cause:** The payload included `request_token: true`, `token_agreement: "recurring"`, and `token_consent_agreed: true` — but the demo processing account does not support recurring/tokenization.
+- **Fix:** In `app/everypay.py`, token-related fields (`request_token`, `token_agreement`, `token_consent_agreed`) are now only sent when the API URL does **not** contain `"demo"`. On demo, a plain one-off payment is sent instead.
+- **Important for production:** When switching to production EveryPay (`EVERYPAY_API_URL` without "demo"), recurring token fields will automatically be included again. Verify the production processing account supports recurring before going live.
+- Added error response body logging (`logger.error`) before `raise_for_status()` so future EveryPay errors show the actual API error message in journalctl.
+
+### Payment Reference Format Change
+- **Old format:** `sub-{user_id}-{tier}-{cycle}-{timestamp}` (e.g. `sub-6-business-monthly-1774123692`)
+- **New format:** `VR-{counter:04d}-{plan_label}` (e.g. `VR-0001-Bizness`, `VR-0002-Sākums`)
+- Sequential counter stored in `settings` table (key: `payment_counter`), incremented by `db.next_payment_counter()`
+- The EveryPay callback (`/everypay/callback`) no longer parses the order reference string. Instead, it looks up the user via `_pending_order_ref` stored in `user_settings` using `db.find_user_by_pending_order_ref(order_ref)`.
+- Pending settings now include `_pending_order_ref` alongside `_pending_payment_ref`, `_pending_tier`, `_pending_cycle`.
+
+### UI Changes
+- **Billing success page** (`billing_success.html`): Card is now horizontally centered (`margin: 0 auto`).
+- **Next billing date** shown on both:
+  - Account page (`account.html`) — in the subscription info box
+  - Subscription page (`pricing_auth.html` / "Mans abonements") — below usage bars
+- **Label:** "Nākamais apmaksas datums" — formatted as **dd.mm.yyyy** (e.g. `20.04.2026`)
+- Date is read from `current_user.subscription_end` (ISO date in DB, sliced in Jinja: `[8:10].[5:7].[:4]`)
+
+### Files Modified
+- `app/everypay.py` — error logging, conditional token fields for demo
+- `app/main.py` — new order ref format, callback user lookup, pending order ref cleanup
+- `app/database.py` — `next_payment_counter()`, `find_user_by_pending_order_ref()`
+- `app/templates/billing_success.html` — centered card
+- `app/templates/account.html` — next billing date
+- `app/templates/pricing_auth.html` — next billing date
+
+---
+
+## 15. What to Work On Next (Potential)
 
 These are areas that may need attention in future sessions:
 - Recurring billing cron job (daily task to auto-charge users via MIT — `db.get_users_due_for_renewal()` + `everypay.charge_mit()` are ready, needs scheduler)
