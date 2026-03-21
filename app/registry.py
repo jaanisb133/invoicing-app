@@ -178,13 +178,25 @@ def search(query, limit=15):
     else:
         # Normalize query: strip punctuation so "a consult" matches "A CONSULT"
         norm_query = _normalize(query)
-        # Search by normalized name — prioritize starts-with, then contains
+        # Ranking: exact match > starts with > word-boundary match > substring
+        # Word boundary: query appears after a space (i.e. as a separate word)
         rows = conn.execute(
             "SELECT regcode, name, type_text, address FROM businesses "
             "WHERE name_normalized LIKE ? AND terminated = '' "
-            "ORDER BY CASE WHEN name_normalized LIKE ? THEN 0 ELSE 1 END, name "
+            "ORDER BY "
+            "  CASE "
+            "    WHEN name_normalized = ? THEN 0 "
+            "    WHEN name_normalized LIKE ? THEN 1 "
+            "    WHEN name_normalized LIKE ? THEN 2 "
+            "    ELSE 3 "
+            "  END, "
+            "  LENGTH(name), name "
             "LIMIT ?",
-            ("%" + norm_query + "%", norm_query + "%", limit),
+            ("%" + norm_query + "%",
+             norm_query,
+             norm_query + "%",
+             "% " + norm_query + "%",
+             limit),
         ).fetchall()
 
     conn.close()
