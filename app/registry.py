@@ -47,27 +47,27 @@ def _get_conn():
 def init_registry_db():
     """Create the registry table and indexes if they don't exist."""
     conn = _get_conn()
-    conn.executescript("""
+    # Create table without name_normalized first (compatible with existing DBs)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS businesses (
             regcode TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            name_normalized TEXT NOT NULL DEFAULT '',
             type_text TEXT NOT NULL DEFAULT '',
             address TEXT NOT NULL DEFAULT '',
             registered TEXT NOT NULL DEFAULT '',
             terminated TEXT NOT NULL DEFAULT ''
-        );
-        CREATE INDEX IF NOT EXISTS idx_businesses_name ON businesses(name COLLATE NOCASE);
-        CREATE INDEX IF NOT EXISTS idx_businesses_name_norm ON businesses(name_normalized);
+        )
     """)
-    # Migration: add name_normalized column if missing (existing DBs)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_name ON businesses(name COLLATE NOCASE)")
+
+    # Migration: add name_normalized column if missing
     try:
         conn.execute("SELECT name_normalized FROM businesses LIMIT 1")
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE businesses ADD COLUMN name_normalized TEXT NOT NULL DEFAULT ''")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_name_norm ON businesses(name_normalized)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_name_norm ON businesses(name_normalized)")
 
-    # Backfill empty name_normalized values (after migration or first run with new schema)
+    # Backfill empty name_normalized values
     empty_count = conn.execute("SELECT COUNT(*) FROM businesses WHERE name_normalized = ''").fetchone()[0]
     if empty_count > 0:
         logger.info("Backfilling %d normalized names...", empty_count)
