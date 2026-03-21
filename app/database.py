@@ -437,6 +437,18 @@ def get_all_clients(user_id, active_only=True):
     return [dict(r) for r in rows]
 
 
+def get_client_by_reg_number(user_id, reg_number):
+    if not reg_number:
+        return None
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM clients WHERE user_id = ? AND reg_number = ?",
+        (user_id, reg_number)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def get_client(client_id):
     conn = get_connection()
     row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()

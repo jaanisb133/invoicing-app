@@ -1152,6 +1152,10 @@ async def add_client(
     email: str = Form(""),
 ):
     user = request.state.user
+    if reg_number:
+        existing = db.get_client_by_reg_number(user["id"], reg_number)
+        if existing:
+            return RedirectResponse(f"/clients?error=duplicate&name={existing['name']}", status_code=303)
     allowed, current, maximum = _check_tier_limit(user, "clients")
     if not allowed:
         return RedirectResponse(f"/clients?error=limit", status_code=303)
@@ -2222,10 +2226,15 @@ async def api_add_product(request: Request):
 @app.post("/api/clients/add")
 async def api_add_client(request: Request):
     user = request.state.user
+    data = await request.json()
+    reg_number = data.get("reg_number", "")
+    if reg_number:
+        existing = db.get_client_by_reg_number(user["id"], reg_number)
+        if existing:
+            return JSONResponse({"error": f"Klients ar reģ. nr. {reg_number} jau eksistē ({existing['name']})", "duplicate": True, "client": existing}, status_code=409)
     allowed, current, maximum = _check_tier_limit(user, "clients")
     if not allowed:
         return JSONResponse({"error": f"Klientu limits sasniegts ({current}/{maximum})"}, status_code=403)
-    data = await request.json()
     client_id = db.add_client(
         user["id"],
         name=data["name"],

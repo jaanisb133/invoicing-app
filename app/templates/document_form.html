@@ -818,7 +818,29 @@ async function quickAddClient() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(data)
     });
-    const client = await resp.json();
+    const result = await resp.json();
+
+    if (!resp.ok) {
+        if (result.duplicate && result.client) {
+            // Duplicate found — select the existing client instead
+            const select = document.getElementById('clientSelect');
+            const existing = select.querySelector(`option[value="${result.client.id}"]`);
+            if (existing) {
+                select.value = result.client.id;
+            } else {
+                clientsData.push(result.client);
+                const opt = new Option(result.client.name, result.client.id, true, true);
+                select.add(opt);
+            }
+            document.getElementById('quickAddClientModal').classList.remove('active');
+            updatePreview();
+            alert(result.error);
+            return;
+        }
+        alert(result.error || 'Kļūda saglabājot klientu');
+        return;
+    }
+    const client = result;
 
     clientsData.push(client);
 

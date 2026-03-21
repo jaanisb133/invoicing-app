@@ -11,6 +11,8 @@
 <div class="page-body">
     {% if request.query_params.get('error') == 'limit' %}
     <div class="alert alert-danger">Klientu limits sasniegts ({{ tier_limits.max_clients }}). <a href="/pricing">Uzlabojiet plānu</a>, lai pievienotu vairāk.</div>
+    {% elif request.query_params.get('error') == 'duplicate' %}
+    <div class="alert alert-danger">Klients ar šo reģistrācijas numuru jau eksistē ({{ request.query_params.get('name', '') }}).</div>
     {% endif %}
     <div class="usage-section" style="margin-bottom:16px">
         <div class="usage-item">
