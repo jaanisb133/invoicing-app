@@ -83,7 +83,6 @@ def initiate_payment(
         "locale": locale,
         "email": email,
         "preferred_country": "LV",
-        "token_consent_agreed": True,
         "integration_details": {
             "integration": "Custom",
             "software": "V-Rekini",
@@ -94,9 +93,10 @@ def initiate_payment(
     if customer_ip:
         payload["customer_ip"] = customer_ip
 
-    if request_token:
+    if request_token and "demo" not in API_URL:
         payload["request_token"] = True
         payload["token_agreement"] = "recurring"
+        payload["token_consent_agreed"] = True
 
     resp = httpx.post(
         f"{API_URL}/payments/oneoff",
