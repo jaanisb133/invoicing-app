@@ -28,7 +28,7 @@
 | PDF Generation | **ReportLab 4.2.2** — 3 invoice templates |
 | Auth | **bcrypt** password hashing, **itsdangerous** session cookies |
 | Email | **SMTP** (server50.areait.lv:465 SSL) + **Brevo API** fallback |
-| Payments | **Stripe** subscriptions with webhook handling |
+| Payments | **EveryPay / SEB E-commerce** API v4 (card tokenization + MIT recurring) |
 | Reverse Proxy | **Nginx** with HTTPS (Let's Encrypt) |
 | Process Manager | **Systemd** service unit |
 | Repository | `https://github.com/jaanisb133/invoicing-app.git` |
@@ -40,7 +40,7 @@
 ```
 /home/user/invoicing-app/          (development)
 /opt/vrekini/                      (production deployment)
-├── .env                           # SMTP, Stripe, Brevo secrets
+├── .env                           # SMTP, EveryPay, Brevo secrets
 ├── .gitignore
 ├── README.md
 ├── requirements.txt
@@ -50,6 +50,7 @@
 │   ├── main.py                    # FastAPI app — 80+ routes
 │   ├── database.py                # SQLite layer (1156 lines)
 │   ├── pdf_generator.py           # PDF generation (788 lines, 3 templates)
+│   ├── everypay.py                # EveryPay/SEB payment API client (oneoff, MIT, refund)
 │   ├── einvoice.py                # E-invoice XML generator (PEPPOL BIS 3.0)
 │   ├── registry.py               # Latvian business registry search (UR open data)
 │   ├── fonts/
@@ -456,7 +457,7 @@ journalctl -u vrekini -f    # View logs
 ### Key Config Notes
 - **Single Uvicorn worker** — required for SQLite (no concurrent write issues)
 - **Database path** via `VREKINI_DB_PATH` env var
-- **Secrets** in `.env` file (SMTP, Stripe, Brevo credentials)
+- **Secrets** in `.env` file (SMTP, EveryPay, Brevo credentials)
 - **Nginx** handles SSL termination, static files (7-day cache), 10MB upload limit
 
 ### IMPORTANT: Only One App Instance (Resolved 2026-03-12)
@@ -618,7 +619,7 @@ The project has ~70 commits on the main branch, progressing from:
 5. PDF improvements (fonts, logos, numbering)
 6. Business features (stock, recurring, export, status tracking)
 7. Production deployment (nginx, systemd, SSL)
-8. Stripe billing + Brevo email integration
+8. EveryPay/SEB billing + Brevo email integration
 9. Stability fixes
 10. SEB e-commerce compliance (contacts, terms, footer, payment logos)
 11. Subscription revamp (usage bars, plan highlighting, admin tier control)
@@ -631,18 +632,143 @@ The project has ~70 commits on the main branch, progressing from:
 
 ---
 
-## 13. What to Work On Next (Potential)
+## 13. EveryPay / SEB E-commerce Payment Integration
+
+### Overview
+Payments are handled by **EveryPay** (SEB's payment gateway partner) via the **SEB E-commerce API v4**.
+The integration uses card tokenization + MIT (Merchant Initiated Transactions) for recurring billing.
+
+### API Credentials
+- **API Username:** `c320faeb8b372194` (16 characters)
+- **API Secret:** stored in `.env` as `EVERYPAY_API_SECRET`
+- **Processing Account:** `EUR3D1` (determines currency and payment methods)
+- **Merchant:** SIA VN MEDIA
+
+### API Endpoints
+| Environment | Base URL |
+|-------------|----------|
+| **Test/Demo** | `https://igw-seb-demo.every-pay.com/api/v4` |
+| **Production** | `https://payment.ecommerce.sebgroup.com/api/v4` |
+
+### Merchant Portal
+| Environment | Portal URL |
+|-------------|-----------|
+| **Test** | SEB Testa portāls (where credentials were obtained) |
+| **Production** | SEB production merchant portal |
+
+### Payment Flow
+
+**Initial subscription (one-off + tokenization):**
+```
+1. User clicks upgrade → POST /billing/checkout
+2. App calls POST /v4/payments/oneoff (request_token=true, token_agreement=recurring)
+3. EveryPay returns payment_link → user redirected to hosted payment page
+4. User pays (card/bank/Apple Pay/Google Pay)
+5. EveryPay redirects user to GET /billing/return?payment_reference=xxx
+6. App calls GET /v4/payments/{ref} to verify status
+7. If settled → extract cc_details.token, activate subscription
+8. EveryPay also sends callback to GET /everypay/callback (backup confirmation)
+```
+
+**Recurring charge (MIT — no user interaction):**
+```
+1. Cron job finds users due for renewal (subscription_end reached)
+2. POST /v4/payments/mit (token_agreement=recurring, amount, stored token)
+3. POST /v4/payments/charge (payment_reference + token_details.token)
+4. If settled → extend subscription_end by 30/365 days
+```
+
+**Cancellation:**
+```
+1. User clicks cancel → POST /billing/cancel
+2. App deactivates card token via POST /v4/tokens/deactivate
+3. User downgraded to free tier
+```
+
+### Subscription Plans & Prices
+
+| Plan | Monthly | Yearly |
+|------|---------|--------|
+| Starter (Sākums) | 9.99 EUR | 97.99 EUR |
+| Business (Bizness) | 19.99 EUR | 195.99 EUR |
+
+Prices are defined in `app/everypay.py:PLAN_PRICES`.
+
+### Database Fields (users table)
+- `everypay_token` — stored card token for recurring MIT charges
+- `everypay_payment_ref` — reference of the last payment
+- `subscription_status` — active / cancelled / past_due
+- `subscription_start` / `subscription_end` — subscription period
+- `billing_cycle` — monthly / yearly
+- `tier` — free / starter / business
+
+### Callback URL Configuration
+The callback URL must be configured in the **SEB Merchant Portal** under **E-shop settings**.
+EveryPay sends GET requests to this URL with `payment_reference`, `order_reference`, and `event_name` parameters.
+
+**IMPORTANT — Callback URL is NOT set via API.** It must be configured manually in the merchant portal.
+There is no API endpoint or setting in code to configure this — it's a portal-only setting.
+
+| Environment | Callback URL to set |
+|-------------|-------------------|
+| **Test** | `https://v-rekini.lv/everypay/callback` (or ngrok URL for local testing) |
+| **Production** | `https://v-rekini.lv/everypay/callback` |
+
+The callback is a backup mechanism — the primary payment verification happens on user return
+(`GET /billing/return`), which checks payment status directly via the API.
+
+### Test Cards
+Test cards are available from the SEB merchant test portal under "Testa kartes".
+Only test cards must be used in the demo environment. The 3DS simulator password is `secret`.
+
+### Going Live Checklist
+When switching from test to production:
+
+1. **Change `EVERYPAY_API_URL`** in `.env`:
+   ```
+   # FROM (test):
+   EVERYPAY_API_URL=https://igw-seb-demo.every-pay.com/api/v4
+   # TO (production):
+   EVERYPAY_API_URL=https://payment.ecommerce.sebgroup.com/api/v4
+   ```
+
+2. **Get production API credentials** from the SEB production merchant portal (new username + secret)
+
+3. **Update callback URL** in the **production** SEB merchant portal:
+   → Set to `https://v-rekini.lv/everypay/callback`
+
+4. **Verify processing account** — production may have a different `EVERYPAY_ACCOUNT_NAME`
+
+5. **Set up recurring billing cron** — daily job to call `everypay.charge_mit()` for due subscriptions
+
+### Onboarding Flow (post-registration)
+Both signup paths converge through onboarding before payment:
+
+| Step | Path A (plan pre-selected) | Path B (no plan) |
+|------|---------------------------|-------------------|
+| 1 | Register (plan stored as `_pending_plan`) | Register |
+| 2 | Onboarding (/setup — company info, numbering) | Onboarding (/setup) |
+| 3 | Auto-checkout via /pricing?upgrade=plan | Show plans page (/pricing) |
+| 4 | EveryPay payment → Dashboard | Choose plan or skip → Dashboard |
+
+The `_pending_plan` and `_pending_plan_cycle` user settings bridge registration and post-onboarding checkout.
+After onboarding (`/setup` POST), if no pending plan exists, user is shown the plans page.
+
+### API Documentation Reference
+Full SEB E-commerce API v4 docs: https://support.ecommerce.sebgroup.com/lv/
+(Requires portal access — the API spec covers: payments, shops, processing accounts, mobile payments, agreements, refunds, tokens)
+
+---
+
+## 14. What to Work On Next (Potential)
 
 These are areas that may need attention in future sessions:
-- Stripe price IDs need to be configured in `.env` for billing to work
+- Recurring billing cron job (daily task to auto-charge users via MIT — `db.get_users_due_for_renewal()` + `everypay.charge_mit()` are ready, needs scheduler)
 - Recurring invoice auto-emails not yet tested in production
 - Database migrations strategy for schema changes
 - Automated backups for the SQLite database
-- Rate limiting / abuse prevention
 - Password reset via email flow
 - Multi-language support (currently Latvian-only)
 - Dashboard chart visualizations
 - Client-side form validation improvements
 - Automated testing (no tests exist currently)
-- SEB e-commerce compliance pages are built but SEB/EveryPay payment integration not yet connected
-- Actual payment processing setup with EveryPay/SEB (currently Stripe only)
