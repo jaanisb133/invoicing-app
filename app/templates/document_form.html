@@ -747,14 +747,14 @@ function showQuickAddClient() {
                     document.getElementById('qc_name').value = el.dataset.name;
                     document.getElementById('qc_reg_number').value = el.dataset.regcode;
                     document.getElementById('qc_legal_address').value = el.dataset.address;
-                    // Auto-check VAT payer and fill VAT number for business entities
+                    // Auto-set VAT payer status based on entity type
                     const type = (el.dataset.type || '').toLowerCase();
                     const isBusiness = type.includes('sabiedr') || type.includes('akciju') || type.includes('komersants');
-                    if (isBusiness && el.dataset.regcode) {
-                        document.getElementById('qc_vat_payer').checked = true;
-                        document.getElementById('qc_vat_group').style.display = '';
-                        document.getElementById('qc_vat_number').value = 'LV' + el.dataset.regcode;
-                    }
+                    document.getElementById('qc_vat_payer').checked = isBusiness;
+                    document.getElementById('qc_vat_group').style.display = isBusiness ? '' : 'none';
+                    document.getElementById('qc_vat_number').value = isBusiness ? 'LV' + el.dataset.regcode : '';
+                    document.getElementById('qc_vat_status').textContent = '';
+                    document.getElementById('qc_vat_status').className = 'vat-status';
                     dropdown.classList.remove('active');
                 });
             });
