@@ -246,7 +246,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms")
-                or path == "/stripe/webhook"):
+                or path == "/stripe/webhook" or path == "/api/registry/search"):
             return await call_next(request)
 
         user = _get_current_user(request)
@@ -2311,10 +2311,8 @@ async def api_invoice_preview(request: Request,
 
 @app.get("/api/registry/search")
 async def api_registry_search(request: Request, q: str = ""):
-    """Search the Latvian business registry by name or registration number."""
-    user = request.state.user
-    if not user:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    """Search the Latvian business registry by name or registration number.
+    Public endpoint — registry data is already publicly available."""
     results = registry.search(q, limit=15)
     return JSONResponse(results)
 
