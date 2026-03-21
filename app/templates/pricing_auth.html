@@ -4,6 +4,9 @@
     <h2>Mans abonements</h2>
 </div>
 <div class="page-body">
+    {% if request.query_params.get('error') == 'lifetime_sold_out' %}
+    <div class="alert alert-danger" style="margin-bottom:16px">Mūža licences ir izpārdotas. Visas 30 licences ir aizņemtas.</div>
+    {% endif %}
     <!-- Current subscription info -->
     <div class="card" style="margin-bottom:28px">
         <div class="card-body" style="padding:24px">
@@ -100,7 +103,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Highlight current plan card
     var currentTier = '{{ current_user.tier }}';
-    var tiers = ['free', 'starter', 'business'];
+    var tiers = ['free', 'starter', 'business', 'lifetime'];
     var cards = document.querySelectorAll('.pricing-grid .card');
     tiers.forEach(function(tier, i) {
         if (tier === currentTier && cards[i]) {
@@ -112,7 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Auto-submit checkout for the selected plan after registration
     var upgradeTier = '{{ upgrade }}';
     var upgradeCycle = '{{ upgrade_cycle }}';
-    if (upgradeTier === 'starter' || upgradeTier === 'business') {
+    if (upgradeTier === 'starter' || upgradeTier === 'business' || upgradeTier === 'lifetime') {
         var input = document.querySelector('form[action="/billing/checkout"] input[value="' + upgradeTier + '"]');
         if (input) {
             var cycleInput = input.parentElement.querySelector('.cycle-input');

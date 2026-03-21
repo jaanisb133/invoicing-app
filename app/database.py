@@ -1070,28 +1070,40 @@ def ensure_default_admin():
 TIER_LIMITS = {
     "free": {
         "max_documents": 5, "max_clients": 3, "max_products": 3,
-        "max_emails_month": 0, "recurring": False, "all_templates": False,
+        "max_emails_month": 0, "recurring": False, "max_recurring": 0,
+        "all_templates": False,
         "einvoice": False, "accounting_export": False,
         "label": "Bezmaksas",
         "price_monthly": 0, "price_yearly": 0,
     },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": 200,
-        "max_emails_month": 50, "recurring": True, "all_templates": True,
+        "max_emails_month": 50, "recurring": True, "max_recurring": 3,
+        "all_templates": True,
         "einvoice": True, "accounting_export": True,
         "label": "Sākums",
         "price_monthly": 999, "price_yearly": 9900,  # cents
     },
     "business": {
         "max_documents": 5000, "max_clients": 500, "max_products": 1000,
-        "max_emails_month": 0, "recurring": True, "all_templates": True,  # 0 = unlimited
+        "max_emails_month": 0, "recurring": True, "max_recurring": 0,  # 0 = unlimited
+        "all_templates": True,
         "einvoice": True, "accounting_export": True,
         "label": "Bizness",
         "price_monthly": 1999, "price_yearly": 19900,  # cents
     },
+    "lifetime": {
+        "max_documents": 5000, "max_clients": 500, "max_products": 1000,
+        "max_emails_month": 0, "recurring": True, "max_recurring": 0,  # 0 = unlimited
+        "all_templates": True,
+        "einvoice": True, "accounting_export": True,
+        "label": "Mūža licence",
+        "price_monthly": 0, "price_yearly": 0, "price_lifetime": 49900,  # cents
+    },
     "admin": {
         "max_documents": 999999, "max_clients": 999999, "max_products": 999999,
-        "max_emails_month": 0, "recurring": True, "all_templates": True,
+        "max_emails_month": 0, "recurring": True, "max_recurring": 0,
+        "all_templates": True,
         "einvoice": True, "accounting_export": True,
         "label": "Administrators",
         "price_monthly": 0, "price_yearly": 0,
@@ -1101,6 +1113,25 @@ TIER_LIMITS = {
 
 def get_tier_limits(tier):
     return TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
+
+def count_active_recurring(user_id):
+    """Count active recurring invoices for a user."""
+    conn = get_connection()
+    count = conn.execute(
+        "SELECT COUNT(*) FROM recurring_invoices WHERE user_id = ? AND active = 1",
+        (user_id,)
+    ).fetchone()[0]
+    conn.close()
+    return count
+
+
+def count_lifetime_users():
+    """Count users with lifetime tier."""
+    conn = get_connection()
+    count = conn.execute("SELECT COUNT(*) FROM users WHERE tier = 'lifetime'").fetchone()[0]
+    conn.close()
+    return count
 
 
 def update_user_subscription(user_id: int, tier: str, billing_cycle: str = "",

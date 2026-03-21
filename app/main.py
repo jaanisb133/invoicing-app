@@ -803,12 +803,14 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
             "has_payments": everypay.is_configured(),
             "upgrade": upgrade,
             "upgrade_cycle": cycle,
+            "lifetime_sold": db.count_lifetime_users(),
         })
         return templates.TemplateResponse("pricing_auth.html", ctx)
     return templates.TemplateResponse("pricing.html", {
         "request": request,
         "current_user": None,
         "page": "pricing",
+        "lifetime_sold": db.count_lifetime_users(),
     })
 
 
@@ -816,15 +818,23 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
 async def billing_checkout(request: Request, tier: str = Form(...), cycle: str = Form("monthly")):
     """Initiate an EveryPay payment and redirect to hosted payment page."""
     user = request.state.user
-    if tier not in ("starter", "business") or cycle not in ("monthly", "yearly"):
+    if tier == "lifetime":
+        cycle = "lifetime"
+    if tier not in ("starter", "business", "lifetime") or cycle not in ("monthly", "yearly", "lifetime"):
         return RedirectResponse("/pricing?error=invalid", status_code=303)
+
+    # Enforce 30-user cap for lifetime plan
+    if tier == "lifetime":
+        lifetime_count = db.count_lifetime_users()
+        if lifetime_count >= 30:
+            return RedirectResponse("/pricing?error=lifetime_sold_out", status_code=303)
 
     amount = everypay.get_plan_price(tier, cycle)
     if not amount or not everypay.is_configured():
         return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
     # Build order reference: VR-{counter}-{plan} (ASCII-safe for EveryPay)
-    tier_label_ascii = {"starter": "Sakums", "business": "Bizness"}[tier]
+    tier_label_ascii = {"starter": "Sakums", "business": "Bizness", "lifetime": "Muza"}[tier]
     counter = db.next_payment_counter()
     order_ref = f"VR-{counter:04d}-{tier_label_ascii}"
     base_url = str(request.base_url).rstrip("/")
@@ -887,7 +897,9 @@ async def billing_return(request: Request, payment_reference: str = ""):
         card_token = cc_details.get("token", "")
 
         # Calculate subscription end date
-        if pending_cycle == "yearly":
+        if pending_cycle == "lifetime":
+            end_date = "2099-12-31"
+        elif pending_cycle == "yearly":
             end_date = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
         else:
             end_date = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
@@ -1825,6 +1837,13 @@ async def create_recurring(request: Request):
     user = request.state.user
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
+    # Check recurring invoice limit for tier
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    max_rec = limits.get("max_recurring", 0)
+    if max_rec > 0:
+        active_count = db.count_active_recurring(user["id"])
+        if active_count >= max_rec:
+            return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
 
     doc_type = form.get("doc_type", "sell")
@@ -1868,6 +1887,13 @@ async def create_recurring_from_document(request: Request, doc_id: int):
     user = request.state.user
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
+    # Check recurring invoice limit for tier
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    max_rec = limits.get("max_recurring", 0)
+    if max_rec > 0:
+        active_count = db.count_active_recurring(user["id"])
+        if active_count >= max_rec:
+            return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
     frequency = form.get("frequency", "monthly")
     send_email = form.get("send_email", "0") == "1"
@@ -1905,6 +1931,13 @@ async def toggle_recurring(request: Request, recurring_id: int):
     user = request.state.user
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
+    # Check limit when activating (not when deactivating)
+    rec = db.get_recurring_invoice(recurring_id)
+    if rec and not rec.get("active"):
+        limits = db.get_tier_limits(user.get("tier", "free"))
+        max_rec = limits.get("max_recurring", 0)
+        if max_rec > 0 and db.count_active_recurring(user["id"]) >= max_rec:
+            return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     db.toggle_recurring_invoice(user["id"], recurring_id)
     return RedirectResponse("/recurring", status_code=303)
 

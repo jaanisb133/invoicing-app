@@ -17,6 +17,9 @@
     {% if request.query_params.get('error') == 'no_items' %}
     <div class="alert alert-danger">Jāpievieno vismaz viena pozīcija.</div>
     {% endif %}
+    {% if request.query_params.get('error') == 'limit' %}
+    <div class="alert alert-danger">Aktīvo periodisko rēķinu limits sasniegts (maks. {{ request.query_params.get('max', '3') }}). Uzlabojiet plānu vai deaktivējiet esošos.</div>
+    {% endif %}
 
     {% if recurring %}
     <div class="card">

@@ -25,6 +25,7 @@ PLAN_PRICES = {
     "starter_yearly": 99.00,
     "business_monthly": 19.99,
     "business_yearly": 199.00,
+    "lifetime_lifetime": 499.00,
 }
 
 

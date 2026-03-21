@@ -17,7 +17,7 @@
         </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px" class="mobile-stack pricing-grid">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px" class="mobile-stack pricing-grid">
         <!-- Free -->
         <div class="card" style="position:relative">
             <div class="card-body" style="padding:28px 24px">
@@ -69,7 +69,7 @@
                     <li>200 produkti</li>
                     <li>50 e-pasti mēnesī</li>
                     <li>Visas veidnes</li>
-                    <li>Periodiskie rēķini</li>
+                    <li>3 periodiskie rēķini</li>
                     <li>E-rēķinu ģenerēšana</li>
                     <li>Grāmatvedības eksports</li>
                 </ul>
@@ -133,6 +133,59 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- Lifetime -->
+        <div class="card" style="position:relative;border:2px solid #b8860b">
+            <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#b8860b,#daa520);color:white;padding:3px 14px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap">Ierobežots piedāvājums</div>
+            <div class="card-body" style="padding:28px 24px">
+                <div style="margin-bottom:20px">
+                    <span class="tier-badge" style="background:linear-gradient(135deg,#b8860b,#daa520);color:white">Mūža licence</span>
+                </div>
+                <div style="margin-bottom:20px">
+                    <span style="font-size:36px;font-weight:800;letter-spacing:-1.5px">499€</span>
+                    <span style="color:var(--text-light);font-size:13px">/ vienreiz</span>
+                </div>
+                <p style="color:var(--text-light);font-size:13px;margin-bottom:16px;line-height:1.5">
+                    Neierobežots. Vienreizējs maksājums — mūža piekļuve.
+                </p>
+                <p style="font-size:12px;color:#b8860b;font-weight:600;margin-bottom:16px" id="lifetime-slots">
+                    {% if current_user %}
+                    Pieejamas {{ 30 - lifetime_sold }} no 30 licencēm
+                    {% else %}
+                    Tikai 30 licences pieejamas
+                    {% endif %}
+                </p>
+                <ul class="pricing-features">
+                    <li>5 000 dokumenti</li>
+                    <li>500 klienti</li>
+                    <li>1 000 produkti</li>
+                    <li>Neierobežoti e-pasti</li>
+                    <li>Visas veidnes</li>
+                    <li>Periodiskie rēķini</li>
+                    <li>E-rēķinu ģenerēšana</li>
+                    <li>Grāmatvedības eksports</li>
+                    <li>Noliktavas pārvaldība</li>
+                    <li>Prioritārais atbalsts</li>
+                </ul>
+                {% if current_user %}
+                    {% if current_user.tier == 'lifetime' %}
+                    <div class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px;pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
+                    {% elif lifetime_sold >= 30 %}
+                    <div class="btn btn-outline" style="width:100%;justify-content:center;margin-top:20px;pointer-events:none;opacity:0.6">Izpārdots</div>
+                    {% else %}
+                    <form method="post" action="/billing/checkout" style="margin-top:20px">
+                        <input type="hidden" name="tier" value="lifetime">
+                        <input type="hidden" name="cycle" value="lifetime">
+                        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;background:linear-gradient(135deg,#b8860b,#daa520);border-color:#b8860b">
+                            Iegādāties
+                        </button>
+                    </form>
+                    {% endif %}
+                {% else %}
+                <a href="/register?plan=lifetime" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px;background:linear-gradient(135deg,#b8860b,#daa520);border-color:#b8860b" id="link-lifetime">Izvēlēties plānu</a>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     <p style="text-align:center;color:var(--text-light);font-size:13px;margin-top:24px;line-height:1.5">
@@ -178,6 +231,9 @@
     .pricing-grid .card-body { flex: 1; display: flex; flex-direction: column; }
     .pricing-grid .card-body .btn,
     .pricing-grid .card-body form { margin-top: auto !important; }
+    @media (max-width: 1100px) and (min-width: 769px) {
+        .pricing-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    }
 </style>
 
 <script>
