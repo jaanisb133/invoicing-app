@@ -51,6 +51,7 @@
 │   ├── database.py                # SQLite layer (1156 lines)
 │   ├── pdf_generator.py           # PDF generation (788 lines, 3 templates)
 │   ├── einvoice.py                # E-invoice XML generator (PEPPOL BIS 3.0)
+│   ├── registry.py               # Latvian business registry search (UR open data)
 │   ├── fonts/
 │   │   ├── DMSans-Bold.ttf
 │   │   └── DMSans-Regular.ttf
@@ -87,9 +88,12 @@
 ├── deploy/
 │   ├── setup-server.sh            # Full production setup script
 │   ├── vrekini.nginx.conf         # Nginx config (HTTPS, security headers)
-│   └── vrekini.service            # Systemd unit file
+│   ├── vrekini.service            # Systemd unit file
+│   └── update-registry.sh        # Daily business registry CSV download + import
 └── data/                          # Runtime data (gitignored)
     ├── veggie_invoices.db         # SQLite database
+    ├── registry.db                # Business registry search DB (separate)
+    ├── register.csv               # Downloaded UR open data CSV (~120MB)
     ├── dokumenti/                 # Generated PDFs
     └── logos/                     # Uploaded company logos
 ```
@@ -325,6 +329,33 @@
   - Send endpoint enforces limits: free plan blocked entirely, starter capped at 50/month, business/admin unlimited
   - Error message shown when monthly limit exceeded
 
+### Phase 13: Business Registry Search & VAT Validation
+- **Latvian Business Registry integration** (`app/registry.py`):
+  - Downloads official open data CSV from `dati.ur.gov.lv/register/register.csv` (~120MB, updated daily)
+  - Imports into separate SQLite database (`data/registry.db`) for fast lookups
+  - Columns: `regcode` (reg number), `name`, `type_text` (entity type), `address`, `registered`, `terminated`
+  - Search endpoint: `GET /api/registry/search?q=...` — searches by name (LIKE) or regcode (prefix match)
+  - Prioritizes starts-with matches over contains; filters out terminated businesses
+  - Status endpoint: `GET /api/registry/status` (admin only) — shows record count
+- **Autocomplete UI** on all client forms:
+  - Add client modal (`clients.html`) — name field has registry autocomplete dropdown
+  - Quick-add client modal (`document_form.html`) — same autocomplete
+  - Type 2+ characters → debounced search (250ms) → dropdown with company name, regcode, type, address
+  - Keyboard navigation (↑↓ to browse, Enter to select, Esc to close)
+  - Selecting a result auto-fills: name, registration number, legal address
+  - Hint text "Meklē Uzņēmumu reģistrā" below the name field
+- **VIES VAT validation** (`GET /api/vat/validate?vat_number=...`):
+  - Validates EU VAT numbers via the EC VIES SOAP service
+  - Returns valid/invalid status, registered name, and address
+  - Auto-detects country code (defaults to LV if omitted)
+  - "Pārbaudīt VIES" button on all VAT number fields (add, edit, quick-add modals)
+  - Shows green checkmark (valid) or red X (invalid) with company name
+- **Daily auto-refresh** via cron (`deploy/update-registry.sh`):
+  - Downloads CSV, validates line count, imports into registry.db
+  - Cron: `0 4 * * *` (daily at 4 AM)
+  - Logs to `/var/log/vrekini-registry.log`
+  - Setup script adds cron job and runs initial import
+
 ---
 
 ## 6. Key Routes
@@ -370,6 +401,11 @@
 - `GET /pricing`
 - `POST /billing/checkout`, `GET /billing/success`, `POST /billing/portal`
 - `POST /stripe/webhook`
+
+### Business Registry & VAT
+- `GET /api/registry/search?q=...` — Search Latvian business registry by name or regcode
+- `GET /api/registry/status` — Registry DB record count (admin only)
+- `GET /api/vat/validate?vat_number=...` — Validate EU VAT number via VIES
 
 ### Preview
 - `GET /api/invoice-preview` — Real-time invoice preview
@@ -594,6 +630,7 @@ The project has ~70 commits on the main branch, progressing from:
 14. Accounting export with custom preset builder
 15. E-invoice export (PEPPOL BIS Billing 3.0 / LVS EN 16931-1:2017)
 16. UI action menus (split download button, 3-dot menus on all doc pages) + email tracking
+17. Business registry search (UR open data) + VIES VAT validation
 
 ---
 

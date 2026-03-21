@@ -172,7 +172,12 @@
         <div class="modal-title">Ātrā klienta pievienošana</div>
         <div class="form-group">
             <label>Nosaukums *</label>
-            <input type="text" id="qc_name" class="form-control" required>
+            <div class="registry-wrapper">
+                <input type="text" id="qc_name" class="form-control" required
+                       autocomplete="off" placeholder="Sāciet rakstīt uzņēmuma nosaukumu...">
+                <div class="registry-dropdown" id="qc_registry_dropdown"></div>
+            </div>
+            <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
         </div>
         <div class="form-group">
             <label>Reģ. Nr.</label>
@@ -189,6 +194,8 @@
         <div class="form-group" id="qc_vat_group" style="display:none">
             <label>PVN Nr.</label>
             <input type="text" id="qc_vat_number" class="form-control">
+            <button type="button" class="vat-validate-btn" onclick="validateVat('qc_vat_number', 'qc_vat_status')">&#x2713; Pārbaudīt VIES</button>
+            <div class="vat-status" id="qc_vat_status"></div>
         </div>
         <div class="form-group">
             <label>Juridiskā adrese</label>
@@ -692,6 +699,90 @@ function updatePreview() {
 function showQuickAddClient() {
     document.getElementById('quickAddClientModal').classList.add('active');
     document.getElementById('qc_name').focus();
+}
+
+/* --- Registry Autocomplete (Quick Add Client) --- */
+(function() {
+    let timer = null, idx = -1;
+    const nameInput = document.getElementById('qc_name');
+    const dropdown = document.getElementById('qc_registry_dropdown');
+    if (!nameInput || !dropdown) return;
+
+    nameInput.addEventListener('input', function() {
+        clearTimeout(timer);
+        const q = this.value.trim();
+        if (q.length < 2) { dropdown.classList.remove('active'); return; }
+        timer = setTimeout(() => doSearch(q), 250);
+    });
+
+    nameInput.addEventListener('keydown', function(e) {
+        const items = dropdown.querySelectorAll('.registry-item');
+        if (!dropdown.classList.contains('active') || !items.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, items.length - 1); hl(items); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); hl(items); }
+        else if (e.key === 'Enter' && idx >= 0) { e.preventDefault(); items[idx].click(); }
+        else if (e.key === 'Escape') { dropdown.classList.remove('active'); }
+    });
+
+    function hl(items) {
+        items.forEach((el, i) => el.classList.toggle('selected', i === idx));
+        if (idx >= 0 && items[idx]) items[idx].scrollIntoView({block: 'nearest'});
+    }
+
+    async function doSearch(q) {
+        try {
+            const resp = await fetch('/api/registry/search?q=' + encodeURIComponent(q));
+            const data = await resp.json();
+            if (!data.length) { dropdown.classList.remove('active'); return; }
+            dropdown.innerHTML = data.map(b => `
+                <div class="registry-item" data-regcode="${b.regcode}" data-name="${b.name.replace(/"/g, '&quot;')}"
+                     data-address="${(b.address||'').replace(/"/g, '&quot;')}">
+                    <div class="registry-item-name">${b.name}</div>
+                    <div class="registry-item-details">${b.regcode} &middot; ${b.type_text || ''} &middot; ${b.address || ''}</div>
+                </div>
+            `).join('');
+            dropdown.querySelectorAll('.registry-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    document.getElementById('qc_name').value = el.dataset.name;
+                    document.getElementById('qc_reg_number').value = el.dataset.regcode;
+                    document.getElementById('qc_legal_address').value = el.dataset.address;
+                    dropdown.classList.remove('active');
+                });
+            });
+            idx = -1;
+            dropdown.classList.add('active');
+        } catch(e) { dropdown.classList.remove('active'); }
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#quickAddClientModal .registry-wrapper')) {
+            dropdown.classList.remove('active');
+        }
+    });
+})();
+
+/* --- VIES VAT Validation --- */
+async function validateVat(inputId, statusId) {
+    const input = document.getElementById(inputId);
+    const status = document.getElementById(statusId);
+    const vat = input.value.trim();
+    if (!vat) { status.textContent = ''; return; }
+    status.textContent = 'Pārbauda...';
+    status.className = 'vat-status';
+    try {
+        const resp = await fetch('/api/vat/validate?vat_number=' + encodeURIComponent(vat));
+        const data = await resp.json();
+        if (data.valid) {
+            status.textContent = '✓ Derīgs PVN numurs' + (data.name ? ' — ' + data.name : '');
+            status.className = 'vat-status valid';
+        } else {
+            status.textContent = '✗ ' + (data.error || 'Nederīgs PVN numurs');
+            status.className = 'vat-status invalid';
+        }
+    } catch(e) {
+        status.textContent = '✗ Neizdevās pārbaudīt';
+        status.className = 'vat-status invalid';
+    }
 }
 
 let quickAddProductTargetRow = null;

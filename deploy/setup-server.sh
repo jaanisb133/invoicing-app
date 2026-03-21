@@ -102,6 +102,19 @@ certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos --em
 cp "$APP_DIR/deploy/vrekini.nginx.conf" /etc/nginx/sites-available/vrekini
 nginx -t && systemctl reload nginx
 
+# ---- 8. Business registry cron job ----
+echo "[8] Setting up daily business registry update..."
+chmod +x "$APP_DIR/deploy/update-registry.sh"
+# Add cron job if not already present
+CRON_LINE="0 4 * * * $APP_DIR/deploy/update-registry.sh >> /var/log/vrekini-registry.log 2>&1"
+(crontab -l 2>/dev/null | grep -qF "update-registry.sh") || \
+    (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+echo "  Cron job added (runs daily at 04:00)"
+
+# Run initial registry import
+echo "  Running initial registry import (this may take a few minutes)..."
+"$APP_DIR/deploy/update-registry.sh" || echo "  WARNING: Initial registry import failed — can be retried manually."
+
 echo ""
 echo "=== Setup Complete ==="
 echo ""

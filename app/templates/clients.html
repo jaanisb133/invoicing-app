@@ -75,11 +75,16 @@
         <form method="post" action="/clients/add">
             <div class="form-group">
                 <label>Nosaukums *</label>
-                <input type="text" name="name" class="form-control" required>
+                <div class="registry-wrapper">
+                    <input type="text" name="name" id="ac_name" class="form-control" required
+                           autocomplete="off" placeholder="Sāciet rakstīt uzņēmuma nosaukumu...">
+                    <div class="registry-dropdown" id="ac_registry_dropdown"></div>
+                </div>
+                <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
             </div>
             <div class="form-group">
                 <label>Reģistrācijas Nr.</label>
-                <input type="text" name="reg_number" class="form-control">
+                <input type="text" name="reg_number" id="ac_reg_number" class="form-control">
             </div>
             <div class="form-group">
                 <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
@@ -92,11 +97,13 @@
             </div>
             <div class="form-group" id="ac_vat_group" style="display:none">
                 <label>PVN Nr.</label>
-                <input type="text" name="vat_number" class="form-control">
+                <input type="text" name="vat_number" id="ac_vat_number" class="form-control">
+                <button type="button" class="vat-validate-btn" onclick="validateVat('ac_vat_number', 'ac_vat_status')">&#x2713; Pārbaudīt VIES</button>
+                <div class="vat-status" id="ac_vat_status"></div>
             </div>
             <div class="form-group">
                 <label>Juridiskā adrese</label>
-                <input type="text" name="legal_address" class="form-control">
+                <input type="text" name="legal_address" id="ac_legal_address" class="form-control">
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -156,6 +163,8 @@
             <div class="form-group" id="ec_vat_group" style="display:none">
                 <label>PVN Nr.</label>
                 <input type="text" name="vat_number" id="ec_vat_number" class="form-control">
+                <button type="button" class="vat-validate-btn" onclick="validateVat('ec_vat_number', 'ec_vat_status')">&#x2713; Pārbaudīt VIES</button>
+                <div class="vat-status" id="ec_vat_status"></div>
             </div>
             <div class="form-group">
                 <label>Juridiskā adrese</label>
@@ -206,7 +215,93 @@ function editClient(c) {
     });
     document.getElementById('ec_vat_payer').checked = !!c.vat_payer;
     document.getElementById('ec_vat_group').style.display = c.vat_payer ? '' : 'none';
+    document.getElementById('ec_vat_status').textContent = '';
     document.getElementById('editClientModal').classList.add('active');
+}
+
+/* --- Registry Autocomplete --- */
+let _regTimer = null;
+const acName = document.getElementById('ac_name');
+const acDropdown = document.getElementById('ac_registry_dropdown');
+let _regIdx = -1;
+
+acName.addEventListener('input', function() {
+    clearTimeout(_regTimer);
+    const q = this.value.trim();
+    if (q.length < 2) { acDropdown.classList.remove('active'); return; }
+    _regTimer = setTimeout(() => registrySearch(q), 250);
+});
+
+acName.addEventListener('keydown', function(e) {
+    const items = acDropdown.querySelectorAll('.registry-item');
+    if (!acDropdown.classList.contains('active') || !items.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); _regIdx = Math.min(_regIdx + 1, items.length - 1); highlightItem(items); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); _regIdx = Math.max(_regIdx - 1, 0); highlightItem(items); }
+    else if (e.key === 'Enter' && _regIdx >= 0) { e.preventDefault(); items[_regIdx].click(); }
+    else if (e.key === 'Escape') { acDropdown.classList.remove('active'); }
+});
+
+function highlightItem(items) {
+    items.forEach((el, i) => el.classList.toggle('selected', i === _regIdx));
+    if (_regIdx >= 0 && items[_regIdx]) items[_regIdx].scrollIntoView({block: 'nearest'});
+}
+
+async function registrySearch(q) {
+    try {
+        const resp = await fetch('/api/registry/search?q=' + encodeURIComponent(q));
+        const data = await resp.json();
+        if (!data.length) { acDropdown.classList.remove('active'); return; }
+        acDropdown.innerHTML = data.map(b => `
+            <div class="registry-item" data-regcode="${b.regcode}" data-name="${b.name.replace(/"/g, '&quot;')}"
+                 data-address="${(b.address||'').replace(/"/g, '&quot;')}" data-type="${(b.type_text||'').replace(/"/g, '&quot;')}">
+                <div class="registry-item-name">${b.name}</div>
+                <div class="registry-item-details">${b.regcode} &middot; ${b.type_text || ''} &middot; ${b.address || ''}</div>
+            </div>
+        `).join('');
+        acDropdown.querySelectorAll('.registry-item').forEach(el => {
+            el.addEventListener('click', () => selectRegistryItem(el));
+        });
+        _regIdx = -1;
+        acDropdown.classList.add('active');
+    } catch(e) { acDropdown.classList.remove('active'); }
+}
+
+function selectRegistryItem(el) {
+    document.getElementById('ac_name').value = el.dataset.name;
+    document.getElementById('ac_reg_number').value = el.dataset.regcode;
+    document.getElementById('ac_legal_address').value = el.dataset.address;
+    acDropdown.classList.remove('active');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.registry-wrapper')) {
+        acDropdown.classList.remove('active');
+    }
+});
+
+/* --- VIES VAT Validation --- */
+async function validateVat(inputId, statusId) {
+    const input = document.getElementById(inputId);
+    const status = document.getElementById(statusId);
+    const vat = input.value.trim();
+    if (!vat) { status.textContent = ''; return; }
+    status.textContent = 'Pārbauda...';
+    status.className = 'vat-status';
+    try {
+        const resp = await fetch('/api/vat/validate?vat_number=' + encodeURIComponent(vat));
+        const data = await resp.json();
+        if (data.valid) {
+            status.textContent = '✓ Derīgs PVN numurs' + (data.name ? ' — ' + data.name : '');
+            status.className = 'vat-status valid';
+        } else {
+            status.textContent = '✗ ' + (data.error || 'Nederīgs PVN numurs');
+            status.className = 'vat-status invalid';
+        }
+    } catch(e) {
+        status.textContent = '✗ Neizdevās pārbaudīt';
+        status.className = 'vat-status invalid';
+    }
 }
 </script>
 {% endblock %}

@@ -26,6 +26,7 @@ from itsdangerous import URLSafeTimedSerializer
 logger = logging.getLogger("vrekini")
 
 from app import database as db
+from app import registry
 from app.pdf_generator import generate_invoice_pdf, TEMPLATES
 from app.einvoice import generate_einvoice_xml, generate_einvoice_file
 
@@ -389,6 +390,11 @@ async def startup():
         print(f"  Parole: {temp_pw}")
         print(f"  (Parole jāmaina pie pirmās pieslēgšanās)")
         print(f"{'='*60}\n")
+
+    # Initialize registry DB table (data imported separately via cron)
+    registry.init_registry_db()
+    reg_count = registry.get_record_count()
+    print(f"[STARTUP] Business registry: {reg_count} records")
 
     # Start recurring invoice background task
     asyncio.create_task(_process_recurring_invoices())
@@ -2264,3 +2270,99 @@ async def api_invoice_preview(request: Request,
         example2 = "42".zfill(min_digits)
 
     return JSONResponse({"example1": example, "example2": example2})
+
+
+# ---------- Business Registry Search ----------
+
+@app.get("/api/registry/search")
+async def api_registry_search(request: Request, q: str = ""):
+    """Search the Latvian business registry by name or registration number."""
+    user = request.state.user
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    results = registry.search(q, limit=15)
+    return JSONResponse(results)
+
+
+@app.get("/api/registry/status")
+async def api_registry_status(request: Request):
+    """Check if the business registry database is loaded."""
+    user = request.state.user
+    if not user or not user.get("is_admin"):
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
+    count = registry.get_record_count()
+    return JSONResponse({"count": count, "loaded": count > 0})
+
+
+# ---------- VIES VAT Number Validation ----------
+
+@app.get("/api/vat/validate")
+async def api_vat_validate(request: Request, vat_number: str = ""):
+    """Validate an EU VAT number via the VIES SOAP service."""
+    user = request.state.user
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    vat_number = vat_number.strip().replace(" ", "").replace("-", "")
+    if len(vat_number) < 4:
+        return JSONResponse({"valid": False, "error": "PVN numurs par īsu"})
+
+    # Extract country code and number
+    country_code = vat_number[:2].upper()
+    number = vat_number[2:]
+
+    # If no country prefix, assume Latvia
+    if country_code.isdigit():
+        country_code = "LV"
+        number = vat_number
+
+    try:
+        import httpx
+        soap_body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:urn="urn:ec.europa.eu:taxud:vies:services:checkVat:types">
+    <soapenv:Body>
+        <urn:checkVat>
+            <urn:countryCode>{country_code}</urn:countryCode>
+            <urn:vatNumber>{number}</urn:vatNumber>
+        </urn:checkVat>
+    </soapenv:Body>
+</soapenv:Envelope>"""
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://ec.europa.eu/taxation_customs/vies/services/checkVatService",
+                content=soap_body,
+                headers={"Content-Type": "text/xml; charset=utf-8"},
+            )
+
+        body = resp.text
+        valid = "<valid>true</valid>" in body.lower() or "<ns2:valid>true</ns2:valid>" in body.lower()
+
+        # Extract name and address from response
+        name = ""
+        address = ""
+        for tag in ["name", "ns2:name"]:
+            start = body.find(f"<{tag}>")
+            end = body.find(f"</{tag}>")
+            if start != -1 and end != -1:
+                name = body[start + len(tag) + 2:end].strip()
+                break
+        for tag in ["address", "ns2:address"]:
+            start = body.find(f"<{tag}>")
+            end = body.find(f"</{tag}>")
+            if start != -1 and end != -1:
+                address = body[start + len(tag) + 2:end].strip()
+                break
+
+        return JSONResponse({
+            "valid": valid,
+            "country_code": country_code,
+            "vat_number": number,
+            "name": name,
+            "address": address,
+        })
+
+    except Exception as e:
+        logger.error("VIES validation error: %s", e)
+        return JSONResponse({"valid": False, "error": "VIES serviss nav pieejams"})

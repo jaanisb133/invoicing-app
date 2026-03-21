@@ -1195,3 +1195,93 @@ select.form-control { cursor: pointer; }
         min-width: 100%;
     }
 }
+
+/* ============================================================
+   Registry Autocomplete
+   ============================================================ */
+.registry-wrapper {
+    position: relative;
+}
+.registry-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 100;
+}
+.registry-dropdown.active {
+    display: block;
+}
+.registry-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-light);
+    transition: background var(--transition);
+}
+.registry-item:last-child {
+    border-bottom: none;
+}
+.registry-item:hover,
+.registry-item.selected {
+    background: var(--accent-soft);
+}
+.registry-item-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+}
+.registry-item-details {
+    font-size: 12px;
+    color: var(--text-light);
+    margin-top: 2px;
+}
+.registry-hint {
+    font-size: 12px;
+    color: var(--text-lighter);
+    margin-top: 4px;
+}
+.vat-validate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-light);
+    cursor: pointer;
+    transition: all var(--transition);
+    margin-top: 4px;
+}
+.vat-validate-btn:hover {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+.vat-status {
+    font-size: 12px;
+    margin-top: 4px;
+}
+.vat-status.valid {
+    color: #16a34a;
+}
+.vat-status.invalid {
+    color: var(--danger);
+}
+
+[data-theme="dark"] .registry-dropdown {
+    background: var(--bg-card);
+    border-color: var(--border);
+}
+[data-theme="dark"] .registry-item:hover,
+[data-theme="dark"] .registry-item.selected {
+    background: var(--accent-soft);
+}
