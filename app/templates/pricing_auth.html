@@ -54,8 +54,14 @@
                 </div>
             </div>
 
+            {% if current_user.subscription_end and current_user.tier != 'free' %}
+            <div style="margin-top:16px;font-size:13px;color:var(--text-light)">
+                Nākamais apmaksas datums: <strong>{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong>
+            </div>
+            {% endif %}
+
             {% if current_user.tier != 'free' and has_payments %}
-            <div style="margin-top:16px">
+            <div style="margin-top:12px">
                 <form method="post" action="/billing/cancel" style="display:inline"
                       onsubmit="return confirm('Vai tiešām vēlaties atcelt abonementu? Jūsu plāns tiks pazemināts uz Bezmaksas.')">
                     <button type="submit" class="btn btn-outline btn-sm" style="color:var(--danger)">

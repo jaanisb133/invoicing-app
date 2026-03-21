@@ -139,7 +139,7 @@
 
                     <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:var(--radius);font-size:13px;color:var(--text-light)">
                         {% if current_user.subscription_end and current_user.tier != 'free' %}
-                        <div style="margin-bottom:6px">Nākamais norēķins: <strong>{{ current_user.subscription_end }}</strong></div>
+                        <div style="margin-bottom:6px">Nākamais apmaksas datums: <strong>{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong></div>
                         {% endif %}
                         Konts izveidots: {{ current_user.created_at[:10] if current_user.created_at else 'N/A' }}
                     </div>
