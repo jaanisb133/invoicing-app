@@ -44,7 +44,7 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
 
 <div class="page-body">
     {% if request.query_params.get('error') %}
-    <div class="alert alert-danger">{{ request.query_params.get('error') | safe }}</div>
+    <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
     <div class="usage-section" style="margin-bottom:16px">
         <div class="usage-item">

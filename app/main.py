@@ -14,6 +14,7 @@ import logging
 import smtplib
 import time
 from collections import defaultdict
+from urllib.parse import quote
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -267,6 +268,9 @@ def _get_logo_path(user_id):
     logo_dir = os.path.join(os.path.dirname(BASE_DIR), "data", "logos")
     filename = db.get_user_setting(user_id, "logo_filename")
     if filename:
+        # Prevent path traversal — only allow simple filenames
+        if "/" in filename or "\\" in filename or ".." in filename:
+            return None
         path = os.path.join(logo_dir, filename)
         if os.path.exists(path):
             return path
@@ -1247,7 +1251,7 @@ async def add_client(
     if reg_number:
         existing = db.get_client_by_reg_number(user["id"], reg_number)
         if existing:
-            return RedirectResponse(f"/clients?error=duplicate&name={existing['name']}", status_code=303)
+            return RedirectResponse(f"/clients?error=duplicate&name={quote(existing['name'])}", status_code=303)
     allowed, current, maximum = _check_tier_limit(user, "clients")
     if not allowed:
         return RedirectResponse(f"/clients?error=limit", status_code=303)
@@ -1394,7 +1398,8 @@ async def create_document(request: Request):
             payment_due_date=payment_due_date,
         )
     except ValueError as e:
-        return RedirectResponse(f"/documents/new?doc_type={doc_type}&error={str(e)}", status_code=303)
+        logger.warning("Document creation error: %s", e)
+        return RedirectResponse(f"/documents/new?doc_type={doc_type}&error={quote(str(e))}", status_code=303)
 
     try:
         generate_invoice_pdf(doc_id, template=template)
@@ -1468,7 +1473,8 @@ async def update_document(request: Request, doc_id: int):
     try:
         db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes, payment_due_date=payment_due_date)
     except ValueError as e:
-        return RedirectResponse(f"/documents/{doc_id}/edit?error={str(e)}", status_code=303)
+        logger.warning("Document update error: %s", e)
+        return RedirectResponse(f"/documents/{doc_id}/edit?error={quote(str(e))}", status_code=303)
 
     try:
         generate_invoice_pdf(doc_id, template=template)
