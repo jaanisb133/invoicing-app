@@ -1,11 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-header">
-    <h2>Apmaksa veiksmīga!</h2>
+    <h2>{% if payment_pending | default(false) %}Maksājums tiek apstrādāts{% else %}Apmaksa veiksmīga!{% endif %}</h2>
 </div>
 <div class="page-body">
     <div class="card" style="max-width:540px">
         <div class="card-body" style="text-align:center;padding:40px">
+            {% if payment_pending | default(false) %}
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--warning, #f59e0b)" stroke-width="2" style="margin-bottom:16px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">Maksājums tiek apstrādāts</h3>
+            <p style="color:var(--text-light);font-size:14px;margin-bottom:24px;line-height:1.6">
+                Jūsu maksājums vēl tiek apstrādāts. Abonements tiks aktivizēts automātiski, kad maksājums būs apstiprināts.
+            </p>
+            <div style="display:flex;gap:12px;justify-content:center">
+                <a href="/" class="btn btn-primary">Uz pārskatu</a>
+                <a href="/pricing" class="btn btn-outline">Atpakaļ uz plāniem</a>
+            </div>
+            {% else %}
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="margin-bottom:16px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
             <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">Paldies par abonēšanu!</h3>
             <p style="color:var(--text-light);font-size:14px;margin-bottom:24px;line-height:1.6">
@@ -15,6 +26,7 @@
                 <a href="/" class="btn btn-primary">Uz pārskatu</a>
                 <a href="/account" class="btn btn-outline">Konta iestatījumi</a>
             </div>
+            {% endif %}
         </div>
     </div>
 </div>

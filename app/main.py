@@ -86,18 +86,8 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "rekini@v-rekini.lv")
 BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "V-Rēķini")
 
-# --- Stripe ---
-import stripe
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
-STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRICE_IDS = {
-    "starter_monthly": os.getenv("STRIPE_PRICE_STARTER_MONTHLY", ""),
-    "starter_yearly": os.getenv("STRIPE_PRICE_STARTER_YEARLY", ""),
-    "business_monthly": os.getenv("STRIPE_PRICE_BUSINESS_MONTHLY", ""),
-    "business_yearly": os.getenv("STRIPE_PRICE_BUSINESS_YEARLY", ""),
-}
-stripe.api_key = STRIPE_SECRET_KEY
+# --- EveryPay / SEB E-commerce ---
+from app import everypay
 
 
 def _smtp_connect():
@@ -282,7 +272,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms")
-                or path == "/stripe/webhook" or path == "/api/registry/search"):
+                or path == "/everypay/callback" or path == "/api/registry/search"):
             return await call_next(request)
 
         user = _get_current_user(request)
@@ -587,11 +577,15 @@ async def register(request: Request,
         "legal_address": legal_address if is_business else "",
     })
 
-    # If a paid plan was selected during registration, redirect to subscription page
+    # Store pending plan selection (if any) — checkout happens after onboarding
     if plan in ("starter", "business"):
-        response = RedirectResponse(f"/pricing?upgrade={plan}&cycle={cycle}", status_code=303)
-    else:
-        response = RedirectResponse("/", status_code=303)
+        db.save_all_user_settings(user_id, {
+            "_pending_plan": plan,
+            "_pending_plan_cycle": cycle,
+        })
+
+    # Always redirect to dashboard → onboarding gate will send to /setup
+    response = RedirectResponse("/", status_code=303)
     return _set_session_cookie(response, user_id)
 
 
@@ -700,7 +694,25 @@ async def save_setup(
         "payment_due_days": payment_due_days,
     }
     db.save_all_user_settings(user["id"], settings_dict)
-    return RedirectResponse("/", status_code=303)
+
+    # After onboarding, check if user has a pending plan from registration
+    all_settings = db.get_all_user_settings(user["id"])
+    pending_plan = all_settings.get("_pending_plan", "")
+    pending_cycle = all_settings.get("_pending_plan_cycle", "monthly")
+
+    if pending_plan in ("starter", "business"):
+        # Clear the pending plan and redirect to checkout
+        db.save_all_user_settings(user["id"], {
+            "_pending_plan": "",
+            "_pending_plan_cycle": "",
+        })
+        return RedirectResponse(
+            f"/pricing?upgrade={pending_plan}&cycle={pending_cycle}",
+            status_code=303,
+        )
+
+    # No pending plan — show plans page so user can choose
+    return RedirectResponse("/pricing", status_code=303)
 
 
 # =============================================================================
@@ -718,7 +730,7 @@ async def account_page(request: Request):
         "limits": limits,
         "usage": usage,
         "doc_count": usage["documents"],
-        "has_stripe": bool(STRIPE_SECRET_KEY),
+        "has_payments": everypay.is_configured(),
         "tiers": db.TIER_LIMITS,
     })
     return templates.TemplateResponse("account.html", ctx)
@@ -788,7 +800,7 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
             "page": "pricing",
             "limits": limits,
             "usage": usage,
-            "has_stripe": bool(STRIPE_SECRET_KEY),
+            "has_payments": everypay.is_configured(),
             "upgrade": upgrade,
             "upgrade_cycle": cycle,
         })
@@ -802,126 +814,212 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
 
 @app.post("/billing/checkout")
 async def billing_checkout(request: Request, tier: str = Form(...), cycle: str = Form("monthly")):
-    """Create a Stripe Checkout session and redirect."""
+    """Initiate an EveryPay payment and redirect to hosted payment page."""
     user = request.state.user
     if tier not in ("starter", "business") or cycle not in ("monthly", "yearly"):
         return RedirectResponse("/pricing?error=invalid", status_code=303)
 
-    price_key = f"{tier}_{cycle}"
-    price_id = STRIPE_PRICE_IDS.get(price_key, "")
-    if not price_id or not STRIPE_SECRET_KEY:
-        return RedirectResponse("/pricing?error=stripe_not_configured", status_code=303)
+    amount = everypay.get_plan_price(tier, cycle)
+    if not amount or not everypay.is_configured():
+        return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
-    # Get or create Stripe customer
-    stripe_customer_id = user.get("stripe_customer_id", "")
-    if not stripe_customer_id:
-        customer = stripe.Customer.create(
-            email=user.get("email", ""),
-            name=user.get("display_name", user["username"]),
-            metadata={"user_id": str(user["id"])},
-        )
-        stripe_customer_id = customer.id
-        db.update_user_subscription(
-            user["id"], user.get("tier", "free"),
-            stripe_customer_id=stripe_customer_id,
-        )
-
+    # Build order reference: user_id-tier-cycle-timestamp
+    order_ref = f"sub-{user['id']}-{tier}-{cycle}-{int(datetime.datetime.now().timestamp())}"
     base_url = str(request.base_url).rstrip("/")
-    session = stripe.checkout.Session.create(
-        customer=stripe_customer_id,
-        mode="subscription",
-        line_items=[{"price": price_id, "quantity": 1}],
-        success_url=f"{base_url}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{base_url}/pricing",
-        metadata={"user_id": str(user["id"]), "tier": tier, "cycle": cycle},
-    )
-    return RedirectResponse(session.url, status_code=303)
-
-
-@app.get("/billing/success", response_class=HTMLResponse)
-async def billing_success(request: Request, session_id: str = ""):
-    """Post-checkout success page. The webhook handles the actual activation."""
-    ctx = _base_context(request)
-    ctx["page"] = "billing"
-    return templates.TemplateResponse("billing_success.html", ctx)
-
-
-@app.post("/billing/portal")
-async def billing_portal(request: Request):
-    """Redirect to Stripe Customer Portal for managing subscription."""
-    user = request.state.user
-    stripe_customer_id = user.get("stripe_customer_id", "")
-    if not stripe_customer_id or not STRIPE_SECRET_KEY:
-        return RedirectResponse("/account?error=no_subscription", status_code=303)
-
-    base_url = str(request.base_url).rstrip("/")
-    session = stripe.billing_portal.Session.create(
-        customer=stripe_customer_id,
-        return_url=f"{base_url}/account",
-    )
-    return RedirectResponse(session.url, status_code=303)
-
-
-@app.post("/stripe/webhook")
-async def stripe_webhook(request: Request):
-    """Handle Stripe webhook events for subscription lifecycle."""
-    payload = await request.body()
-    sig_header = request.headers.get("stripe-signature", "")
+    customer_url = f"{base_url}/billing/return"
+    client_ip = _get_client_ip(request)
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-    except (ValueError, stripe.error.SignatureVerificationError):
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        result = everypay.initiate_payment(
+            amount=amount,
+            order_reference=order_ref,
+            customer_url=customer_url,
+            email=user.get("email", ""),
+            customer_ip=client_ip,
+            request_token=True,
+        )
+    except Exception as e:
+        logger.exception("EveryPay payment initiation failed")
+        return RedirectResponse("/pricing?error=payment_error", status_code=303)
 
-    event_type = event["type"]
-    data = event["data"]["object"]
+    payment_link = result.get("payment_link", "")
+    payment_ref = result.get("payment_reference", "")
 
-    if event_type == "checkout.session.completed":
-        metadata = data.get("metadata", {})
-        user_id = int(metadata.get("user_id", 0))
-        tier = metadata.get("tier", "starter")
-        cycle = metadata.get("cycle", "monthly")
-        subscription_id = data.get("subscription", "")
-        customer_id = data.get("customer", "")
+    if not payment_link:
+        return RedirectResponse("/pricing?error=payment_error", status_code=303)
 
-        if user_id:
-            db.update_user_subscription(
-                user_id, tier,
-                billing_cycle=cycle,
-                stripe_customer_id=customer_id,
-                stripe_subscription_id=subscription_id,
-                subscription_status="active",
-            )
-            logger.info(f"User {user_id} upgraded to {tier} ({cycle})")
+    # Store pending payment info in user settings for verification on return
+    db.save_all_user_settings(user["id"], {
+        "_pending_payment_ref": payment_ref,
+        "_pending_tier": tier,
+        "_pending_cycle": cycle,
+    })
 
-    elif event_type in ("customer.subscription.updated", "customer.subscription.renewed"):
-        customer_id = data.get("customer", "")
-        user = db.get_user_by_stripe_customer(customer_id)
-        if user:
-            status = data.get("status", "")
-            if status == "active":
-                db.update_user_subscription(
-                    user["id"], user["tier"],
-                    stripe_customer_id=customer_id,
-                    stripe_subscription_id=data.get("id", ""),
-                    subscription_status="active",
-                )
-            elif status in ("past_due", "unpaid"):
-                db.update_user_subscription(
-                    user["id"], user["tier"],
-                    stripe_customer_id=customer_id,
-                    stripe_subscription_id=data.get("id", ""),
-                    subscription_status=status,
-                )
+    return RedirectResponse(payment_link, status_code=303)
 
-    elif event_type in ("customer.subscription.deleted", "customer.subscription.canceled"):
-        customer_id = data.get("customer", "")
-        user = db.get_user_by_stripe_customer(customer_id)
-        if user:
-            db.cancel_user_subscription(user["id"])
-            logger.info(f"User {user['id']} subscription cancelled, downgraded to free")
+
+@app.get("/billing/return", response_class=HTMLResponse)
+async def billing_return(request: Request, payment_reference: str = ""):
+    """Handle customer return from EveryPay payment page."""
+    user = request.state.user
+    settings = db.get_all_user_settings(user["id"])
+    pending_ref = settings.get("_pending_payment_ref", "")
+    pending_tier = settings.get("_pending_tier", "")
+    pending_cycle = settings.get("_pending_cycle", "")
+
+    if not payment_reference or payment_reference != pending_ref:
+        return RedirectResponse("/pricing?error=invalid_payment", status_code=303)
+
+    try:
+        status = everypay.get_payment_status(payment_reference)
+    except Exception as e:
+        logger.exception("Failed to check payment status")
+        return RedirectResponse("/pricing?error=payment_error", status_code=303)
+
+    payment_state = status.get("payment_state", "")
+
+    if payment_state == "settled":
+        # Extract card token for future recurring payments
+        cc_details = status.get("cc_details", {})
+        card_token = cc_details.get("token", "")
+
+        # Calculate subscription end date
+        if pending_cycle == "yearly":
+            end_date = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
+        else:
+            end_date = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+
+        # Activate subscription
+        db.update_user_subscription(
+            user["id"], pending_tier,
+            billing_cycle=pending_cycle,
+            everypay_token=card_token,
+            everypay_payment_ref=payment_reference,
+            subscription_status="active",
+        )
+
+        # Set subscription end date
+        conn = db.get_connection()
+        conn.execute("UPDATE users SET subscription_end = ? WHERE id = ?",
+                     (end_date, user["id"]))
+        conn.commit()
+        conn.close()
+
+        # Clean up pending settings
+        db.save_all_user_settings(user["id"], {
+            "_pending_payment_ref": "",
+            "_pending_tier": "",
+            "_pending_cycle": "",
+        })
+
+        logger.info("User %s upgraded to %s (%s) via EveryPay",
+                     user["id"], pending_tier, pending_cycle)
+
+        ctx = _base_context(request)
+        ctx["page"] = "billing"
+        return templates.TemplateResponse("billing_success.html", ctx)
+
+    elif payment_state in ("initial", "waiting_for_3ds_response",
+                           "waiting_for_sca", "sent_for_processing"):
+        # Payment still processing — show waiting message
+        ctx = _base_context(request)
+        ctx["page"] = "billing"
+        ctx["payment_pending"] = True
+        ctx["payment_reference"] = payment_reference
+        return templates.TemplateResponse("billing_success.html", ctx)
+
+    else:
+        # Payment failed or abandoned
+        db.save_all_user_settings(user["id"], {
+            "_pending_payment_ref": "",
+            "_pending_tier": "",
+            "_pending_cycle": "",
+        })
+        return RedirectResponse("/pricing?error=payment_failed", status_code=303)
+
+
+@app.get("/everypay/callback")
+async def everypay_callback(request: Request,
+                            payment_reference: str = "",
+                            order_reference: str = "",
+                            event_name: str = ""):
+    """Handle EveryPay callback notifications (server-to-server)."""
+    if not payment_reference:
+        raise HTTPException(status_code=400, detail="Missing payment_reference")
+
+    logger.info("EveryPay callback: ref=%s event=%s order=%s",
+                payment_reference, event_name, order_reference)
+
+    try:
+        status = everypay.get_payment_status(payment_reference)
+    except Exception as e:
+        logger.exception("Failed to verify payment status from callback")
+        raise HTTPException(status_code=500, detail="Payment verification failed")
+
+    payment_state = status.get("payment_state", "")
+
+    # Parse user_id from order_reference: sub-{user_id}-{tier}-{cycle}-{ts}
+    parts = order_reference.split("-") if order_reference else []
+    if len(parts) >= 4 and parts[0] == "sub":
+        try:
+            user_id = int(parts[1])
+            tier = parts[2]
+            cycle = parts[3]
+        except (ValueError, IndexError):
+            return JSONResponse({"status": "ok", "note": "unparseable order_reference"})
+    else:
+        return JSONResponse({"status": "ok", "note": "unknown order_reference format"})
+
+    if event_name == "status_updated" and payment_state == "settled":
+        cc_details = status.get("cc_details", {})
+        card_token = cc_details.get("token", "")
+
+        if cycle == "yearly":
+            end_date = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
+        else:
+            end_date = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+
+        db.update_user_subscription(
+            user_id, tier,
+            billing_cycle=cycle,
+            everypay_token=card_token,
+            everypay_payment_ref=payment_reference,
+            subscription_status="active",
+        )
+
+        conn = db.get_connection()
+        conn.execute("UPDATE users SET subscription_end = ? WHERE id = ?",
+                     (end_date, user_id))
+        conn.commit()
+        conn.close()
+
+        logger.info("User %s subscription activated via callback: %s (%s)",
+                     user_id, tier, cycle)
+
+    elif event_name in ("abandoned", "status_updated") and payment_state == "failed":
+        logger.warning("Payment failed for user %s: ref=%s", user_id, payment_reference)
 
     return JSONResponse({"status": "ok"})
+
+
+@app.post("/billing/cancel")
+async def billing_cancel(request: Request):
+    """Cancel the current subscription."""
+    user = request.state.user
+    if user.get("tier", "free") == "free":
+        return RedirectResponse("/account?error=no_subscription", status_code=303)
+
+    # Deactivate the stored card token so no more recurring charges
+    token = user.get("everypay_token", "")
+    if token:
+        try:
+            everypay.deactivate_token(token)
+        except Exception:
+            logger.warning("Failed to deactivate EveryPay token for user %s", user["id"])
+
+    db.cancel_user_subscription(user["id"])
+    logger.info("User %s cancelled subscription", user["id"])
+    return RedirectResponse("/account?success=subscription_cancelled", status_code=303)
 
 
 # =============================================================================

@@ -51,8 +51,8 @@ def init_db():
             subscription_start DATE,
             subscription_end DATE,
             billing_cycle TEXT NOT NULL DEFAULT '',
-            stripe_customer_id TEXT NOT NULL DEFAULT '',
-            stripe_subscription_id TEXT NOT NULL DEFAULT '',
+            everypay_token TEXT NOT NULL DEFAULT '',
+            everypay_payment_ref TEXT NOT NULL DEFAULT '',
             phone TEXT NOT NULL DEFAULT '',
             max_documents INTEGER NOT NULL DEFAULT 50,
             max_clients INTEGER NOT NULL DEFAULT 20,
@@ -200,8 +200,8 @@ def _run_migrations():
         "max_clients": "ALTER TABLE users ADD COLUMN max_clients INTEGER NOT NULL DEFAULT 20",
         "max_products": "ALTER TABLE users ADD COLUMN max_products INTEGER NOT NULL DEFAULT 50",
         "billing_cycle": "ALTER TABLE users ADD COLUMN billing_cycle TEXT NOT NULL DEFAULT ''",
-        "stripe_customer_id": "ALTER TABLE users ADD COLUMN stripe_customer_id TEXT NOT NULL DEFAULT ''",
-        "stripe_subscription_id": "ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT NOT NULL DEFAULT ''",
+        "everypay_token": "ALTER TABLE users ADD COLUMN everypay_token TEXT NOT NULL DEFAULT ''",
+        "everypay_payment_ref": "ALTER TABLE users ADD COLUMN everypay_payment_ref TEXT NOT NULL DEFAULT ''",
         "phone": "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
     }
     for col, sql in migrations.items():
@@ -1064,18 +1064,18 @@ def get_tier_limits(tier):
 
 
 def update_user_subscription(user_id: int, tier: str, billing_cycle: str = "",
-                             stripe_customer_id: str = "", stripe_subscription_id: str = "",
+                             everypay_token: str = "", everypay_payment_ref: str = "",
                              subscription_status: str = "active"):
-    """Update user subscription fields after Stripe events."""
+    """Update user subscription fields after EveryPay payment events."""
     conn = get_connection()
     limits = get_tier_limits(tier)
     conn.execute(
-        """UPDATE users SET tier = ?, billing_cycle = ?, stripe_customer_id = ?,
-           stripe_subscription_id = ?, subscription_status = ?,
+        """UPDATE users SET tier = ?, billing_cycle = ?, everypay_token = ?,
+           everypay_payment_ref = ?, subscription_status = ?,
            subscription_start = COALESCE(subscription_start, ?),
            max_documents = ?, max_clients = ?, max_products = ?
            WHERE id = ?""",
-        (tier, billing_cycle, stripe_customer_id, stripe_subscription_id,
+        (tier, billing_cycle, everypay_token, everypay_payment_ref,
          subscription_status, datetime.date.today().isoformat(),
          limits["max_documents"], limits["max_clients"], limits["max_products"],
          user_id)
@@ -1084,12 +1084,29 @@ def update_user_subscription(user_id: int, tier: str, billing_cycle: str = "",
     conn.close()
 
 
-def get_user_by_stripe_customer(stripe_customer_id: str):
+def get_user_by_everypay_token(token: str):
+    """Find user by their stored EveryPay card token."""
     conn = get_connection()
-    row = conn.execute("SELECT * FROM users WHERE stripe_customer_id = ?",
-                       (stripe_customer_id,)).fetchone()
+    row = conn.execute("SELECT * FROM users WHERE everypay_token = ?",
+                       (token,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_users_due_for_renewal():
+    """Get users with active paid subscriptions that are due for renewal."""
+    conn = get_connection()
+    today = datetime.date.today().isoformat()
+    rows = conn.execute(
+        """SELECT * FROM users
+           WHERE tier != 'free'
+           AND subscription_status = 'active'
+           AND everypay_token != ''
+           AND (subscription_end IS NULL OR subscription_end <= ?)""",
+        (today,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def cancel_user_subscription(user_id: int):
@@ -1098,7 +1115,7 @@ def cancel_user_subscription(user_id: int):
     limits = get_tier_limits("free")
     conn.execute(
         """UPDATE users SET tier = 'free', billing_cycle = '',
-           stripe_subscription_id = '', subscription_status = 'cancelled',
+           everypay_payment_ref = '', subscription_status = 'cancelled',
            subscription_end = ?,
            max_documents = ?, max_clients = ?, max_products = ?
            WHERE id = ?""",

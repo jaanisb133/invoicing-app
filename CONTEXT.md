@@ -111,7 +111,7 @@
    - `id, username, email, password_hash, display_name, phone`
    - `must_change_password, is_admin, tier` (free/starter/business/admin)
    - `subscription_status, subscription_start, subscription_end, billing_cycle`
-   - `stripe_customer_id, stripe_subscription_id`
+   - `everypay_token, everypay_payment_ref`
    - `max_documents, max_clients, max_products` (tier-enforced limits)
    - `created_at`
 
@@ -399,8 +399,8 @@
 
 ### Billing
 - `GET /pricing`
-- `POST /billing/checkout`, `GET /billing/success`, `POST /billing/portal`
-- `POST /stripe/webhook`
+- `POST /billing/checkout`, `GET /billing/return`, `POST /billing/cancel`
+- `GET /everypay/callback`
 
 ### Business Registry & VAT
 - `GET /api/registry/search?q=...` — Search Latvian business registry by name or regcode
@@ -599,14 +599,11 @@ BREVO_API_KEY=<key>
 BREVO_SENDER_EMAIL=rekini@v-rekini.lv
 BREVO_SENDER_NAME=V-Rekini
 
-# Stripe
-STRIPE_SECRET_KEY=<key>
-STRIPE_PUBLISHABLE_KEY=<key>
-STRIPE_WEBHOOK_SECRET=<secret>
-STRIPE_PRICE_STARTER_MONTHLY=<price_id>
-STRIPE_PRICE_STARTER_YEARLY=<price_id>
-STRIPE_PRICE_BUSINESS_MONTHLY=<price_id>
-STRIPE_PRICE_BUSINESS_YEARLY=<price_id>
+# EveryPay / SEB E-commerce
+EVERYPAY_API_USERNAME=<16-char api username>
+EVERYPAY_API_SECRET=<api secret>
+EVERYPAY_ACCOUNT_NAME=<processing account, e.g. EUR3D1>
+EVERYPAY_API_URL=https://igw-seb-demo.every-pay.com/api/v4
 ```
 
 ---
