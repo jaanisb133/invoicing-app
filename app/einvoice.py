@@ -61,10 +61,12 @@ def _unit_code(unit_text):
     return UNIT_CODE_MAP.get(normalized, "C62")
 
 
-def _tax_category_id(vat_rate):
+def _tax_category_id(vat_rate, reverse_charge=False):
     """Determine the PEPPOL tax category ID based on VAT rate.
-    S = Standard rate, Z = Zero rate, E = Exempt, O = Not subject to VAT.
+    S = Standard rate, Z = Zero rate, AE = Reverse charge, E = Exempt, O = Not subject to VAT.
     """
+    if reverse_charge:
+        return "AE"
     if vat_rate is None or vat_rate == 0:
         return "Z"
     return "S"
@@ -134,6 +136,7 @@ def _get_einvoice_data(doc_id):
         "vat_rate": vat_rate,
         "vat_amount": vat_amount,
         "total": total,
+        "reverse_charge": bool(doc.get("reverse_charge", 0)),
     }
 
 
@@ -271,7 +274,8 @@ def generate_einvoice_xml(doc_id):
     vat_amount = data["vat_amount"]
     subtotal = data["subtotal"]
     total = data["total"]
-    tax_cat_id = _tax_category_id(vat_rate)
+    reverse_charge = data["reverse_charge"]
+    tax_cat_id = _tax_category_id(vat_rate, reverse_charge)
 
     tax_total = SubElement(root, f"{{{NS_CAC}}}TaxTotal")
     tax_amount = SubElement(tax_total, f"{{{NS_CBC}}}TaxAmount")
@@ -291,6 +295,11 @@ def generate_einvoice_xml(doc_id):
     tax_cat.text = tax_cat_id
     tax_pct = SubElement(tax_category, f"{{{NS_CBC}}}Percent")
     tax_pct.text = str(vat_rate)
+    if reverse_charge:
+        reason_code = SubElement(tax_category, f"{{{NS_CBC}}}TaxExemptionReasonCode")
+        reason_code.text = "vatex-eu-ae"
+        reason = SubElement(tax_category, f"{{{NS_CBC}}}TaxExemptionReason")
+        reason.text = "Reverse Charge"
     tax_scheme = SubElement(tax_category, f"{{{NS_CAC}}}TaxScheme")
     tax_scheme_id = SubElement(tax_scheme, f"{{{NS_CBC}}}ID")
     tax_scheme_id.text = "VAT"
@@ -337,15 +346,7 @@ def generate_einvoice_xml(doc_id):
         item_name = SubElement(item_el, f"{{{NS_CBC}}}Name")
         item_name.text = item.get("product_name") or item.get("name") or f"Pozīcija {idx}"
 
-        # AdditionalItemProperty — human-readable unit name
-        if unit_text:
-            add_prop = SubElement(item_el, f"{{{NS_CAC}}}AdditionalItemProperty")
-            prop_name = SubElement(add_prop, f"{{{NS_CBC}}}Name")
-            prop_name.text = "Mērvienība"
-            prop_val = SubElement(add_prop, f"{{{NS_CBC}}}Value")
-            prop_val.text = unit_text
-
-        # ClassifiedTaxCategory
+        # ClassifiedTaxCategory (must come before AdditionalItemProperty per UBL schema)
         classified_tax = SubElement(item_el, f"{{{NS_CAC}}}ClassifiedTaxCategory")
         cls_tax_id = SubElement(classified_tax, f"{{{NS_CBC}}}ID")
         cls_tax_id.text = tax_cat_id
@@ -354,6 +355,14 @@ def generate_einvoice_xml(doc_id):
         cls_tax_scheme = SubElement(classified_tax, f"{{{NS_CAC}}}TaxScheme")
         cls_tax_scheme_id = SubElement(cls_tax_scheme, f"{{{NS_CBC}}}ID")
         cls_tax_scheme_id.text = "VAT"
+
+        # AdditionalItemProperty — human-readable unit name
+        if unit_text:
+            add_prop = SubElement(item_el, f"{{{NS_CAC}}}AdditionalItemProperty")
+            prop_name = SubElement(add_prop, f"{{{NS_CBC}}}Name")
+            prop_name.text = "Mērvienība"
+            prop_val = SubElement(add_prop, f"{{{NS_CBC}}}Value")
+            prop_val.text = unit_text
 
         # Price
         price_el = SubElement(inv_line, f"{{{NS_CAC}}}Price")
