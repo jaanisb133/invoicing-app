@@ -337,6 +337,14 @@ def generate_einvoice_xml(doc_id):
         item_name = SubElement(item_el, f"{{{NS_CBC}}}Name")
         item_name.text = item.get("product_name") or item.get("name") or f"Pozīcija {idx}"
 
+        # AdditionalItemProperty — human-readable unit name
+        if unit_text:
+            add_prop = SubElement(item_el, f"{{{NS_CAC}}}AdditionalItemProperty")
+            prop_name = SubElement(add_prop, f"{{{NS_CBC}}}Name")
+            prop_name.text = "Mērvienība"
+            prop_val = SubElement(add_prop, f"{{{NS_CBC}}}Value")
+            prop_val.text = unit_text
+
         # ClassifiedTaxCategory
         classified_tax = SubElement(item_el, f"{{{NS_CAC}}}ClassifiedTaxCategory")
         cls_tax_id = SubElement(classified_tax, f"{{{NS_CBC}}}ID")

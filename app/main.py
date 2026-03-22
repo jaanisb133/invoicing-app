@@ -833,10 +833,11 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     if not amount or not everypay.is_configured():
         return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
-    # Build order reference: VR-{counter}-{plan} (ASCII-safe for EveryPay)
+    # Build order reference: VR-{plan}-{username}-{timestamp} (ASCII-safe for EveryPay)
     tier_label_ascii = {"starter": "Sakums", "business": "Bizness", "lifetime": "Muza"}[tier]
-    counter = db.next_payment_counter()
-    order_ref = f"VR-{counter:04d}-{tier_label_ascii}"
+    username_ascii = user["username"].replace(" ", "").encode("ascii", "ignore").decode()[:20]
+    ts = datetime.datetime.now().strftime("%y%m%d%H%M%S")
+    order_ref = f"VR-{tier_label_ascii}-{username_ascii}-{ts}"
     base_url = str(request.base_url).rstrip("/")
     customer_url = f"{base_url}/billing/return"
     client_ip = _get_client_ip(request)
@@ -869,6 +870,121 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     })
 
     return RedirectResponse(payment_link, status_code=303)
+
+
+def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, payment_reference):
+    """Create a subscription invoice in the admin account and email it to the paying user.
+
+    The invoice flows into the admin's normal document numbering and
+    includes the EveryPay payment reference in the notes field.
+    """
+    try:
+        # Find admin user
+        all_users = db.get_all_users()
+        admin = next((u for u in all_users if u.get("is_admin")), None)
+        if not admin:
+            logger.warning("No admin user found — skipping subscription invoice")
+            return
+
+        admin_id = admin["id"]
+        today = datetime.date.today().isoformat()
+
+        # Ensure a subscription product exists for the admin
+        admin_products = db.get_all_products(admin_id)
+        sub_product = next(
+            (p for p in admin_products if p["name"] == "V-Rēķini abonements"), None
+        )
+        if not sub_product:
+            sub_product_id = db.add_product(admin_id, "V-Rēķini abonements", "gab")
+        else:
+            sub_product_id = sub_product["id"]
+
+        # Ensure paying user exists as a client in admin's account
+        paying_settings = db.get_all_user_settings(paying_user["id"])
+        client_name = (paying_settings.get("company_name", "")
+                       or paying_user.get("display_name", "")
+                       or paying_user["username"])
+        client_reg = paying_settings.get("reg_number", "")
+        client_vat = paying_settings.get("vat_number", "")
+
+        # Try to find by reg number first, then by name
+        existing_client = None
+        if client_reg:
+            existing_client = db.get_client_by_reg_number(admin_id, client_reg)
+        if not existing_client:
+            admin_clients = db.get_all_clients(admin_id)
+            existing_client = next(
+                (c for c in admin_clients if c["name"] == client_name), None
+            )
+
+        if existing_client:
+            client_id = existing_client["id"]
+        else:
+            client_id = db.add_client(
+                admin_id, client_name,
+                reg_number=client_reg,
+                vat_number=client_vat,
+                vat_payer=1 if client_vat else 0,
+                legal_address=paying_settings.get("legal_address", ""),
+                bank_name=paying_settings.get("bank_name", ""),
+                bank_account=paying_settings.get("bank_account", ""),
+                email=paying_user.get("email", ""),
+            )
+
+        # Build plan description
+        tier_labels = {"starter": "Sākums", "business": "Bizness", "lifetime": "Mūža licence"}
+        cycle_labels = {"monthly": "mēnesī", "yearly": "gadā", "lifetime": "vienreizējs"}
+        plan_desc = f"V-Rēķini — {tier_labels.get(tier, tier)} ({cycle_labels.get(cycle, cycle)})"
+
+        admin_settings = db.get_all_user_settings(admin_id)
+        vat_rate = float(admin_settings.get("default_vat_rate", "21"))
+
+        notes = (
+            f"Maksājuma ref.: {payment_reference}\n"
+            f"Pasūtījuma ref.: {order_ref}"
+        )
+
+        items = [{
+            "product_id": sub_product_id,
+            "quantity": 1,
+            "unit": "gab",
+            "price_per_unit": amount,
+        }]
+
+        doc_id, doc_number = db.create_document(
+            admin_id, "sell", client_id, today, items,
+            vat_rate=vat_rate, notes=notes,
+        )
+
+        logger.info("Subscription invoice %s created for user %s (doc_id=%s)",
+                     doc_number, paying_user["username"], doc_id)
+
+        # Generate PDF and email to paying user
+        paying_email = paying_user.get("email", "")
+        if paying_email:
+            filepath = generate_invoice_pdf(doc_id, template="minimal")
+            admin_company = admin_settings.get("company_name", "V-Rēķini")
+
+            email_body = (
+                f"Labdien!\n\n"
+                f"Paldies par V-Rēķini abonementa iegādi!\n"
+                f"Jūsu plāns: {plan_desc}\n"
+                f"Jūsu konts ir aktīvs un gatavs lietošanai.\n\n"
+                f"Pielikumā nosūtām maksājuma rēķinu Nr. {doc_number}.\n\n"
+                f"Ar cieņu,\n{admin_company}\n"
+            )
+
+            _send_email(
+                to_email=paying_email,
+                subject=f"Rēķins Nr. {doc_number} — {admin_company}",
+                body=email_body,
+                attachment_path=filepath,
+            )
+            logger.info("Subscription invoice emailed to %s", paying_email)
+
+    except Exception:
+        logger.exception("Failed to generate subscription invoice for user %s",
+                         paying_user.get("username", "?"))
 
 
 @app.get("/billing/return", response_class=HTMLResponse)
@@ -919,6 +1035,15 @@ async def billing_return(request: Request, payment_reference: str = ""):
                      (end_date, user["id"]))
         conn.commit()
         conn.close()
+
+        # Generate subscription invoice and email to user
+        pending_order_ref = settings.get("_pending_order_ref", "")
+        amount = everypay.get_plan_price(pending_tier, pending_cycle)
+        if amount:
+            _generate_subscription_invoice(
+                user, pending_tier, pending_cycle, amount,
+                pending_order_ref, payment_reference,
+            )
 
         # Clean up pending settings
         db.save_all_user_settings(user["id"], {
