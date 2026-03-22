@@ -7,8 +7,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&subset=latin-ext&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=7">
+    <link rel="stylesheet" href="/static/css/style.css?v=8">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
     <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t)document.documentElement.setAttribute('data-theme',t);})()</script>
 </head>
 <body>
@@ -160,6 +162,44 @@
                 sidebar.classList.remove('open');
             }
         });
+    </script>
+    <script>
+    // Flatpickr: convert all date inputs to dd/mm/yy format
+    function initDatePicker(el, extraOpts) {
+        if (el._flatpickr) return el._flatpickr;
+        var existingVal = el.value;
+        el.type = 'text';
+        el.setAttribute('autocomplete', 'off');
+        var opts = {
+            dateFormat: 'Y-m-d',
+            altInput: true,
+            altFormat: 'd/m/y',
+            allowInput: true,
+            defaultDate: existingVal || null,
+            onChange: function() {
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        };
+        if (extraOpts) Object.assign(opts, extraOpts);
+        var fp = flatpickr(el, opts);
+        // Patch value setter so programmatic .value = 'YYYY-MM-DD' updates the alt input
+        var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        Object.defineProperty(el, 'value', {
+            get: function() { return desc.get.call(el); },
+            set: function(v) {
+                desc.set.call(el, v);
+                if (fp && v) fp.setDate(v, false);
+                else if (fp && !v) fp.clear();
+            },
+            configurable: true
+        });
+        return fp;
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('input[type="date"]').forEach(function(el) {
+            initDatePicker(el);
+        });
+    });
     </script>
 </body>
 </html>

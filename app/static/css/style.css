@@ -57,6 +57,17 @@
 
 [data-theme="dark"] .form-control { background: #111827; color: var(--text); border-color: var(--border); }
 [data-theme="dark"] .form-control:focus { border-color: #9ca3af; box-shadow: 0 0 0 2px rgba(156,163,175,0.2); }
+.flatpickr-input.form-control[readonly] { background: var(--bg-card, #fff); cursor: pointer; }
+[data-theme="dark"] .flatpickr-calendar { background: #1f2937; border-color: var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+[data-theme="dark"] .flatpickr-months, [data-theme="dark"] .flatpickr-weekdays { background: #1f2937; }
+[data-theme="dark"] .flatpickr-month, [data-theme="dark"] span.flatpickr-weekday { color: var(--text); background: #1f2937; }
+[data-theme="dark"] .flatpickr-day { color: var(--text); }
+[data-theme="dark"] .flatpickr-day:hover { background: #374151; border-color: #374151; }
+[data-theme="dark"] .flatpickr-day.today { border-color: #9ca3af; }
+[data-theme="dark"] .flatpickr-day.selected { background: #e5e7eb; color: #111827; border-color: #e5e7eb; }
+[data-theme="dark"] .flatpickr-current-month input.cur-year, [data-theme="dark"] .flatpickr-current-month .flatpickr-monthDropdown-months { color: var(--text); background: #1f2937; }
+[data-theme="dark"] .flatpickr-prev-month svg, [data-theme="dark"] .flatpickr-next-month svg { fill: var(--text); }
+[data-theme="dark"] .flatpickr-day.flatpickr-disabled { color: #4b5563; }
 [data-theme="dark"] .modal { background: var(--bg-card); }
 [data-theme="dark"] .radio-card { background: var(--bg); border-color: var(--border); }
 [data-theme="dark"] .radio-card:hover, [data-theme="dark"] .radio-card.selected { border-color: #9ca3af; background: rgba(156,163,175,0.1); }

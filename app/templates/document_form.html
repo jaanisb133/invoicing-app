@@ -324,20 +324,28 @@ const paymentDueDays = parseInt("{{ settings.get('payment_due_days', '') }}") ||
 const dueDateInput = document.getElementById('paymentDueDate');
 const dueDateHint = document.getElementById('dueDateHint');
 
+function setDateValue(el, isoDate) {
+    if (el._flatpickr) {
+        el._flatpickr.setDate(isoDate, false);
+    } else {
+        el.value = isoDate;
+    }
+}
+
 function calcDefaultDueDate() {
     if (dueDateInput.value || !paymentDueDays) return;
     const docDate = dateInput.value;
     if (!docDate) return;
     const d = new Date(docDate);
     d.setDate(d.getDate() + paymentDueDays);
-    dueDateInput.value = d.toISOString().slice(0, 10);
+    setDateValue(dueDateInput, d.toISOString().slice(0, 10));
     dueDateHint.textContent = paymentDueDays + ' dienas no dokumenta datuma';
 }
 
 if (!editMode && paymentDueDays) {
     calcDefaultDueDate();
     dateInput.addEventListener('change', function() {
-        dueDateInput.value = '';
+        setDateValue(dueDateInput, '');
         calcDefaultDueDate();
     });
 }
