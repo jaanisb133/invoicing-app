@@ -833,11 +833,10 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     if not amount or not everypay.is_configured():
         return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
-    # Build order reference: VR-{plan}-{username}-{timestamp} (ASCII-safe for EveryPay)
-    tier_label_ascii = {"starter": "Sakums", "business": "Bizness", "lifetime": "Muza"}[tier]
-    username_ascii = user["username"].replace(" ", "").encode("ascii", "ignore").decode()[:20]
+    # Build order reference: VR-{plan}-{user_id}-{timestamp} (ASCII-safe, max ~20 chars for EveryPay)
+    tier_code = {"starter": "S", "business": "B", "lifetime": "L"}[tier]
     ts = datetime.datetime.now().strftime("%y%m%d%H%M%S")
-    order_ref = f"VR-{tier_label_ascii}-{username_ascii}-{ts}"
+    order_ref = f"VR{tier_code}-{user['id']}-{ts}"
     base_url = str(request.base_url).rstrip("/")
     customer_url = f"{base_url}/billing/return"
     client_ip = _get_client_ip(request)
