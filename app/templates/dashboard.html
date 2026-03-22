@@ -47,47 +47,95 @@
     </div>
     {% endif %}
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value">{{ stats.docs_last_7_days }}</div>
-            <div class="stat-label">Dokumenti (7 dienas)</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ "%.2f" | format(stats.revenue_last_7_days) }} EUR</div>
-            <div class="stat-label">Apgrozījums 7d</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ "%.2f" | format(stats.total_revenue) }} EUR</div>
-            <div class="stat-label">Kopējais apgrozījums</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ stats.total_docs }}</div>
-            <div class="stat-label">Kopā dokumenti</div>
+    <!-- Date Range Selector -->
+    <div class="card" style="margin-bottom:20px">
+        <div class="card-body" style="padding:12px 16px">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <label style="font-size:13px;font-weight:600;margin:0;white-space:nowrap">Periods:</label>
+                    <input type="date" id="dashDateFrom" class="form-control" style="width:auto;padding:6px 10px;font-size:13px" value="{{ date_from }}">
+                    <span style="color:var(--text-light);font-size:13px">—</span>
+                    <input type="date" id="dashDateTo" class="form-control" style="width:auto;padding:6px 10px;font-size:13px" value="{{ date_to }}">
+                </div>
+                <div style="display:flex;gap:6px">
+                    <button type="button" class="btn btn-outline btn-sm" id="btnThisMonth">Šomēnes</button>
+                    <button type="button" class="btn btn-outline btn-sm" id="btnLastMonth">Iepr. mēnesis</button>
+                    <button type="button" class="btn btn-outline btn-sm" id="btnThisYear">Šogad</button>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="mobile-stack" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+    <!-- Main Stats Cards -->
+    <div class="stats-grid" id="dashStatsGrid" style="grid-template-columns:repeat(4, 1fr)">
+        <div class="stat-card">
+            <div class="stat-value" id="statRevenue">{{ "%.2f" | format(range_stats.total_revenue) }} <small style="font-size:14px;font-weight:500">EUR</small></div>
+            <div class="stat-label">Apgrozījums</div>
+        </div>
+        <a href="/documents?status=issued" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.15s" onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow=''">
+            <div class="stat-value" id="statUnpaid" style="color:#e67e22">{{ "%.2f" | format(range_stats.unpaid_total) }} <small style="font-size:14px;font-weight:500">EUR</small></div>
+            <div class="stat-label">Neapmaksāti rēķini <span style="font-size:11px;opacity:0.7">→</span></div>
+        </a>
+        <div class="stat-card">
+            <div class="stat-value" id="statDocs">{{ range_stats.doc_count }}</div>
+            <div class="stat-label">Dokumenti periodā</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="statAvg">{{ "%.2f" | format(range_stats.avg_invoice) }} <small style="font-size:14px;font-weight:500">EUR</small></div>
+            <div class="stat-label">Vid. rēķina summa</div>
+        </div>
+    </div>
+
+    <!-- Secondary Stats Row -->
+    <div class="mobile-stack" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
         <div class="card" style="margin-bottom:0">
-            <div class="card-header">Populārākais klients</div>
-            <div class="card-body">
-                {% if stats.top_client %}
-                <div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">{{ stats.top_client.name }}</div>
-                <div style="font-size:13px;color:var(--text-light);margin-top:4px">{{ stats.top_client.count }} dokumenti</div>
+            <div class="card-header" style="font-size:12px;padding:10px 16px">Ieņēmumi vs Izdevumi</div>
+            <div class="card-body" style="padding:10px 16px 14px" id="cardRevenueExpenses">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+                    <span style="font-size:13px;color:var(--text-light)">Ieņēmumi</span>
+                    <span style="font-size:16px;font-weight:700;color:#27ae60" id="statRevGreen">{{ "%.2f" | format(range_stats.total_revenue) }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+                    <span style="font-size:13px;color:var(--text-light)">Izdevumi</span>
+                    <span style="font-size:16px;font-weight:700;color:#e74c3c" id="statExpRed">{{ "%.2f" | format(range_stats.total_expenses) }}</span>
+                </div>
+                {% set net = range_stats.total_revenue - range_stats.total_expenses %}
+                <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;justify-content:space-between;align-items:baseline">
+                    <span style="font-size:13px;font-weight:600">Neto</span>
+                    <span style="font-size:16px;font-weight:700;color:{% if net >= 0 %}#27ae60{% else %}#e74c3c{% endif %}" id="statNet">{{ "%.2f" | format(net) }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="card" style="margin-bottom:0">
+            <div class="card-header" style="font-size:12px;padding:10px 16px">Top klients periodā</div>
+            <div class="card-body" style="padding:10px 16px 14px" id="cardTopClient">
+                {% if range_stats.top_client %}
+                <div style="font-size:17px;font-weight:700;letter-spacing:-0.3px">{{ range_stats.top_client.name }}</div>
+                <div style="font-size:13px;color:var(--text-light);margin-top:4px">{{ range_stats.top_client.count }} dok. · {{ "%.2f" | format(range_stats.top_client.revenue) }} EUR</div>
                 {% else %}
                 <div class="text-muted" style="font-size:13px">Nav datu</div>
                 {% endif %}
             </div>
         </div>
         <div class="card" style="margin-bottom:0">
-            <div class="card-header">Populārākais produkts</div>
-            <div class="card-body">
-                {% if stats.top_product %}
-                <div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">{{ stats.top_product.name }}</div>
-                <div style="font-size:13px;color:var(--text-light);margin-top:4px">{{ "%.2f" | format(stats.top_product.quantity) }} {{ stats.top_product.unit }} pārdots</div>
+            <div class="card-header" style="font-size:12px;padding:10px 16px">Kavētie rēķini</div>
+            <div class="card-body" style="padding:10px 16px 14px" id="cardOverdue">
+                {% if range_stats.overdue_count > 0 %}
+                <div style="font-size:17px;font-weight:700;color:#e74c3c">{{ range_stats.overdue_count }}</div>
+                <div style="font-size:13px;color:var(--text-light);margin-top:4px">Summa: {{ "%.2f" | format(range_stats.overdue_total) }} EUR</div>
                 {% else %}
-                <div class="text-muted" style="font-size:13px">Nav datu</div>
+                <div style="font-size:17px;font-weight:700;color:#27ae60">0</div>
+                <div style="font-size:13px;color:var(--text-light);margin-top:4px">Nav kavētu rēķinu</div>
                 {% endif %}
             </div>
+        </div>
+    </div>
+
+    <!-- Revenue Chart -->
+    <div class="card" style="margin-bottom:20px">
+        <div class="card-header" style="font-size:12px;padding:10px 16px">Apgrozījums pa dienām</div>
+        <div class="card-body" style="padding:10px 16px 14px">
+            <div style="position:relative;height:240px"><canvas id="revenueChart"></canvas></div>
         </div>
     </div>
 
@@ -329,6 +377,134 @@
 
 {% block scripts %}
 <script>
+var dashRangeStats = {{ range_stats_json | safe }};
+
+// --- Revenue Chart ---
+(function() {
+    var ctx = document.getElementById('revenueChart');
+    if (!ctx) return;
+    var data = dashRangeStats.daily_revenue || [];
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    var textColor = isDark ? '#aaa' : '#888';
+
+    window._revenueChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(function(d) {
+                var parts = d.date.split('-');
+                return parts[2] + '/' + parts[1];
+            }),
+            datasets: [{
+                label: 'Apgrozījums (EUR)',
+                data: data.map(function(d) { return d.total; }),
+                backgroundColor: isDark ? 'rgba(52,152,219,0.6)' : 'rgba(52,152,219,0.7)',
+                borderRadius: 4,
+                borderSkipped: false,
+                maxBarThickness: 40
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(c) { return c.parsed.y.toFixed(2) + ' EUR'; }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, callback: function(v) { return v.toFixed(0) + ' €'; } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: textColor, maxRotation: 45 }
+                }
+            }
+        }
+    });
+})();
+
+// --- Date Range Presets & Dynamic Update ---
+(function() {
+    var fromEl = document.getElementById('dashDateFrom');
+    var toEl = document.getElementById('dashDateTo');
+
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    function isoDate(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    function lastDayOfMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+
+    var today = new Date();
+    var thisMonthStart = isoDate(new Date(today.getFullYear(), today.getMonth(), 1));
+    var thisMonthEnd = isoDate(new Date(today.getFullYear(), today.getMonth(), lastDayOfMonth(today.getFullYear(), today.getMonth())));
+    var lastMonthStart = isoDate(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+    var lastMonthEnd = isoDate(new Date(today.getFullYear(), today.getMonth() - 1, lastDayOfMonth(today.getFullYear(), today.getMonth() - 1)));
+    var thisYearStart = today.getFullYear() + '-01-01';
+    var thisYearEnd = isoDate(today);
+
+    document.getElementById('btnThisMonth').onclick = function() { fromEl.value = thisMonthStart; toEl.value = thisMonthEnd; loadStats(); };
+    document.getElementById('btnLastMonth').onclick = function() { fromEl.value = lastMonthStart; toEl.value = lastMonthEnd; loadStats(); };
+    document.getElementById('btnThisYear').onclick = function() { fromEl.value = thisYearStart; toEl.value = thisYearEnd; loadStats(); };
+    fromEl.onchange = loadStats;
+    toEl.onchange = loadStats;
+
+    function fmt(n) { return Number(n).toFixed(2); }
+
+    function loadStats() {
+        var df = fromEl.value, dt = toEl.value;
+        if (!df || !dt) return;
+        fetch('/api/dashboard-stats?date_from=' + df + '&date_to=' + dt, { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(s) {
+                dashRangeStats = s;
+                // Update stat cards
+                document.getElementById('statRevenue').innerHTML = fmt(s.total_revenue) + ' <small style="font-size:14px;font-weight:500">EUR</small>';
+                document.getElementById('statUnpaid').innerHTML = fmt(s.unpaid_total) + ' <small style="font-size:14px;font-weight:500">EUR</small>';
+                document.getElementById('statDocs').textContent = s.doc_count;
+                document.getElementById('statAvg').innerHTML = fmt(s.avg_invoice) + ' <small style="font-size:14px;font-weight:500">EUR</small>';
+
+                // Revenue vs Expenses
+                document.getElementById('statRevGreen').textContent = fmt(s.total_revenue);
+                document.getElementById('statExpRed').textContent = fmt(s.total_expenses);
+                var net = s.total_revenue - s.total_expenses;
+                var netEl = document.getElementById('statNet');
+                netEl.textContent = fmt(net);
+                netEl.style.color = net >= 0 ? '#27ae60' : '#e74c3c';
+
+                // Top client
+                var tcEl = document.getElementById('cardTopClient');
+                if (s.top_client) {
+                    tcEl.innerHTML = '<div style="font-size:17px;font-weight:700;letter-spacing:-0.3px">' + s.top_client.name + '</div>'
+                        + '<div style="font-size:13px;color:var(--text-light);margin-top:4px">' + s.top_client.count + ' dok. · ' + fmt(s.top_client.revenue) + ' EUR</div>';
+                } else {
+                    tcEl.innerHTML = '<div class="text-muted" style="font-size:13px">Nav datu</div>';
+                }
+
+                // Overdue
+                var odEl = document.getElementById('cardOverdue');
+                if (s.overdue_count > 0) {
+                    odEl.innerHTML = '<div style="font-size:17px;font-weight:700;color:#e74c3c">' + s.overdue_count + '</div>'
+                        + '<div style="font-size:13px;color:var(--text-light);margin-top:4px">Summa: ' + fmt(s.overdue_total) + ' EUR</div>';
+                } else {
+                    odEl.innerHTML = '<div style="font-size:17px;font-weight:700;color:#27ae60">0</div>'
+                        + '<div style="font-size:13px;color:var(--text-light);margin-top:4px">Nav kavētu rēķinu</div>';
+                }
+
+                // Update chart
+                var chart = window._revenueChart;
+                var data = s.daily_revenue || [];
+                chart.data.labels = data.map(function(d) { var p = d.date.split('-'); return p[2] + '/' + p[1]; });
+                chart.data.datasets[0].data = data.map(function(d) { return d.total; });
+                chart.update();
+            });
+    }
+})();
+
 const dashClientEmailMap = {
     {% for c in clients %}{{ c.id }}: {{ (c.email or '') | tojson }},{% endfor %}
 };

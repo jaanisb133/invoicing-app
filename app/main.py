@@ -1245,16 +1245,26 @@ async def change_user_tier(request: Request, user_id: int, tier: str = Form(...)
 # =============================================================================
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, date_from: str = "", date_to: str = ""):
+    import json as _json
     ctx = _base_context(request)
     user = request.state.user
     uid = user["id"]
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
+
+    # Default to current month
+    today = datetime.date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+
     recent_docs = db.get_documents(uid)[:5]
     clients = db.get_all_clients(uid)
     stock = db.get_stock(uid) if stock_on else []
     stats = db.get_dashboard_stats(uid)
+    range_stats = db.get_dashboard_stats_range(uid, date_from, date_to)
 
     ctx.update({
         "recent_docs": recent_docs,
@@ -1262,12 +1272,32 @@ async def dashboard(request: Request):
         "stock": stock,
         "settings": settings,
         "stats": stats,
+        "range_stats": range_stats,
+        "date_from": date_from,
+        "date_to": date_to,
+        "range_stats_json": _json.dumps(range_stats, default=str),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
         "email_enabled": user.get("tier", "free") != "free",
         "page": "dashboard",
     })
     return templates.TemplateResponse("dashboard.html", ctx)
+
+
+@app.get("/api/dashboard-stats")
+async def api_dashboard_stats(request: Request, date_from: str = "", date_to: str = ""):
+    import json as _json
+    user = request.state.user
+    if not user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    uid = user["id"]
+    today = datetime.date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+    range_stats = db.get_dashboard_stats_range(uid, date_from, date_to)
+    return JSONResponse(range_stats)
 
 
 # =============================================================================
