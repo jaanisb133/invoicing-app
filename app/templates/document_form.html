@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+.search-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+    background: var(--bg-card, #fff); border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 240px;
+    overflow-y: auto; margin-top: 2px;
+}
+.search-dropdown-item {
+    padding: 8px 12px; cursor: pointer; font-size: 14px;
+    color: var(--text, #111827); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.search-dropdown-item:hover { background: var(--bg-secondary, #f3f4f6); }
+</style>
 <div class="page-header">
     <h2>
         {% if edit_mode %}
@@ -33,7 +46,8 @@
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
 
-    <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm">
+    <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm"
+          onsubmit="if(!document.getElementById('clientSelect').value){document.getElementById('clientSearchInput').focus();return false;}">
         <input type="hidden" name="doc_type" value="{{ doc_type }}">
 
         <div class="doc-editor-layout">
@@ -46,12 +60,16 @@
                             <div class="form-group">
                                 <label>Klients *</label>
                                 <div style="display:flex;gap:8px">
-                                    <select name="client_id" id="clientSelect" class="form-control" required onchange="updatePreview()">
-                                        <option value="">— Izvēlieties klientu —</option>
-                                        {% for c in clients %}
-                                        <option value="{{ c.id }}" {% if edit_mode and doc.client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
-                                        {% endfor %}
-                                    </select>
+                                    <div style="flex:1;position:relative">
+                                        <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if edit_mode else '' }}" required>
+                                        <input type="text" id="clientSearchInput" class="form-control" placeholder="Meklēt klientu..."
+                                               autocomplete="off" onfocus="showFormClientDropdown()" oninput="filterFormClients()">
+                                        <div id="formClientDropdown" class="search-dropdown" style="display:none">
+                                            {% for c in clients %}
+                                            <div class="search-dropdown-item" data-id="{{ c.id }}" onclick="selectFormClient('{{ c.id }}','{{ c.name | e }}')">{{ c.name }}</div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
                                     <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddClient()" title="Ātri pievienot klientu" style="font-size:16px;padding:6px 12px">+</button>
                                 </div>
                             </div>
@@ -286,6 +304,37 @@ const products = {{ products | tojson }};
 const clientsData = {{ clients | tojson }};
 const stockMap = {{ stock_map | tojson }};
 const units = {{ units | tojson }};
+
+// --- Searchable client select ---
+function showFormClientDropdown() {
+    document.getElementById('formClientDropdown').style.display = 'block';
+    filterFormClients();
+}
+function filterFormClients() {
+    var q = document.getElementById('clientSearchInput').value.toLowerCase();
+    document.querySelectorAll('#formClientDropdown .search-dropdown-item').forEach(function(el) {
+        el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
+    });
+}
+function selectFormClient(id, name) {
+    document.getElementById('clientSelect').value = id;
+    document.getElementById('clientSearchInput').value = name;
+    document.getElementById('formClientDropdown').style.display = 'none';
+    updatePreview();
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#clientSearchInput') && !e.target.closest('#formClientDropdown')) {
+        document.getElementById('formClientDropdown').style.display = 'none';
+    }
+});
+// Init with current selection
+(function() {
+    var cid = document.getElementById('clientSelect').value;
+    if (cid) {
+        var c = clientsData.find(function(x) { return String(x.id) === String(cid); });
+        if (c) document.getElementById('clientSearchInput').value = c.name;
+    }
+})();
 const docType = "{{ doc_type }}";
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
 const companySettings = {{ settings | tojson }};
@@ -934,18 +983,8 @@ async function quickAddClient() {
     if (!resp.ok) {
         if (result.duplicate && result.client) {
             // Duplicate found — select the existing client instead
-            const select = document.getElementById('clientSelect');
-            const existing = select.querySelector(`option[value="${result.client.id}"]`);
-            if (existing) {
-                select.value = result.client.id;
-            } else {
-                clientsData.push(result.client);
-                const opt = new Option(result.client.name, result.client.id, true, true);
-                select.add(opt);
-            }
+            _addAndSelectClient(result.client);
             document.getElementById('quickAddClientModal').classList.remove('active');
-            updatePreview();
-            alert(result.error);
             return;
         }
         alert(result.error || 'Kļūda saglabājot klientu');
@@ -953,11 +992,7 @@ async function quickAddClient() {
     }
     const client = result;
 
-    clientsData.push(client);
-
-    const select = document.getElementById('clientSelect');
-    const opt = new Option(client.name, client.id, true, true);
-    select.add(opt);
+    _addAndSelectClient(client);
 
     document.getElementById('quickAddClientModal').classList.remove('active');
     ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_bank_name', 'qc_bank_account'].forEach(
@@ -967,7 +1002,21 @@ async function quickAddClient() {
     if (document.getElementById('qc_last_name')) document.getElementById('qc_last_name').value = '';
     document.getElementById('qc_vat_payer').checked = false;
     document.getElementById('qc_vat_group').style.display = 'none';
-    updatePreview();
+}
+
+function _addAndSelectClient(client) {
+    if (!clientsData.find(function(c) { return c.id === client.id; })) {
+        clientsData.push(client);
+        // Add to dropdown
+        var dd = document.getElementById('formClientDropdown');
+        var div = document.createElement('div');
+        div.className = 'search-dropdown-item';
+        div.setAttribute('data-id', client.id);
+        div.textContent = client.name;
+        div.onclick = function() { selectFormClient(String(client.id), client.name); };
+        dd.appendChild(div);
+    }
+    selectFormClient(String(client.id), client.name);
 }
 
 async function quickAddProduct() {

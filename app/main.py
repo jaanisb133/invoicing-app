@@ -2629,6 +2629,35 @@ async def api_add_product(request: Request):
     return JSONResponse(product)
 
 
+@app.get("/api/documents")
+async def api_documents(request: Request, doc_type: str = "", client_id: str = "",
+                        date_from: str = "", date_to: str = "", status: str = ""):
+    user = request.state.user
+    docs = db.get_documents(
+        user["id"],
+        doc_type=doc_type or None,
+        client_id=int(client_id) if client_id else None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        status=status or None,
+    )
+    settings = _user_settings(user["id"])
+    status_tracking = settings.get("status_tracking", "0") == "1"
+    rows = []
+    for d in docs:
+        rows.append({
+            "id": d["id"],
+            "doc_number": d["doc_number"],
+            "doc_type": d["doc_type"],
+            "client_name": d["client_name"],
+            "client_id": d.get("client_id", 0),
+            "doc_date": d["doc_date"],
+            "total_with_vat": round(d.get("total_with_vat") or 0, 2),
+            "status": d.get("status", "issued") if status_tracking else None,
+        })
+    return JSONResponse(rows)
+
+
 @app.post("/api/clients/add")
 async def api_add_client(request: Request):
     user = request.state.user
