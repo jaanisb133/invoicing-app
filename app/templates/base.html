@@ -184,12 +184,17 @@
         var fp = flatpickr(el, opts);
         // Patch value setter so programmatic .value = 'YYYY-MM-DD' updates the alt input
         var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        var setting = false;
         Object.defineProperty(el, 'value', {
             get: function() { return desc.get.call(el); },
             set: function(v) {
                 desc.set.call(el, v);
-                if (fp && v) fp.setDate(v, false);
-                else if (fp && !v) fp.clear();
+                if (!setting && fp) {
+                    setting = true;
+                    if (v) fp.setDate(v, false);
+                    else fp.clear();
+                    setting = false;
+                }
             },
             configurable: true
         });
