@@ -222,6 +222,8 @@ def _run_migrations():
         cursor.execute("ALTER TABLE documents ADD COLUMN status TEXT NOT NULL DEFAULT 'issued'")
     if "payment_due_date" not in doc_cols:
         cursor.execute("ALTER TABLE documents ADD COLUMN payment_due_date DATE")
+    if "reverse_charge" not in doc_cols:
+        cursor.execute("ALTER TABLE documents ADD COLUMN reverse_charge INTEGER NOT NULL DEFAULT 0")
 
     # Add vat_payer column to clients if missing
     client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
@@ -596,7 +598,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
 
-def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date=""):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
@@ -619,11 +621,11 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
 
         cursor = conn.execute(
-            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
-             payment_due_date or None, vat_rate, notes)
+             payment_due_date or None, vat_rate, notes, int(reverse_charge))
         )
         doc_id = cursor.lastrowid
 
@@ -645,7 +647,7 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         conn.close()
 
 
-def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date=""):
+def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False):
     """
     Update an existing document and its line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
@@ -681,10 +683,10 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
 
         # Update document fields
         conn.execute(
-            """UPDATE documents SET client_id = ?, doc_date = ?, payment_due_date = ?, vat_rate = ?, notes = ?
+            """UPDATE documents SET client_id = ?, doc_date = ?, payment_due_date = ?, vat_rate = ?, notes = ?, reverse_charge = ?
                WHERE id = ? AND user_id = ?""",
             (client_id, doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
-             payment_due_date or None, vat_rate, notes, doc_id, user_id)
+             payment_due_date or None, vat_rate, notes, int(reverse_charge), doc_id, user_id)
         )
 
         # Delete old items and insert new ones

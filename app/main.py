@@ -1651,6 +1651,9 @@ async def create_document(request: Request):
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
     payment_due_date = form.get("payment_due_date", "")
     vat_rate = float(form.get("vat_rate", 21.0))
+    reverse_charge = form.get("reverse_charge", "0") == "1"
+    if reverse_charge:
+        vat_rate = 0.0
     notes = form.get("notes", "")
     template = form.get("template", "minimal")
 
@@ -1675,7 +1678,7 @@ async def create_document(request: Request):
     try:
         doc_id, doc_number = db.create_document(
             user["id"], doc_type, client_id, doc_date, items, vat_rate, notes,
-            payment_due_date=payment_due_date,
+            payment_due_date=payment_due_date, reverse_charge=reverse_charge,
         )
     except ValueError as e:
         logger.warning("Document creation error: %s", e)
@@ -1728,6 +1731,9 @@ async def update_document(request: Request, doc_id: int):
     client_id = int(form.get("client_id", 0))
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
     vat_rate = float(form.get("vat_rate", 21.0))
+    reverse_charge = form.get("reverse_charge", "0") == "1"
+    if reverse_charge:
+        vat_rate = 0.0
     notes = form.get("notes", "")
     template = form.get("template", "minimal")
     payment_due_date = form.get("payment_due_date", "")
@@ -1751,7 +1757,8 @@ async def update_document(request: Request, doc_id: int):
         return RedirectResponse(f"/documents/{doc_id}/edit?error=no_items", status_code=303)
 
     try:
-        db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes, payment_due_date=payment_due_date)
+        db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes,
+                           payment_due_date=payment_due_date, reverse_charge=reverse_charge)
     except ValueError as e:
         logger.warning("Document update error: %s", e)
         return RedirectResponse(f"/documents/{doc_id}/edit?error={quote(str(e))}", status_code=303)
