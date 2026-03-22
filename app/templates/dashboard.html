@@ -35,7 +35,9 @@
 <div class="page-header">
     <h2>Pārskats</h2>
     <div class="btn-group">
+        {% if stock_enabled %}
         <a href="/documents/new?doc_type=buy" class="btn btn-success"><span class="btn-label-full">+ Jauns iegādes dokuments</span><span class="btn-label-short">+ Iegāde</span></a>
+        {% endif %}
         <a href="/documents/new?doc_type=sell" class="btn btn-primary"><span class="btn-label-full">+ Jauns pārdošanas dokuments</span><span class="btn-label-short">+ Pārdošana</span></a>
     </div>
 </div>
@@ -87,7 +89,8 @@
     </div>
 
     <!-- Secondary Stats Row -->
-    <div class="mobile-stack" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
+    <div class="mobile-stack" style="display:grid;grid-template-columns:{% if stock_enabled %}1fr 1fr 1fr{% else %}1fr 1fr{% endif %};gap:16px;margin-bottom:20px">
+        {% if stock_enabled %}
         <div class="card" style="margin-bottom:0">
             <div class="card-header" style="font-size:12px;padding:10px 16px">Ieņēmumi vs Izdevumi</div>
             <div class="card-body" style="padding:10px 16px 14px" id="cardRevenueExpenses">
@@ -106,6 +109,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
         <div class="card" style="margin-bottom:0">
             <div class="card-header" style="font-size:12px;padding:10px 16px">Top klients periodā</div>
             <div class="card-body" style="padding:10px 16px 14px" id="cardTopClient">
@@ -468,13 +472,15 @@ var dashRangeStats = {{ range_stats_json | safe }};
                 document.getElementById('statDocs').textContent = s.doc_count;
                 document.getElementById('statAvg').innerHTML = fmt(s.avg_invoice) + ' <small style="font-size:14px;font-weight:500">EUR</small>';
 
-                // Revenue vs Expenses
-                document.getElementById('statRevGreen').textContent = fmt(s.total_revenue);
-                document.getElementById('statExpRed').textContent = fmt(s.total_expenses);
-                var net = s.total_revenue - s.total_expenses;
-                var netEl = document.getElementById('statNet');
-                netEl.textContent = fmt(net);
-                netEl.style.color = net >= 0 ? '#27ae60' : '#e74c3c';
+                // Revenue vs Expenses (only if stock/buy docs enabled)
+                if (document.getElementById('statRevGreen')) {
+                    document.getElementById('statRevGreen').textContent = fmt(s.total_revenue);
+                    document.getElementById('statExpRed').textContent = fmt(s.total_expenses);
+                    var net = s.total_revenue - s.total_expenses;
+                    var netEl = document.getElementById('statNet');
+                    netEl.textContent = fmt(net);
+                    netEl.style.color = net >= 0 ? '#27ae60' : '#e74c3c';
+                }
 
                 // Top client
                 var tcEl = document.getElementById('cardTopClient');

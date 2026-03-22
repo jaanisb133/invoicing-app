@@ -18,10 +18,12 @@
         {% if edit_mode %}
         <a href="/documents/{{ doc.id }}" class="btn btn-outline">Atcelt</a>
         {% else %}
-        <a href="/documents/new?doc_type=buy"
-           class="btn {% if doc_type == 'buy' %}btn-success{% else %}btn-outline{% endif %}">Iegāde</a>
-        <a href="/documents/new?doc_type=sell"
-           class="btn {% if doc_type == 'sell' %}btn-primary{% else %}btn-outline{% endif %}">Pārdošana</a>
+            {% if stock_enabled %}
+            <a href="/documents/new?doc_type=buy"
+               class="btn {% if doc_type == 'buy' %}btn-success{% else %}btn-outline{% endif %}">Iegāde</a>
+            {% endif %}
+            <a href="/documents/new?doc_type=sell"
+               class="btn {% if doc_type == 'sell' %}btn-primary{% else %}btn-outline{% endif %}">Pārdošana</a>
         {% endif %}
     </div>
 </div>

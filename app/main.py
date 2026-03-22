@@ -1603,7 +1603,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
 
 
 @app.get("/documents/new", response_class=HTMLResponse)
-async def new_document_page(request: Request, doc_type: str = "buy"):
+async def new_document_page(request: Request, doc_type: str = "sell"):
     ctx = _base_context(request)
     user = request.state.user
     uid = user["id"]
@@ -1611,6 +1611,9 @@ async def new_document_page(request: Request, doc_type: str = "buy"):
     products = db.get_all_products(uid)
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
+    # If stock management is off, force sell doc type
+    if not stock_on and doc_type == "buy":
+        return RedirectResponse("/documents/new?doc_type=sell", status_code=302)
     stock_data = db.get_stock(uid) if stock_on else []
     stock_map = {s["id"]: s["stock"] for s in stock_data}
     ctx.update({
@@ -1640,7 +1643,10 @@ async def create_document(request: Request):
             status_code=303)
 
     form = await request.form()
-    doc_type = form.get("doc_type", "buy")
+    doc_type = form.get("doc_type", "sell")
+    # Block buy doc creation if stock management is off
+    if doc_type == "buy" and not _stock_enabled(user["id"]):
+        return RedirectResponse("/documents?error=Iegādes dokumenti nav pieejami bez noliktavas pārvaldības.", status_code=303)
     client_id = int(form.get("client_id", 0))
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
     payment_due_date = form.get("payment_due_date", "")
@@ -1718,7 +1724,7 @@ async def edit_document_page(request: Request, doc_id: int):
 async def update_document(request: Request, doc_id: int):
     user = request.state.user
     form = await request.form()
-    doc_type = form.get("doc_type", "buy")
+    doc_type = form.get("doc_type", "sell")
     client_id = int(form.get("client_id", 0))
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
     vat_rate = float(form.get("vat_rate", 21.0))

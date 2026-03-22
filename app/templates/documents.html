@@ -37,7 +37,9 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
 <div class="page-header">
     <h2>Dokumenti</h2>
     <div class="btn-group">
+        {% if stock_enabled %}
         <a href="/documents/new?doc_type=buy" class="btn btn-success"><span class="btn-label-full">+ Jauns iegādes dokuments</span><span class="btn-label-short">+ Iegāde</span></a>
+        {% endif %}
         <a href="/documents/new?doc_type=sell" class="btn btn-primary"><span class="btn-label-full">+ Jauns pārdošanas dokuments</span><span class="btn-label-short">+ Pārdošana</span></a>
     </div>
 </div>
@@ -62,7 +64,9 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
                     <label>Tips</label>
                     <select name="doc_type" class="form-control">
                         <option value="">Visi</option>
+                        {% if stock_enabled %}
                         <option value="buy" {% if filters.doc_type == 'buy' %}selected{% endif %}>Iegāde</option>
+                        {% endif %}
                         <option value="sell" {% if filters.doc_type == 'sell' %}selected{% endif %}>Pārdošana</option>
                     </select>
                 </div>
