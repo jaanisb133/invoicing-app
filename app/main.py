@@ -938,6 +938,9 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
         admin_settings = db.get_all_user_settings(admin_id)
         vat_rate = float(admin_settings.get("default_vat_rate", "21"))
 
+        # Plan prices are VAT-inclusive; calculate net price for the invoice
+        net_price = round(amount / (1 + vat_rate / 100), 2)
+
         notes = (
             f"Maksājuma ref.: {payment_reference}\n"
             f"Pasūtījuma ref.: {order_ref}"
@@ -947,13 +950,16 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
             "product_id": sub_product_id,
             "quantity": 1,
             "unit": "gab",
-            "price_per_unit": amount,
+            "price_per_unit": net_price,
         }]
 
         doc_id, doc_number = db.create_document(
             admin_id, "sell", client_id, today, items,
             vat_rate=vat_rate, notes=notes,
         )
+
+        # Mark as paid since payment already settled
+        db.update_document_status(admin_id, doc_id, "paid")
 
         logger.info("Subscription invoice %s created for user %s (doc_id=%s)",
                      doc_number, paying_user["username"], doc_id)
