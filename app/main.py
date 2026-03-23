@@ -354,6 +354,13 @@ async def _process_recurring_invoices():
                     if not items:
                         continue
 
+                    # Check monthly document limit before creating
+                    rec_user = db.get_user(rec["user_id"])
+                    if rec_user:
+                        allowed, _, _ = _check_tier_limit(rec_user, "documents")
+                        if not allowed:
+                            continue
+
                     doc_id, doc_number = db.create_document(
                         rec["user_id"], rec["doc_type"], rec["client_id"],
                         today, items, rec["vat_rate"], rec["notes"]
@@ -1644,7 +1651,7 @@ async def create_document(request: Request):
     allowed, current, maximum = _check_tier_limit(user, "documents")
     if not allowed:
         return RedirectResponse(
-            f"/documents?error=Dokumentu limits sasniegts ({current}/{maximum}). "
+            f"/documents?error=Ikmēneša dokumentu limits sasniegts ({current}/{maximum}). "
             f"<a href='/pricing'>Uzlabojiet plānu</a>, lai turpinātu.",
             status_code=303)
 

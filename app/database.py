@@ -246,6 +246,9 @@ def _run_migrations():
         )
     """)
 
+    # Indexes for common queries (monthly document counting, etc.)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_monthly ON documents(user_id, deleted_at, created_at)")
+
     conn.commit()
     conn.close()
 
@@ -1361,9 +1364,14 @@ def cancel_user_subscription(user_id: int):
 
 
 def get_user_resource_counts(user_id: int) -> dict:
-    """Get current usage counts for a user."""
+    """Get current usage counts for a user.
+    Documents are counted per calendar month; clients/products are totals."""
     conn = get_connection()
-    docs = conn.execute("SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL", (user_id,)).fetchone()
+    month_start = datetime.date.today().replace(day=1).isoformat()
+    docs = conn.execute(
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND created_at >= ?",
+        (user_id, month_start)
+    ).fetchone()
     clients = conn.execute("SELECT COUNT(*) as cnt FROM clients WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
     products = conn.execute("SELECT COUNT(*) as cnt FROM products WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
     conn.close()
