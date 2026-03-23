@@ -1234,12 +1234,20 @@ def ensure_default_admin():
 
 TIER_LIMITS = {
     "free": {
-        "max_documents": 15, "max_clients": 10, "max_products": 5,
+        "max_documents": 5, "max_clients": 5, "max_products": 5,
         "max_emails_month": 0, "recurring": False, "max_recurring": 0,
         "all_templates": False,
         "einvoice": False, "accounting_export": False,
         "label": "Bezmaksas",
         "price_monthly": 0, "price_yearly": 0,
+    },
+    "mini": {
+        "max_documents": 25, "max_clients": 15, "max_products": 10,
+        "max_emails_month": 10, "recurring": False, "max_recurring": 0,
+        "all_templates": False,
+        "einvoice": False, "accounting_export": False,
+        "label": "Mini",
+        "price_monthly": 499, "price_yearly": 4900,  # cents
     },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": 200,

@@ -833,7 +833,7 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     user = request.state.user
     if tier == "lifetime":
         cycle = "lifetime"
-    if tier not in ("starter", "business", "lifetime") or cycle not in ("monthly", "yearly", "lifetime"):
+    if tier not in ("mini", "starter", "business", "lifetime") or cycle not in ("monthly", "yearly", "lifetime"):
         return RedirectResponse("/pricing?error=invalid", status_code=303)
 
     # Enforce 30-user cap for lifetime plan
@@ -847,7 +847,7 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
         return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
     # Build order reference: VR-{plan}-{user_id}-{timestamp} (ASCII-safe, max ~20 chars for EveryPay)
-    tier_code = {"starter": "S", "business": "B", "lifetime": "L"}[tier]
+    tier_code = {"mini": "M", "starter": "S", "business": "B", "lifetime": "L"}[tier]
     ts = datetime.datetime.now().strftime("%y%m%d%H%M%S")
     order_ref = f"VR{tier_code}-{user['id']}-{ts}"
     base_url = str(request.base_url).rstrip("/")
@@ -944,7 +944,7 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
             )
 
         # Build plan description
-        tier_labels = {"starter": "Sākums", "business": "Bizness", "lifetime": "Mūža licence"}
+        tier_labels = {"mini": "Mini", "starter": "Sākums", "business": "Bizness", "lifetime": "Mūža licence"}
         cycle_labels = {"monthly": "mēnesī", "yearly": "gadā", "lifetime": "vienreizējs"}
         plan_desc = f"V-Rēķini — {tier_labels.get(tier, tier)} ({cycle_labels.get(cycle, cycle)})"
 

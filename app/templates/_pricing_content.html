@@ -17,10 +17,10 @@
         </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px" class="mobile-stack pricing-grid">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px" class="mobile-stack pricing-grid">
         <!-- Free -->
         <div class="card" style="position:relative">
-            <div class="card-body" style="padding:28px 24px">
+            <div class="card-body" style="padding:28px 20px">
                 <div style="margin-bottom:20px">
                     <span class="tier-badge tier-free">Bezmaksas</span>
                 </div>
@@ -29,11 +29,11 @@
                     <span style="color:var(--text-light);font-size:13px">/ mēnesī</span>
                 </div>
                 <p style="color:var(--text-light);font-size:13px;margin-bottom:24px;line-height:1.5">
-                    Ideāli, lai sāktu un izmēģinātu platformu.
+                    Izmēģiniet platformu bez maksas.
                 </p>
                 <ul class="pricing-features">
-                    <li>15 dokumenti mēnesī</li>
-                    <li>10 klienti</li>
+                    <li>5 dokumenti mēnesī</li>
+                    <li>5 klienti</li>
                     <li>5 produkti</li>
                     <li>Pamata veidne</li>
                 </ul>
@@ -49,10 +49,48 @@
             </div>
         </div>
 
+        <!-- Mini -->
+        <div class="card" style="position:relative">
+            <div class="card-body" style="padding:28px 20px">
+                <div style="margin-bottom:20px">
+                    <span class="tier-badge tier-mini">Mini</span>
+                </div>
+                <div style="margin-bottom:20px">
+                    <span style="font-size:36px;font-weight:800;letter-spacing:-1.5px" id="price-mini">4.99€</span>
+                    <span style="color:var(--text-light);font-size:13px" id="price-mini-period">/ mēnesī</span>
+                </div>
+                <p style="color:var(--text-light);font-size:13px;margin-bottom:24px;line-height:1.5">
+                    Pašnodarbinātajiem un sīkuzņēmumiem.
+                </p>
+                <ul class="pricing-features">
+                    <li>25 dokumenti mēnesī</li>
+                    <li>15 klienti</li>
+                    <li>10 produkti</li>
+                    <li>10 e-pasti mēnesī</li>
+                    <li>Pamata veidne</li>
+                </ul>
+                {% if current_user %}
+                    {% if current_user.tier == 'mini' %}
+                    <div class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px;pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
+                    {% else %}
+                    <form method="post" action="/billing/checkout" style="margin-top:20px">
+                        <input type="hidden" name="tier" value="mini">
+                        <input type="hidden" name="cycle" value="monthly" class="cycle-input">
+                        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
+                            {% if current_user.tier == 'free' %}Uzlabot{% else %}Mainīt plānu{% endif %}
+                        </button>
+                    </form>
+                    {% endif %}
+                {% else %}
+                <a href="/register?plan=mini" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px" id="link-mini">Izvēlēties plānu</a>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- Starter -->
         <div class="card" style="position:relative;border:2px solid var(--accent)">
             <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--accent);color:white;padding:3px 14px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Populārākais</div>
-            <div class="card-body" style="padding:28px 24px">
+            <div class="card-body" style="padding:28px 20px">
                 <div style="margin-bottom:20px">
                     <span class="tier-badge tier-starter">Sākums</span>
                 </div>
@@ -81,7 +119,7 @@
                         <input type="hidden" name="tier" value="starter">
                         <input type="hidden" name="cycle" value="monthly" class="cycle-input">
                         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-                            {% if current_user.tier == 'free' %}Uzlabot{% else %}Mainīt plānu{% endif %}
+                            {% if current_user.tier in ('free', 'mini') %}Uzlabot{% else %}Mainīt plānu{% endif %}
                         </button>
                     </form>
                     {% endif %}
@@ -93,7 +131,7 @@
 
         <!-- Business -->
         <div class="card" style="position:relative">
-            <div class="card-body" style="padding:28px 24px">
+            <div class="card-body" style="padding:28px 20px">
                 <div style="margin-bottom:20px">
                     <span class="tier-badge tier-business">Bizness</span>
                 </div>
@@ -124,7 +162,7 @@
                         <input type="hidden" name="tier" value="business">
                         <input type="hidden" name="cycle" value="monthly" class="cycle-input">
                         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-                            {% if current_user.tier in ('free', 'starter') %}Uzlabot{% else %}Mainīt plānu{% endif %}
+                            {% if current_user.tier in ('free', 'mini', 'starter') %}Uzlabot{% else %}Mainīt plānu{% endif %}
                         </button>
                     </form>
                     {% endif %}
@@ -137,7 +175,7 @@
         <!-- Lifetime -->
         <div class="card" style="position:relative;border:2px solid #b8860b">
             <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#b8860b,#daa520);color:white;padding:3px 14px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap">Ierobežots piedāvājums</div>
-            <div class="card-body" style="padding:28px 24px">
+            <div class="card-body" style="padding:28px 20px">
                 <div style="margin-bottom:20px">
                     <span class="tier-badge" style="background:linear-gradient(135deg,#b8860b,#daa520);color:white">Mūža licence</span>
                 </div>
@@ -231,7 +269,10 @@
     .pricing-grid .card-body { flex: 1; display: flex; flex-direction: column; }
     .pricing-grid .card-body .btn,
     .pricing-grid .card-body form { margin-top: auto !important; }
-    @media (max-width: 1100px) and (min-width: 769px) {
+    @media (max-width: 1300px) and (min-width: 769px) {
+        .pricing-grid { grid-template-columns: repeat(3, 1fr) !important; }
+    }
+    @media (max-width: 900px) and (min-width: 769px) {
         .pricing-grid { grid-template-columns: repeat(2, 1fr) !important; }
     }
 </style>
@@ -240,10 +281,13 @@
 function switchCycle(cycle) {
     var monthly = document.getElementById('btn-monthly');
     var yearly = document.getElementById('btn-yearly');
+    var priceMini = document.getElementById('price-mini');
     var priceStarter = document.getElementById('price-starter');
     var priceBusiness = document.getElementById('price-business');
+    var periodMini = document.getElementById('price-mini-period');
     var periodStarter = document.getElementById('price-starter-period');
     var periodBusiness = document.getElementById('price-business-period');
+    var linkMini = document.getElementById('link-mini');
     var linkStarter = document.getElementById('link-starter');
     var linkBusiness = document.getElementById('link-business');
 
@@ -254,10 +298,13 @@ function switchCycle(cycle) {
         monthly.style.color = 'var(--text-light)';
         yearly.style.background = 'var(--accent)';
         yearly.style.color = 'white';
+        if (priceMini) priceMini.textContent = '49€';
         if (priceStarter) priceStarter.textContent = '99€';
         if (priceBusiness) priceBusiness.textContent = '199€';
+        if (periodMini) periodMini.textContent = '/ gadā';
         if (periodStarter) periodStarter.textContent = '/ gadā';
         if (periodBusiness) periodBusiness.textContent = '/ gadā';
+        if (linkMini) linkMini.href = '/register?plan=mini&cycle=yearly';
         if (linkStarter) linkStarter.href = '/register?plan=starter&cycle=yearly';
         if (linkBusiness) linkBusiness.href = '/register?plan=business&cycle=yearly';
     } else {
@@ -265,10 +312,13 @@ function switchCycle(cycle) {
         yearly.style.color = 'var(--text-light)';
         monthly.style.background = 'var(--accent)';
         monthly.style.color = 'white';
+        if (priceMini) priceMini.textContent = '4.99€';
         if (priceStarter) priceStarter.textContent = '9.99€';
         if (priceBusiness) priceBusiness.textContent = '19.99€';
+        if (periodMini) periodMini.textContent = '/ mēnesī';
         if (periodStarter) periodStarter.textContent = '/ mēnesī';
         if (periodBusiness) periodBusiness.textContent = '/ mēnesī';
+        if (linkMini) linkMini.href = '/register?plan=mini';
         if (linkStarter) linkStarter.href = '/register?plan=starter';
         if (linkBusiness) linkBusiness.href = '/register?plan=business';
     }

@@ -508,6 +508,7 @@ select.form-control { cursor: pointer; }
 }
 
 .tier-free { background: var(--bg); color: var(--text-light); border: 1px solid var(--border); }
+.tier-mini { background: rgba(76, 110, 180, 0.08); color: #4c6eb4; }
 .tier-starter { background: rgba(55, 65, 81, 0.06); color: #374151; }
 .tier-business { background: rgba(17, 24, 39, 0.08); color: #111827; }
 .tier-admin { background: rgba(17, 24, 39, 0.1); color: #111827; font-weight: 800; }
