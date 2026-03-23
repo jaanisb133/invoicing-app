@@ -391,6 +391,12 @@ async def _process_recurring_invoices():
         except Exception as e:
             logger.error(f"Error in recurring invoice loop: {e}")
 
+        # Purge documents deleted more than 7 days ago
+        try:
+            db.purge_old_deleted_documents()
+        except Exception as e:
+            print(f"[TRASH] Purge error: {e}")
+
         await asyncio.sleep(3600)  # Check every hour
 
 
@@ -826,7 +832,7 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     # Enforce 30-user cap for lifetime plan
     if tier == "lifetime":
         lifetime_count = db.count_lifetime_users()
-        if lifetime_count >= 30:
+        if lifetime_count >= 10:
             return RedirectResponse("/pricing?error=lifetime_sold_out", status_code=303)
 
     amount = everypay.get_plan_price(tier, cycle)
@@ -1943,6 +1949,32 @@ async def delete_document(request: Request, doc_id: int):
     user = request.state.user
     db.delete_document(user["id"], doc_id)
     return RedirectResponse("/documents", status_code=303)
+
+
+@app.get("/trash")
+async def trash_page(request: Request):
+    user = request.state.user
+    deleted_docs = db.get_deleted_documents(user["id"])
+    return templates.TemplateResponse("trash.html", {
+        "request": request, "current_user": user, "page": "trash",
+        "documents": deleted_docs,
+        "tier": user.get("tier", "free"),
+        "tier_limits": db.get_tier_limits(user.get("tier", "free")),
+    })
+
+
+@app.post("/trash/{doc_id}/restore")
+async def restore_document(request: Request, doc_id: int):
+    user = request.state.user
+    db.restore_document(user["id"], doc_id)
+    return RedirectResponse("/trash", status_code=303)
+
+
+@app.post("/trash/{doc_id}/delete")
+async def permanently_delete_document(request: Request, doc_id: int):
+    user = request.state.user
+    db.permanently_delete_document(user["id"], doc_id)
+    return RedirectResponse("/trash", status_code=303)
 
 
 @app.post("/documents/{doc_id}/status")

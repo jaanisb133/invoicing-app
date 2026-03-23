@@ -32,9 +32,9 @@
                     Ideāli, lai sāktu un izmēģinātu platformu.
                 </p>
                 <ul class="pricing-features">
-                    <li>5 dokumenti kopā</li>
-                    <li>3 klienti</li>
-                    <li>3 produkti</li>
+                    <li>15 dokumenti kopā</li>
+                    <li>10 klienti</li>
+                    <li>5 produkti</li>
                     <li>Pamata veidne</li>
                 </ul>
                 {% if current_user %}
@@ -150,9 +150,9 @@
                 </p>
                 <p style="font-size:12px;color:#b8860b;font-weight:600;margin-bottom:16px" id="lifetime-slots">
                     {% if current_user %}
-                    Pieejamas {{ 30 - lifetime_sold }} no 30 licencēm
+                    Pieejamas {{ 10 - lifetime_sold }} no 10 licencēm
                     {% else %}
-                    Tikai 30 licences pieejamas
+                    Tikai 10 licences pieejamas
                     {% endif %}
                 </p>
                 <ul class="pricing-features">
@@ -170,7 +170,7 @@
                 {% if current_user %}
                     {% if current_user.tier == 'lifetime' %}
                     <div class="btn btn-primary" style="width:100%;justify-content:center;margin-top:20px;pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
-                    {% elif lifetime_sold >= 30 %}
+                    {% elif lifetime_sold >= 10 %}
                     <div class="btn btn-outline" style="width:100%;justify-content:center;margin-top:20px;pointer-events:none;opacity:0.6">Izpārdots</div>
                     {% else %}
                     <form method="post" action="/billing/checkout" style="margin-top:20px">

@@ -224,6 +224,8 @@ def _run_migrations():
         cursor.execute("ALTER TABLE documents ADD COLUMN payment_due_date DATE")
     if "reverse_charge" not in doc_cols:
         cursor.execute("ALTER TABLE documents ADD COLUMN reverse_charge INTEGER NOT NULL DEFAULT 0")
+    if "deleted_at" not in doc_cols:
+        cursor.execute("ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP")
 
     # Add vat_payer column to clients if missing
     client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
@@ -728,7 +730,7 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
                ROUND(COALESCE((SELECT SUM(di.total) FROM document_items di WHERE di.document_id = d.id), 0) * (1 + d.vat_rate / 100.0), 2) as total_with_vat
                FROM documents d
                JOIN clients c ON d.client_id = c.id
-               WHERE d.user_id = ?"""
+               WHERE d.user_id = ? AND d.deleted_at IS NULL"""
     params = [user_id]
 
     if doc_type:
@@ -762,8 +764,57 @@ def update_document_status(user_id, doc_id, status):
 
 
 def delete_document(user_id, doc_id):
+    """Soft-delete a document (move to trash). Permanently deleted after 7 days."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE documents SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+        (doc_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def restore_document(user_id, doc_id):
+    """Restore a soft-deleted document from trash."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE documents SET deleted_at = NULL WHERE id = ? AND user_id = ?",
+        (doc_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def permanently_delete_document(user_id, doc_id):
+    """Permanently delete a document (no recovery)."""
     conn = get_connection()
     conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_deleted_documents(user_id):
+    """Get all soft-deleted documents for a user (trash)."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT d.*, c.name as client_name,
+           ROUND(COALESCE((SELECT SUM(di.total) FROM document_items di WHERE di.document_id = d.id), 0) * (1 + d.vat_rate / 100.0), 2) as total_with_vat
+           FROM documents d
+           JOIN clients c ON d.client_id = c.id
+           WHERE d.user_id = ? AND d.deleted_at IS NOT NULL
+           ORDER BY d.deleted_at DESC""",
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def purge_old_deleted_documents():
+    """Permanently delete documents that have been in trash for more than 7 days."""
+    conn = get_connection()
+    conn.execute(
+        "DELETE FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-7 days')"
+    )
     conn.commit()
     conn.close()
 
@@ -979,7 +1030,7 @@ def get_dashboard_stats(user_id: int) -> dict:
 
     # Invoices in last 7 days
     row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date >= ?",
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_date >= ?",
         (user_id, week_ago)
     ).fetchone()
     docs_last_7_days = row["cnt"] if row else 0
@@ -989,7 +1040,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell'
     """, (user_id,)).fetchone()
     total_revenue = row["total"] if row else 0
 
@@ -998,7 +1049,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.doc_date >= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ?
     """, (user_id, week_ago)).fetchone()
     revenue_last_7_days = row["total"] if row else 0
 
@@ -1007,7 +1058,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT c.name, COUNT(*) as cnt
         FROM documents d
         JOIN clients c ON d.client_id = c.id
-        WHERE d.user_id = ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL
         GROUP BY d.client_id
         ORDER BY cnt DESC
         LIMIT 1
@@ -1020,7 +1071,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         FROM document_items di
         JOIN documents d ON di.document_id = d.id
         JOIN products p ON di.product_id = p.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell'
         GROUP BY di.product_id
         ORDER BY total_qty DESC
         LIMIT 1
@@ -1029,7 +1080,7 @@ def get_dashboard_stats(user_id: int) -> dict:
 
     # Total documents
     row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ?", (user_id,)
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL", (user_id,)
     ).fetchone()
     total_docs = row["cnt"] if row else 0
 
@@ -1054,7 +1105,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, date_from, date_to)).fetchone()
     total_revenue = row["total"] if row else 0
 
@@ -1063,7 +1114,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.doc_type = 'buy' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'buy' AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, date_from, date_to)).fetchone()
     total_expenses = row["total"] if row else 0
 
@@ -1072,13 +1123,13 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.status = 'issued'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.status = 'issued'
     """, (user_id,)).fetchone()
     unpaid_total = row["total"] if row else 0
 
     # Document count in range
     row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date >= ? AND doc_date <= ?",
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_date >= ? AND doc_date <= ?",
         (user_id, date_from, date_to)
     ).fetchone()
     doc_count = row["cnt"] if row else 0
@@ -1089,7 +1140,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
             SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as inv_total
             FROM documents d
             LEFT JOIN document_items di ON di.document_id = d.id
-            WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
             GROUP BY d.id
         )
     """, (user_id, date_from, date_to)).fetchone()
@@ -1106,7 +1157,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
                ), 0) as revenue
         FROM documents d
         JOIN clients c ON d.client_id = c.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
         GROUP BY d.client_id
         ORDER BY revenue DESC
         LIMIT 1
@@ -1121,7 +1172,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
                     FROM document_items di WHERE di.document_id = d.id)
                ), 0) as total
         FROM documents d
-        WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.status = 'issued'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.status = 'issued'
               AND d.payment_due_date IS NOT NULL AND d.payment_due_date != '' AND d.payment_due_date < ?
     """, (user_id, today_str)).fetchone()
     overdue_count = row["cnt"] if row else 0
@@ -1133,7 +1184,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
                COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as daily_total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
         GROUP BY d.doc_date
         ORDER BY d.doc_date
     """, (user_id, date_from, date_to)).fetchall()
@@ -1180,7 +1231,7 @@ def ensure_default_admin():
 
 TIER_LIMITS = {
     "free": {
-        "max_documents": 5, "max_clients": 3, "max_products": 3,
+        "max_documents": 15, "max_clients": 10, "max_products": 5,
         "max_emails_month": 0, "recurring": False, "max_recurring": 0,
         "all_templates": False,
         "einvoice": False, "accounting_export": False,
@@ -1312,7 +1363,7 @@ def cancel_user_subscription(user_id: int):
 def get_user_resource_counts(user_id: int) -> dict:
     """Get current usage counts for a user."""
     conn = get_connection()
-    docs = conn.execute("SELECT COUNT(*) as cnt FROM documents WHERE user_id = ?", (user_id,)).fetchone()
+    docs = conn.execute("SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL", (user_id,)).fetchone()
     clients = conn.execute("SELECT COUNT(*) as cnt FROM clients WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
     products = conn.execute("SELECT COUNT(*) as cnt FROM products WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
     conn.close()
@@ -1434,7 +1485,7 @@ def get_documents_for_export(user_id, doc_type=None, date_from=None, date_to=Non
                c.email as client_email
                FROM documents d
                JOIN clients c ON d.client_id = c.id
-               WHERE d.user_id = ?"""
+               WHERE d.user_id = ? AND d.deleted_at IS NULL"""
     params = [user_id]
 
     if doc_type:

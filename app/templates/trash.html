@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Papīrkurvis</h2>
+        <p style="color:var(--text-light);font-size:13px;margin-top:4px">Dzēstie dokumenti tiek automātiski izdzēsti pēc 7 dienām.</p>
+    </div>
+</div>
+
+{% if documents %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Nr.</th>
+                    <th>Tips</th>
+                    <th>Klients</th>
+                    <th>Datums</th>
+                    <th style="text-align:right">Summa</th>
+                    <th>Dzēsts</th>
+                    <th style="text-align:right">Darbības</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td><strong>{{ doc.doc_number }}</strong></td>
+                    <td>
+                        {% if doc.doc_type == 'sell' %}
+                        <span class="badge" style="background:#dcfce7;color:#166534">Pārdošana</span>
+                        {% else %}
+                        <span class="badge" style="background:#dbeafe;color:#1e40af">Pirkums</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ doc.client_name }}</td>
+                    <td>{{ doc.doc_date }}</td>
+                    <td style="text-align:right">{{ "%.2f"|format(doc.total_with_vat) }} &euro;</td>
+                    <td style="color:var(--text-light);font-size:13px">{{ doc.deleted_at[:10] if doc.deleted_at else '' }}</td>
+                    <td style="text-align:right">
+                        <div style="display:flex;gap:8px;justify-content:flex-end">
+                            <form method="post" action="/trash/{{ doc.id }}/restore">
+                                <button type="submit" class="btn btn-outline btn-sm">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                    Atjaunot
+                                </button>
+                            </form>
+                            <form method="post" action="/trash/{{ doc.id }}/delete"
+                                  onsubmit="return confirm('Vai tiešām neatgriezeniski dzēst dokumentu {{ doc.doc_number }}?')">
+                                <button type="submit" class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#dc2626">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    Dzēst pavisam
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body" style="text-align:center;padding:48px 24px;color:var(--text-light)">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:16px;opacity:0.4"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        <p style="font-size:15px;font-weight:600;margin-bottom:4px">Papīrkurvis ir tukšs</p>
+        <p style="font-size:13px">Dzēstie dokumenti parādīsies šeit 7 dienas pirms galīgas dzēšanas.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
