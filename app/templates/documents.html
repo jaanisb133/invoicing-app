@@ -218,7 +218,7 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
                                         <form method="post" action="/documents/{{ doc.id }}/delete">
                                             <button type="submit" class="row-menu-item row-menu-danger">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                                Pārvietot uz papītgrozu
+                                                Pārvietot uz papīrgrozu
                                             </button>
                                         </form>
                                     </div>
@@ -438,7 +438,7 @@ function menuHtml(d) {
         items += '<a href="/pricing" class="row-menu-item row-menu-disabled"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Periodiskais rēķins <span class="badge-pro-menu">PRO</span></a>';
     }
     items += '<div class="row-menu-divider"></div>';
-    items += '<form method="post" action="/documents/' + d.id + '/delete"><button type="submit" class="row-menu-item row-menu-danger"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Pārvietot uz papītgrozu</button></form>';
+    items += '<form method="post" action="/documents/' + d.id + '/delete"><button type="submit" class="row-menu-item row-menu-danger"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Pārvietot uz papīrgrozu</button></form>';
     return '<div class="row-menu-wrapper"><button type="button" class="row-menu-trigger" aria-label="Darbības"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button><div class="row-menu-dropdown">' + items + '</div></div>';
 }
 
