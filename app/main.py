@@ -596,7 +596,7 @@ async def register(request: Request,
         display_name=display_name,
         email=email,
         phone=phone,
-        tier="free",
+        tier="business" if OFFLINE_MODE else "free",
     )
 
     # Save registration data as settings (but NOT company_name — that's set
@@ -738,6 +738,10 @@ async def save_setup(
         "payment_due_days": payment_due_days,
     }
     db.save_all_user_settings(user["id"], settings_dict)
+
+    # Offline mode: already on business tier, go straight to dashboard
+    if OFFLINE_MODE:
+        return RedirectResponse("/", status_code=303)
 
     # After onboarding, check if user has a pending plan from registration
     all_settings = db.get_all_user_settings(user["id"])
