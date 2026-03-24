@@ -42,9 +42,11 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
-# Offline license protection
+# Offline license protection (machine-locked)
 # ---------------------------------------------------------------------------
 import hashlib
+import uuid
+import platform
 
 # SHA-256 hashes of valid license keys (keys are NOT stored in source code)
 _OFFLINE_LICENSE_HASHES = {
@@ -53,6 +55,11 @@ _OFFLINE_LICENSE_HASHES = {
     "0cb81b36d79f902673244912bb1f705967258d1f9b7f85c5c87a4c76bfcd4de6",
 }
 
+def _get_machine_id() -> str:
+    """Generate a stable fingerprint for this machine."""
+    raw = f"{platform.node()}|{uuid.getnode()}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
 def _get_license_file_path():
     data_dir = os.environ.get("VREKINI_DB_PATH", "")
     if data_dir:
@@ -60,21 +67,25 @@ def _get_license_file_path():
     return os.path.join(BASE_DIR, "..", "data", "license.key")
 
 def _is_offline_licensed():
-    """Check if a valid license key file exists."""
+    """Check if a valid license key file exists and is bound to this machine."""
     if not OFFLINE_MODE:
         return True
     path = _get_license_file_path()
     if not os.path.exists(path):
         return False
     try:
-        key = open(path, "r", encoding="utf-8").read().strip().upper()
+        lines = open(path, "r", encoding="utf-8").read().strip().splitlines()
+        if len(lines) < 2:
+            return False
+        key = lines[0].strip().upper()
+        stored_machine = lines[1].strip()
         h = hashlib.sha256(key.encode()).hexdigest()
-        return h in _OFFLINE_LICENSE_HASHES
+        return h in _OFFLINE_LICENSE_HASHES and stored_machine == _get_machine_id()
     except Exception:
         return False
 
 def _activate_license(key: str) -> bool:
-    """Validate and save a license key. Returns True if valid."""
+    """Validate and save a license key bound to this machine. Returns True if valid."""
     key = key.strip().upper()
     h = hashlib.sha256(key.encode()).hexdigest()
     if h not in _OFFLINE_LICENSE_HASHES:
@@ -82,7 +93,7 @@ def _activate_license(key: str) -> bool:
     path = _get_license_file_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(key)
+        f.write(f"{key}\n{_get_machine_id()}\n")
     return True
 
 UNITS = ["kg", "gab", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
