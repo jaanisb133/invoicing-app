@@ -41,6 +41,50 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
 
+# ---------------------------------------------------------------------------
+# Offline license protection
+# ---------------------------------------------------------------------------
+import hashlib
+
+# SHA-256 hashes of valid license keys (keys are NOT stored in source code)
+_OFFLINE_LICENSE_HASHES = {
+    "01e59cba7c8bf7cc942afe8571b458974d92429011fa726e48a59acbdd23e4b2",
+    "a55071558393e2523fcc9943ff031d55227905d97cac054be69686f7f7b46bca",
+    "0cb81b36d79f902673244912bb1f705967258d1f9b7f85c5c87a4c76bfcd4de6",
+}
+
+def _get_license_file_path():
+    data_dir = os.environ.get("VREKINI_DB_PATH", "")
+    if data_dir:
+        return os.path.join(os.path.dirname(data_dir), "license.key")
+    return os.path.join(BASE_DIR, "..", "data", "license.key")
+
+def _is_offline_licensed():
+    """Check if a valid license key file exists."""
+    if not OFFLINE_MODE:
+        return True
+    path = _get_license_file_path()
+    if not os.path.exists(path):
+        return False
+    try:
+        key = open(path, "r", encoding="utf-8").read().strip().upper()
+        h = hashlib.sha256(key.encode()).hexdigest()
+        return h in _OFFLINE_LICENSE_HASHES
+    except Exception:
+        return False
+
+def _activate_license(key: str) -> bool:
+    """Validate and save a license key. Returns True if valid."""
+    key = key.strip().upper()
+    h = hashlib.sha256(key.encode()).hexdigest()
+    if h not in _OFFLINE_LICENSE_HASHES:
+        return False
+    path = _get_license_file_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(key)
+    return True
+
 UNITS = ["kg", "gab", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
 
 
@@ -290,9 +334,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms")
+        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms", "/license")
                 or path == "/everypay/callback" or path == "/api/registry/search"):
             return await call_next(request)
+
+        # Offline mode: require valid license before anything else
+        if OFFLINE_MODE and not _is_offline_licensed() and path != "/license":
+            return RedirectResponse("/license", status_code=303)
 
         # Offline mode: auto-login as local user, skip auth entirely
         if OFFLINE_MODE:
@@ -468,6 +516,29 @@ async def startup():
 
     # Start recurring invoice background task
     asyncio.create_task(_process_recurring_invoices())
+
+
+# =============================================================================
+# Offline license activation
+# =============================================================================
+
+@app.get("/license", response_class=HTMLResponse)
+async def license_page(request: Request, error: str = ""):
+    if not OFFLINE_MODE or _is_offline_licensed():
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("license.html", {"request": request, "error": error})
+
+
+@app.post("/license")
+async def license_activate(request: Request, license_key: str = Form(...)):
+    if not OFFLINE_MODE:
+        return RedirectResponse("/", status_code=303)
+    if _activate_license(license_key):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("license.html", {
+        "request": request,
+        "error": "Nederīga licences atslēga. Lūdzu pārbaudiet un mēģiniet vēlreiz.",
+    })
 
 
 # =============================================================================

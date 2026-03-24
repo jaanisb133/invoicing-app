@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Licence — V-Rēķini</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t)document.documentElement.setAttribute('data-theme',t);})()</script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background: var(--bg);
+        }
+        .license-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .license-container { width: 100%; max-width: 440px; padding: 20px; }
+        .license-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            padding: 40px 32px;
+            box-shadow: var(--shadow-lg);
+        }
+        .license-card h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; color: var(--primary); }
+        .license-card .subtitle { font-size: 14px; color: var(--text-light); margin-bottom: 28px; }
+        .license-card .btn-primary { width: 100%; padding: 10px 16px; font-size: 14px; margin-top: 8px; }
+        .license-input {
+            font-family: monospace;
+            font-size: 16px;
+            letter-spacing: 1px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div class="license-wrap">
+    <div class="license-container">
+        <div class="license-card">
+            <h1>V-Rēķini</h1>
+            <p class="subtitle">Ievadiet licences atslēgu, lai turpinātu</p>
+
+            {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" action="/license">
+                <div class="form-group">
+                    <label for="license_key">Licences atslēga</label>
+                    <input type="text" id="license_key" name="license_key"
+                           class="form-control license-input"
+                           placeholder="VREK-XXXX-XXXX-XXXX"
+                           required autofocus autocomplete="off">
+                </div>
+                <button type="submit" class="btn btn-primary">Aktivizēt</button>
+            </form>
+        </div>
+    </div>
+    </div>
+</body>
+</html>
