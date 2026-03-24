@@ -75,7 +75,7 @@ def main():
     print("╔══════════════════════════════════════════╗")
     print("║        V-Rēķini — Offline režīms         ║")
     print("╠══════════════════════════════════════════╣")
-    print(f"║  Adrese: http://localhost:{port:<15s}   ║")
+    print(f"║  Adrese: http://localhost:{port:<15}   ║")
     print("║  Lai apturētu: Ctrl+C                    ║")
     print("╚══════════════════════════════════════════╝")
     print()
