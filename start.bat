@@ -1,11 +1,10 @@
 @echo off
-chcp 65001 >nul 2>&1
 title V-Rekini Offline
 
 echo.
-echo  ╔══════════════════════════════════════════╗
-echo  ║        V-Rekini — Offline rezims          ║
-echo  ╚══════════════════════════════════════════╝
+echo  ==========================================
+echo          V-Rekini - Offline rezims
+echo  ==========================================
 echo.
 
 :: Check if Python is installed
@@ -28,7 +27,7 @@ if errorlevel 1 (
 :: Install dependencies if needed (check for fastapi as indicator)
 %PYTHON% -c "import fastapi" >nul 2>&1
 if errorlevel 1 (
-    echo  Instalē nepieciešamās bibliotēkas...
+    echo  Instale nepieciesamas bibliotekas...
     %PYTHON% -m pip install -r requirements.txt --quiet
     if errorlevel 1 (
         echo  [!] Kluda instalejot bibliotekas.
