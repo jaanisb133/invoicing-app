@@ -60,6 +60,7 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
+    {% if not offline_mode %}
     <div class="usage-section" style="margin-bottom:16px">
         <div class="usage-item">
             <div class="usage-label">Dokumenti (šomēnes)</div>
@@ -69,6 +70,7 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
             <div class="usage-count">{{ usage.documents }} / {{ limits.max_documents }}</div>
         </div>
     </div>
+    {% endif %}
     <div class="card">
         <div class="card-body">
             <div class="filters-bar" id="filterForm" style="flex-wrap:nowrap;align-items:end;gap:8px">

@@ -39,6 +39,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
+OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
+
 UNITS = ["kg", "gab", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
 
 
@@ -229,6 +231,7 @@ def _base_context(request):
         "tier_label": db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
         "tier_limits": db.get_tier_limits(tier),
         "needs_setup": not db.get_user_setting(user["id"], "company_name"),
+        "offline_mode": OFFLINE_MODE,
     }
 
 
@@ -267,6 +270,22 @@ def _get_logo_path(user_id):
     return None
 
 
+def _ensure_offline_user():
+    """Create or retrieve the single local user for offline mode."""
+    user = db.get_user_by_username("local")
+    if not user:
+        db.create_user("local", "offline", display_name="Lietotājs", is_admin=True)
+        user = db.get_user_by_username("local")
+        if user:
+            # Set tier to admin so all features are unlocked
+            conn = db.get_connection()
+            conn.execute("UPDATE users SET tier = 'admin' WHERE id = ?", (user["id"],))
+            conn.commit()
+            conn.close()
+            user = db.get_user(user["id"])
+    return user
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
@@ -274,6 +293,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms")
                 or path == "/everypay/callback" or path == "/api/registry/search"):
             return await call_next(request)
+
+        # Offline mode: auto-login as local user, skip auth entirely
+        if OFFLINE_MODE:
+            user = _ensure_offline_user()
+            if user:
+                request.state.user = user
+                # Skip setup redirect — let user access everything
+                setup_exempt = {"/settings", "/setup", "/logout", "/set-password"}
+                if path not in setup_exempt and not path.startswith("/static") and not path.startswith("/api/") and not path.startswith("/settings/logo"):
+                    if not db.get_user_setting(user["id"], "company_name"):
+                        return RedirectResponse("/setup", status_code=303)
+                return await call_next(request)
 
         user = _get_current_user(request)
 
@@ -1291,7 +1322,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = ""):
         "range_stats_json": _json.dumps(range_stats, default=str),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": user.get("tier", "free") != "free",
+        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "page": "dashboard",
     })
     return templates.TemplateResponse("dashboard.html", ctx)
@@ -1606,7 +1637,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         "limits": limits,
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": user.get("tier", "free") != "free",
+        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to,
                      "status": status},
@@ -1833,7 +1864,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "all_templates": _check_tier_feature(user, "all_templates"),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": user.get("tier", "free") != "free",
+        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "page": "documents",
     })
     return templates.TemplateResponse("document_view.html", ctx)
