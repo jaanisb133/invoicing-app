@@ -781,6 +781,7 @@ async def setup_page(request: Request):
         "display_name": user.get("display_name") or "",
         "settings": settings,
         "has_logo": has_logo,
+        "offline_mode": OFFLINE_MODE,
     })
 
 
