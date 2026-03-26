@@ -44,12 +44,17 @@
 ├── .gitignore
 ├── README.md
 ├── requirements.txt
-├── run.py                         # Entry point (uvicorn runner)
+├── run.py                         # Entry point (uvicorn runner, online mode)
+├── run_offline.py                 # Offline launcher (license keys, fingerprint, vendor download)
+├── start.bat                      # Windows double-click launcher
+├── start.command                  # macOS double-click launcher
+├── OFFLINE_INSTALL.md             # Installation guide (Latvian)
+├── CONTEXT.md                     # Full project context (this file)
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                    # FastAPI app — 80+ routes
-│   ├── database.py                # SQLite layer (1156 lines)
-│   ├── pdf_generator.py           # PDF generation (788 lines, 3 templates)
+│   ├── database.py                # SQLite layer (~1535 lines)
+│   ├── pdf_generator.py           # PDF generation (~845 lines, 3 templates)
 │   ├── everypay.py                # EveryPay/SEB payment API client (oneoff, MIT, refund)
 │   ├── einvoice.py                # E-invoice XML generator (PEPPOL BIS 3.0)
 │   ├── registry.py               # Latvian business registry search (UR open data)
@@ -85,14 +90,17 @@
 │       ├── _public_navbar.html
 │       ├── _public_footer.html    # Footer with payment/bank logos
 │       ├── _pricing_content.html  # Reusable pricing tier cards (11KB)
-│       └── _upgrade_gate.html     # Reusable PRO upgrade overlay
+│       ├── _upgrade_gate.html     # Reusable PRO upgrade overlay
+│       └── license.html           # License key entry page (offline mode)
 ├── deploy/
 │   ├── setup-server.sh            # Full production setup script
 │   ├── vrekini.nginx.conf         # Nginx config (HTTPS, security headers)
 │   ├── vrekini.service            # Systemd unit file
 │   └── update-registry.sh        # Daily business registry CSV download + import
 └── data/                          # Runtime data (gitignored)
-    ├── veggie_invoices.db         # SQLite database
+    ├── veggie_invoices.db         # SQLite database (online mode)
+    ├── offline.db                 # SQLite database (offline mode, separate)
+    ├── license.key                # License key + machine fingerprint JSON (offline mode)
     ├── registry.db                # Business registry search DB (separate)
     ├── register.csv               # Downloaded UR open data CSV (~120MB)
     ├── dokumenti/                 # Generated PDFs
@@ -209,12 +217,12 @@
 
 ### Phase 8: Monetization
 - Brevo API email integration (with SMTP fallback)
-- Stripe subscription billing with 3 tiers:
-  - **Free:** 5 docs, 3 clients, 3 products, 0 emails, no recurring, classic template only
-  - **Starter (€9.99/mo):** 500 docs, 100 clients, 200 products, 50 emails/month, recurring, all templates, e-invoice, export
-  - **Business (€19.99/mo):** 5000 docs, 500 clients, 1000 products, unlimited emails, all features
-- Stripe webhooks (customer.created, subscription.updated, subscription.deleted)
-- Customer portal access for subscription management
+- EveryPay/SEB subscription billing (originally Stripe, replaced in Phase 9b) with 4 tiers:
+  - **Free:** 10 docs/month (lifetime cap 10), 3 clients, 3 products, 0 emails, no recurring, classic template only
+  - **Mini (€4.99/mo):** Limited docs, basic features
+  - **Starter (€9.99/mo | €97.99/yr):** 500 docs, 100 clients, 200 products, 50 emails/month, 3 recurring invoices, all templates, e-invoice, export
+  - **Business (€19.99/mo | €195.99/yr):** 5000 docs, 500 clients, 1000 products, unlimited emails, all features
+  - **Lifetime license** — one-time payment option
 - Pricing page (public + authenticated versions)
 
 ### Phase 9: Stability Fixes
@@ -407,6 +415,9 @@
 - `GET /api/registry/search?q=...` — Search Latvian business registry by name or regcode
 - `GET /api/registry/status` — Registry DB record count (admin only)
 - `GET /api/vat/validate?vat_number=...` — Validate EU VAT number via VIES
+
+### Offline / License
+- `GET/POST /license` — License key entry page (offline mode only)
 
 ### Preview
 - `GET /api/invoice-preview` — Real-time invoice preview
@@ -611,24 +622,7 @@ EVERYPAY_API_URL=https://igw-seb-demo.every-pay.com/api/v4
 
 ## 12. Git History Summary
 
-The project has ~70 commits on the main branch, progressing from:
-1. v1 desktop prototype
-2. FastAPI web app with 3 PDF templates
-3. Auth system + multi-tenant SaaS
-4. UI polish (dark theme, mobile, monochrome design)
-5. PDF improvements (fonts, logos, numbering)
-6. Business features (stock, recurring, export, status tracking)
-7. Production deployment (nginx, systemd, SSL)
-8. EveryPay/SEB billing + Brevo email integration
-9. Stability fixes
-10. SEB e-commerce compliance (contacts, terms, footer, payment logos)
-11. Subscription revamp (usage bars, plan highlighting, admin tier control)
-12. Entity type switcher, simplified onboarding, VAT payer toggle
-13. Tier-based feature gating (PRO badges, blurred overlays, template restrictions)
-14. Accounting export with custom preset builder
-15. E-invoice export (PEPPOL BIS Billing 3.0 / LVS EN 16931-1:2017)
-16. UI action menus (split download button, 3-dot menus on all doc pages) + email tracking
-17. Business registry search (UR open data) + VIES VAT validation
+See Section 16 for the full updated git history summary.
 
 ---
 
@@ -794,7 +788,127 @@ Full SEB E-commerce API v4 docs: https://support.ecommerce.sebgroup.com/lv/
 
 ---
 
-## 15. What to Work On Next (Potential)
+## 15. Session: Post-EveryPay Development (2026-03-22 → 2026-03-26)
+
+### Subscription & Payment Fixes
+- **Lifetime license plan** — one-time payment option added alongside monthly/yearly
+- **Payment reference length fix** — EveryPay rejected refs over 20 chars; truncated to fit
+- **Starter plan payment error fix** — corrected yearly prices
+- **Post-payment invoicing** — auto-generates internal subscription invoice after successful payment
+- **VAT-inclusive pricing note** on pricing page
+- **Subscription invoice fix** — uses VAT-exclusive price and marks as paid
+- **Business/individual client type toggle** added to all client forms
+
+### Dashboard & UI Enhancements
+- **Dashboard upgrade** — date range selector, revenue chart (Chart.js), enhanced stats
+- **Hide purchase docs** and expense data when stock management is off
+- **AJAX document filters** — filter documents without page reload, searchable client select dropdowns
+- **Compact layout** for document list
+- **Date inputs** switched to **flatpickr** with dd/mm/yy format across the app
+- **Flatpickr infinite loop fix** when selecting a date
+
+### Reverse Charge Support
+- **Cross-border reverse charge** invoicing for EU B2B transactions
+- Added reverse charge flag to documents
+- E-invoice UBL schema element ordering fix for reverse charge compliance
+
+### Tier & Limit Changes
+- **Free tier limits reduced** — lifetime cap of 10 documents, document trash feature added
+- **Document limits changed** from cumulative total to **monthly counting** (resets each month)
+- **Mini tier added** (€4.99/mo) — positioned between free and starter
+- **Starter plan** recurring invoices limited to 3
+- **Client dropdown widened** for better readability
+
+### Offline Mode (Desktop Deployment)
+- **Full offline mode** (`run_offline.py`) — single-user local deployment for desktop use
+  - Sets `OFFLINE_MODE=1` environment variable
+  - Creates automatic "local" user without login/registration
+  - Uses separate SQLite database at `data/offline.db`
+  - Downloads vendor assets (flatpickr, Chart.js) locally for true offline operation
+  - Auto-opens browser on startup
+  - Auto-assigns **business tier** (all features unlocked, no plan selection)
+  - Skips payment/pricing flows entirely
+- **Launcher scripts:**
+  - `start.bat` — Windows launcher (double-click to run)
+  - `start.command` — macOS launcher
+  - Both handle Python detection, virtual environment creation, dependency installation
+- **`OFFLINE_INSTALL.md`** — Latvian-language installation guide for end users
+
+### License Key Protection (Hardware Fingerprint)
+- **License key system** (`/license` page) — required before accessing the app in offline mode
+  - License entered once, stored in `data/license.key` as JSON
+  - Validates key against hardcoded list in `run_offline.py`
+  - **Machine fingerprint** — SHA-256 hash of hostname + MAC address + OS + CPU count
+  - On first activation: fingerprint saved alongside the key
+  - On subsequent launches: fingerprint re-verified; if hardware changed, license is rejected
+  - Prevents copying the app folder to another PC (different fingerprint = license invalid)
+  - User cannot clear/re-activate — must enter key on original machine
+  - License check runs in `AuthMiddleware` — redirects to `/license` if not licensed
+
+### Offline Onboarding Enhancements
+- **Entity type and name fields** added to setup wizard for offline mode
+  - In offline mode, step 1 shows: entity type radio (Uzņēmums/Privātpersona), company name, reg number, legal address, VAT payer toggle, VAT number
+  - In online mode, these remain as hidden fields (pre-filled from registration)
+  - Selecting "Privātpersona" auto-unchecks VAT payer (individuals can't be VAT payers)
+  - Labels update dynamically: "Uzņēmuma nosaukums" vs "Vārds, Uzvārds", "Reģistrācijas numurs" vs "Personas kods"
+  - **Step 2 VAT rate** is now dynamic — shows/hides based on VAT payer selection from step 1
+  - `offline_mode` flag passed from backend to template context
+
+### Files Added/Modified (Key Changes)
+| File | What changed |
+|------|-------------|
+| `run_offline.py` | Offline launcher with license keys, fingerprint, vendor download |
+| `start.bat` | Windows launcher script |
+| `start.command` | macOS launcher script |
+| `OFFLINE_INSTALL.md` | Installation guide (Latvian) |
+| `app/main.py` | License verification, offline user creation, offline_mode in template context |
+| `app/templates/setup.html` | Entity type/name/VAT fields for offline onboarding, dynamic VAT rate |
+| `app/templates/license.html` | License key entry page |
+
+### Directory Structure Update (Offline additions)
+```
+/home/user/invoicing-app/
+├── run_offline.py             # Offline launcher (license keys, fingerprint, vendor download)
+├── start.bat                  # Windows double-click launcher
+├── start.command              # macOS double-click launcher
+├── OFFLINE_INSTALL.md         # Installation guide (Latvian)
+├── data/
+│   ├── offline.db             # Offline SQLite database (separate from online)
+│   └── license.key            # License key + machine fingerprint (JSON)
+```
+
+---
+
+## 16. Git History Summary (Updated)
+
+The project now has 70+ commits, with the following major phases:
+1. v1 desktop prototype → v2 FastAPI web app
+2. Auth system + multi-tenant SaaS
+3. UI polish (dark theme, mobile, monochrome design)
+4. PDF improvements (fonts, logos, numbering schemes)
+5. Business features (stock, recurring, export, status tracking)
+6. Production deployment (nginx, systemd, SSL)
+7. EveryPay/SEB billing + Brevo email integration
+8. SEB e-commerce compliance (contacts, terms, footer)
+9. Subscription revamp, entity type switcher, VAT payer toggle
+10. Tier-based feature gating (PRO badges, overlays)
+11. Accounting export with custom presets
+12. E-invoice export (PEPPOL BIS Billing 3.0)
+13. UI action menus + email tracking
+14. Business registry search + VIES VAT validation
+15. EveryPay payment fixes + subscription invoice
+16. Dashboard upgrade (chart, date range, enhanced stats)
+17. Reverse charge support for EU cross-border
+18. Date format switch (flatpickr dd/mm/yy)
+19. AJAX filters, searchable dropdowns, compact UI
+20. Tier changes (Mini tier, monthly limits, document trash)
+21. **Offline mode** (desktop deployment, launcher scripts)
+22. **License key protection** (hardware fingerprint locking)
+23. **Offline onboarding** (entity type, name, VAT fields)
+
+---
+
+## 17. What to Work On Next (Potential)
 
 These are areas that may need attention in future sessions:
 - Recurring billing cron job (daily task to auto-charge users via MIT — `db.get_users_due_for_renewal()` + `everypay.charge_mit()` are ready, needs scheduler)
@@ -803,6 +917,7 @@ These are areas that may need attention in future sessions:
 - Automated backups for the SQLite database
 - Password reset via email flow
 - Multi-language support (currently Latvian-only)
-- Dashboard chart visualizations
 - Client-side form validation improvements
 - Automated testing (no tests exist currently)
+- Offline mode: auto-update mechanism for distributing new versions to clients
+- Production go-live for EveryPay (switch from demo to production API)
