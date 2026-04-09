@@ -159,28 +159,28 @@ def _smtp_connect():
 
 
 def _send_email(*, to_email: str, subject: str, body: str,
-                reply_to: str = "", attachment_path: str = ""):
+                reply_to: str = "", attachment_path: str = "", sender_name: str = ""):
     """Send email via SMTP (preferred) or Brevo API fallback."""
     if SMTP_PASS:
         return _send_via_smtp(
             to_email=to_email, subject=subject, body=body,
-            reply_to=reply_to, attachment_path=attachment_path,
+            reply_to=reply_to, attachment_path=attachment_path, sender_name=sender_name,
         )
     if BREVO_API_KEY:
         return _send_via_brevo(
             to_email=to_email, subject=subject, body=body,
-            reply_to=reply_to, attachment_path=attachment_path,
+            reply_to=reply_to, attachment_path=attachment_path, sender_name=sender_name,
         )
     raise RuntimeError("E-pasta serviss nav konfigurēts (nav ne SMTP_PASS, ne BREVO_API_KEY).")
 
 
-def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path=""):
+def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="", sender_name=""):
     """Send email using Brevo HTTP API."""
     import httpx
     import base64
 
     payload = {
-        "sender": {"name": BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
+        "sender": {"name": sender_name or BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
         "to": [{"email": to_email}],
         "subject": subject,
         "textContent": body,
@@ -210,10 +210,13 @@ def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="")
         raise RuntimeError(f"Brevo API kļūda ({resp.status_code}): {resp.text}")
 
 
-def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path=""):
-    """Send email using SMTP (legacy fallback)."""
+def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path="", sender_name=""):
+    """Send email using SMTP."""
     msg = MIMEMultipart()
-    msg["From"] = SMTP_FROM
+    if sender_name:
+        msg["From"] = f"{sender_name} <{SMTP_USER}>"
+    else:
+        msg["From"] = SMTP_FROM
     msg["To"] = to_email
     msg["Subject"] = subject
     if reply_to:
@@ -475,6 +478,7 @@ async def _process_recurring_invoices():
                                 body=f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n\n---\nE-pasts sagatavots un nosūtīts no v-rekini.lv",
                                 reply_to=user_email,
                                 attachment_path=filepath,
+                                sender_name=company_name,
                             )
 
                     # Calculate next run
@@ -2057,6 +2061,7 @@ async def send_document_email(request: Request, doc_id: int):
             body=email_body,
             reply_to=user_email,
             attachment_path=filepath,
+            sender_name=company_name,
         )
     except Exception as e:
         return RedirectResponse(
