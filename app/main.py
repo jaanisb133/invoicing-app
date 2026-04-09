@@ -160,18 +160,18 @@ def _smtp_connect():
 
 def _send_email(*, to_email: str, subject: str, body: str,
                 reply_to: str = "", attachment_path: str = ""):
-    """Send email via Brevo API (preferred) or SMTP fallback."""
-    if BREVO_API_KEY:
-        return _send_via_brevo(
-            to_email=to_email, subject=subject, body=body,
-            reply_to=reply_to, attachment_path=attachment_path,
-        )
+    """Send email via SMTP (preferred) or Brevo API fallback."""
     if SMTP_PASS:
         return _send_via_smtp(
             to_email=to_email, subject=subject, body=body,
             reply_to=reply_to, attachment_path=attachment_path,
         )
-    raise RuntimeError("E-pasta serviss nav konfigurēts (nav ne BREVO_API_KEY, ne SMTP_PASS).")
+    if BREVO_API_KEY:
+        return _send_via_brevo(
+            to_email=to_email, subject=subject, body=body,
+            reply_to=reply_to, attachment_path=attachment_path,
+        )
+    raise RuntimeError("E-pasta serviss nav konfigurēts (nav ne SMTP_PASS, ne BREVO_API_KEY).")
 
 
 def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path=""):
@@ -460,7 +460,7 @@ async def _process_recurring_invoices():
                     filepath = generate_invoice_pdf(doc_id, template=template)
 
                     # Send email if enabled
-                    if rec["send_email"] and (BREVO_API_KEY or SMTP_PASS):
+                    if rec["send_email"] and (SMTP_PASS or BREVO_API_KEY):
                         client = db.get_client(rec["client_id"])
                         if client and client.get("email"):
                             settings = db.get_all_user_settings(rec["user_id"])
@@ -471,8 +471,8 @@ async def _process_recurring_invoices():
 
                             _send_email(
                                 to_email=client["email"],
-                                subject=f"{doc_type_name} Nr. {doc_number} — {company_name}",
-                                body=f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n",
+                                subject=f"{company_name} - {doc_type_name} {doc_number}",
+                                body=f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n\n---\nE-pasts sagatavots un nosūtīts no v-rekini.lv",
                                 reply_to=user_email,
                                 attachment_path=filepath,
                             )
@@ -2031,6 +2031,11 @@ async def send_document_email(request: Request, doc_id: int):
     else:
         display_date = raw_date
 
+    # Build default subject
+    default_subject = f"{company_name} - {doc_type_name} {doc['doc_number']}"
+    custom_subject = form.get("email_subject", "").strip()
+    email_subject = custom_subject if custom_subject else default_subject
+
     # Use custom body if provided, otherwise build default
     custom_body = form.get("email_body", "").strip()
     if custom_body:
@@ -2042,10 +2047,13 @@ async def send_document_email(request: Request, doc_id: int):
         else:
             email_body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}\nDatums: {display_date}\n\nAr cieņu,\n{company_name}\n"
 
+    # Append v-rekini.lv footer
+    email_body += "\n\n---\nE-pasts sagatavots un nosūtīts no v-rekini.lv"
+
     try:
         _send_email(
             to_email=recipient_email,
-            subject=f"{doc_type_name} Nr. {doc['doc_number']} — {company_name}",
+            subject=email_subject,
             body=email_body,
             reply_to=user_email,
             attachment_path=filepath,
