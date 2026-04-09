@@ -167,7 +167,7 @@
         <div class="card-body">
             {% if recent_docs %}
             <div class="table-wrapper">
-                <table>
+                <table class="mobile-cards">
                     <thead>
                         <tr>
                             <th>Nr.</th>
@@ -183,15 +183,15 @@
                     <tbody>
                         {% for doc in recent_docs %}
                         <tr>
-                            <td><strong>{{ doc.doc_number }}</strong></td>
-                            <td>
+                            <td data-label="Nr."><strong>{{ doc.doc_number }}</strong></td>
+                            <td data-label="Tips">
                                 {% if doc.doc_type == 'buy' %}
                                 <span class="badge badge-buy">Iegāde</span>
                                 {% else %}
                                 <span class="badge badge-sell">Pārdošana</span>
                                 {% endif %}
                             </td>
-                            <td>{{ doc.client_name }}</td>
+                            <td data-label="Klients">{{ doc.client_name }}</td>
                             <td class="text-muted">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <td>

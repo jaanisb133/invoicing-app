@@ -124,7 +124,7 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
             </div>
 
             <div class="table-wrapper">
-                <table>
+                <table class="mobile-cards">
                     <thead>
                         <tr>
                             <th>Nr.</th>
@@ -142,17 +142,17 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
                     {% if documents %}
                         {% for doc in documents %}
                         <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
-                            <td>{{ doc.doc_number }}</td>
-                            <td>
+                            <td data-label="Nr.">{{ doc.doc_number }}</td>
+                            <td data-label="Tips">
                                 {% if doc.doc_type == 'buy' %}
                                 <span class="badge badge-buy">Iegāde</span>
                                 {% else %}
                                 <span class="badge badge-sell">Pārdošana</span>
                                 {% endif %}
                             </td>
-                            <td>{{ doc.client_name }}</td>
-                            <td>{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
-                            <td>{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
+                            <td data-label="Klients">{{ doc.client_name }}</td>
+                            <td data-label="Datums">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
+                            <td data-label="Summa">{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <td>
                                 <span class="badge badge-status {% if doc.status == 'paid' %}badge-paid{% else %}badge-issued{% endif %}"
@@ -407,11 +407,11 @@ function renderDocs(docs) {
             statusHtml = '<td><span class="badge badge-status ' + (isPaid ? 'badge-paid' : 'badge-issued') + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" title="Noklikšķiniet, lai mainītu statusu">' + (isPaid ? 'Apmaksāts' : 'Izrakstīts') + '</span></td>';
         }
         html += '<tr data-href="/documents/' + d.id + '" class="clickable-row">'
-            + '<td>' + d.doc_number + '</td>'
-            + '<td>' + badge + '</td>'
-            + '<td>' + (d.client_name || '') + '</td>'
-            + '<td>' + fmtDate(d.doc_date) + '</td>'
-            + '<td>' + d.total_with_vat.toFixed(2) + ' €</td>'
+            + '<td data-label="Nr.">' + d.doc_number + '</td>'
+            + '<td data-label="Tips">' + badge + '</td>'
+            + '<td data-label="Klients">' + (d.client_name || '') + '</td>'
+            + '<td data-label="Datums">' + fmtDate(d.doc_date) + '</td>'
+            + '<td data-label="Summa">' + d.total_with_vat.toFixed(2) + ' €</td>'
             + statusHtml
             + '<td>' + menuHtml(d) + '</td>'
             + '</tr>';

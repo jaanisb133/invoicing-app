@@ -27,7 +27,7 @@
         <div class="card-body">
             {% if clients %}
             <div class="table-wrapper">
-                <table>
+                <table class="mobile-cards">
                     <thead>
                         <tr>
                             <th>Nosaukums</th>
@@ -41,11 +41,11 @@
                     <tbody>
                         {% for c in clients %}
                         <tr>
-                            <td>{{ c.name }}</td>
-                            <td>{{ c.reg_number or '—' }}</td>
-                            <td>{{ c.vat_number or '—' }}</td>
-                            <td>{{ c.contact_person or '—' }}</td>
-                            <td>{{ c.phone or '—' }}</td>
+                            <td data-label="Nosaukums">{{ c.name }}</td>
+                            <td data-label="Reģ. Nr.">{{ c.reg_number or '—' }}</td>
+                            <td data-label="PVN Nr.">{{ c.vat_number or '—' }}</td>
+                            <td data-label="Kontaktpersona">{{ c.contact_person or '—' }}</td>
+                            <td data-label="Tālrunis">{{ c.phone or '—' }}</td>
                             <td>
                                 <div class="btn-group">
                                     <button class="btn btn-outline btn-sm"
