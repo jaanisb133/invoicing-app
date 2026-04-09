@@ -201,7 +201,7 @@
                 <input type="text" name="email_subject" class="form-control" value="{{ default_subject }}">
             </div>
             <div style="background:var(--bg);border-radius:var(--radius);padding:10px 16px;font-size:12px;margin-bottom:16px;border:1px solid var(--border);color:var(--text-light)">
-                No: V-Rēķini &lt;rekini@v-rekini.lv&gt;
+                No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;
                 {% if request.state.user.email %} · Atbildēt uz: {{ request.state.user.email }}{% endif %}
                  · Pielikums: {{ doc.doc_number }}.pdf
             </div>
