@@ -890,6 +890,19 @@ select.form-control { cursor: pointer; }
     /* Make inputs inside fill their cells */
     .doc-items-table td select,
     .doc-items-table td input { width: 100% !important; }
+    /* Totals footer — right-aligned clean layout */
+    .doc-items-table tfoot tr {
+        display: flex !important;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+        align-items: baseline;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: none !important;
+    }
+    .doc-items-table tfoot td { flex: none !important; border: none !important; padding: 2px 0 !important; }
+    .doc-items-table tfoot td[colspan] { text-align: right; }
+    .doc-items-table tfoot td:empty { display: none !important; }
 
     /* Document editor */
     .doc-actions-bar { gap: 8px; }
