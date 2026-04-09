@@ -864,7 +864,7 @@ select.form-control { cursor: pointer; }
     .mobile-cards tbody td:last-child { justify-content: flex-end; }
     .mobile-cards tbody td:last-child::before { display: none; }
 
-    /* Document form items — compact on mobile */
+    /* Document form items — full-width stacked layout on mobile */
     .doc-items-table { font-size: 13px; }
     .doc-items-table thead { display: none; }
     .doc-items-table tbody tr,
@@ -876,13 +876,20 @@ select.form-control { cursor: pointer; }
         border-bottom: 1px solid var(--border-light);
         align-items: center;
     }
-    .doc-items-table td { border-bottom: none; padding: 2px 0; }
+    .doc-items-table td { border-bottom: none; padding: 2px 0; width: auto !important; }
+    /* Row 1: Product select — full width */
     .doc-items-table td:first-child { flex: 1 1 100%; }
-    .doc-items-table td:nth-child(2) { flex: 0 0 auto; min-width: 70px; }
-    .doc-items-table td:nth-child(3),
-    .doc-items-table td:nth-child(4) { flex: 1 1 60px; min-width: 60px; }
-    .doc-items-table td:nth-child(5) { flex: 0 0 auto; font-weight: 600; min-width: 60px; text-align: right; }
+    /* Row 2: Unit (50%) + Quantity (50%) */
+    .doc-items-table td:nth-child(2) { flex: 1 1 calc(50% - 3px); min-width: 0; }
+    .doc-items-table td:nth-child(3) { flex: 1 1 calc(50% - 3px); min-width: 0; }
+    /* Row 3: Price — full width */
+    .doc-items-table td:nth-child(4) { flex: 1 1 100%; }
+    /* Row 4: Total + Delete button */
+    .doc-items-table td:nth-child(5) { flex: 1 1 auto; font-weight: 600; text-align: right; }
     .doc-items-table td:last-child { flex: 0 0 auto; }
+    /* Make inputs inside fill their cells */
+    .doc-items-table td select,
+    .doc-items-table td input { width: 100% !important; }
 
     /* Document editor */
     .doc-actions-bar { gap: 8px; }
