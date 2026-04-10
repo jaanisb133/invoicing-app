@@ -435,9 +435,9 @@ function addItemRow(presetProduct, presetUnit, presetQty, presetPrice) {
             </div>
             <div class="stock-hint" id="stock-hint-${idx}"></div>
         </td>
-        <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control" ${stockEnabled ? 'disabled' : ''}>${unitOptions}</select>${stockEnabled ? `<input type="hidden" name="items[${idx}][unit]" id="unit-hidden-${idx}" value="${presetUnit || units[0]}">` : ''}</td>
-        <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" onchange="recalculate()" oninput="recalculate()" required></td>
-        <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" onchange="recalculate()" oninput="recalculate()" required></td>
+        <td data-label="Mērvienība"><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control" ${stockEnabled ? 'disabled' : ''}>${unitOptions}</select>${stockEnabled ? `<input type="hidden" name="items[${idx}][unit]" id="unit-hidden-${idx}" value="${presetUnit || units[0]}">` : ''}</td>
+        <td data-label="Daudzums"><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" placeholder="Daudzums" onchange="recalculate()" oninput="recalculate()" required></td>
+        <td data-label="Cena"><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" placeholder="Cena" onchange="recalculate()" oninput="recalculate()" required></td>
         <td class="item-total text-right" id="total-${idx}">0.00</td>
         <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
     `;
