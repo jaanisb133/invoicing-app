@@ -1875,6 +1875,12 @@ def _render_recurring_form(request: Request, recurring=None, error: str = ""):
     default_email_body = settings.get("email_template", "") or DEFAULT_RECURRING_EMAIL_BODY
     default_email_subject = "{doc_type} Nr. {doc_number} — {company}"
 
+    selected_client_name = ""
+    if recurring:
+        client = db.get_client(recurring.get("client_id"))
+        if client:
+            selected_client_name = client.get("name", "")
+
     ctx.update({
         "recurring": recurring,
         "edit_mode": recurring is not None,
@@ -1888,6 +1894,7 @@ def _render_recurring_form(request: Request, recurring=None, error: str = ""):
         "today": datetime.date.today().isoformat(),
         "default_email_body": default_email_body,
         "default_email_subject": default_email_subject,
+        "selected_client_name": selected_client_name,
         "error": error,
         "page": "recurring",
     })

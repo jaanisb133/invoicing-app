@@ -17,17 +17,6 @@
     <div class="alert alert-danger">{{ error }}</div>
     {% endif %}
 
-    {% if not clients %}
-    <div class="alert alert-warning">
-        Lai izveidotu periodisko rēķinu, vispirms <a href="/clients">pievienojiet klientu</a>.
-    </div>
-    {% endif %}
-    {% if not products %}
-    <div class="alert alert-warning">
-        Lai izveidotu periodisko rēķinu, vispirms <a href="/products">pievienojiet produktu vai pakalpojumu</a>.
-    </div>
-    {% endif %}
-
     <form method="post" action="{% if edit_mode %}/recurring/{{ recurring.id }}/update{% else %}/recurring/create{% endif %}" id="recForm">
         <input type="hidden" name="doc_type" value="{{ recurring.doc_type if edit_mode else 'sell' }}">
 
@@ -37,12 +26,21 @@
                 <div class="form-row-3">
                     <div class="form-group">
                         <label>Klients *</label>
-                        <select name="client_id" class="form-control" required>
-                            <option value="">— Izvēlieties klientu —</option>
-                            {% for c in clients %}
-                            <option value="{{ c.id }}" {% if edit_mode and recurring.client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
-                            {% endfor %}
-                        </select>
+                        <div style="display:flex;gap:8px;align-items:flex-start">
+                            <div class="registry-wrapper" style="flex:1">
+                                <input type="text" id="clientSearch" class="form-control"
+                                       autocomplete="off"
+                                       placeholder="Sāciet rakstīt klienta nosaukumu..."
+                                       value="{{ selected_client_name }}">
+                                <input type="hidden" name="client_id" id="clientId"
+                                       value="{{ recurring.client_id if edit_mode else '' }}">
+                                <div class="registry-dropdown" id="clientDropdown"></div>
+                            </div>
+                            <button type="button" class="btn btn-success btn-sm"
+                                    onclick="showQuickAddClient()"
+                                    title="Ātri pievienot klientu"
+                                    style="font-size:16px;padding:6px 12px;flex-shrink:0">+</button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Biežums *</label>
@@ -96,7 +94,10 @@
         <div class="card">
             <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
                 <span>Pakalpojumi / Preces</span>
-                <button type="button" class="btn btn-primary btn-sm" onclick="addItemRow()">+ Pievienot rindu</button>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="showQuickAddProduct()">+ Jauns produkts</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="addItemRow()">+ Pievienot rindu</button>
+                </div>
             </div>
             <div class="card-body">
                 <div class="table-wrapper">
@@ -174,16 +175,181 @@
         </button>
     </form>
 </div>
+
+<!-- Quick Add Client Modal -->
+<div class="modal-overlay" id="quickAddClientModal">
+    <div class="modal">
+        <div class="modal-title">Ātrā klienta pievienošana</div>
+        <div class="form-group">
+            <label>Nosaukums *</label>
+            <div class="registry-wrapper">
+                <input type="text" id="qc_name" class="form-control" required
+                       autocomplete="off" placeholder="Sāciet rakstīt uzņēmuma nosaukumu...">
+                <div class="registry-dropdown" id="qc_registry_dropdown"></div>
+            </div>
+            <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
+        </div>
+        <div class="form-group">
+            <label>Reģ. Nr.</label>
+            <input type="text" id="qc_reg_number" class="form-control">
+        </div>
+        <div class="form-group">
+            <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="qc_vat_payer" value="1"
+                       style="width:18px;height:18px;cursor:pointer"
+                       onchange="document.getElementById('qc_vat_group').style.display=this.checked?'':'none'">
+                Ir PVN maksātājs?
+            </label>
+        </div>
+        <div class="form-group" id="qc_vat_group" style="display:none">
+            <label>PVN Nr.</label>
+            <input type="text" id="qc_vat_number" class="form-control">
+            <button type="button" class="vat-validate-btn" onclick="validateVat('qc_vat_number', 'qc_vat_status')">&#x2713; Pārbaudīt VIES</button>
+            <div class="vat-status" id="qc_vat_status"></div>
+        </div>
+        <div class="form-group">
+            <label>Juridiskā adrese</label>
+            <input type="text" id="qc_legal_address" class="form-control">
+        </div>
+        <div class="form-group">
+            <label>E-pasts</label>
+            <input type="email" id="qc_email" class="form-control"
+                   placeholder="klients@uzņēmums.lv">
+            <span style="font-size:12px;color:var(--text-light)">Vajadzīgs, lai automātiski sūtītu rēķinus</span>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Banka</label>
+                <input type="text" id="qc_bank_name" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Bankas konts</label>
+                <input type="text" id="qc_bank_account" class="form-control">
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-outline"
+                    onclick="document.getElementById('quickAddClientModal').classList.remove('active')">Atcelt</button>
+            <button type="button" class="btn btn-primary" onclick="quickAddClient()">Pievienot</button>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Add Product Modal -->
+<div class="modal-overlay" id="quickAddProductModal">
+    <div class="modal">
+        <div class="modal-title">Ātrā produkta / pakalpojuma pievienošana</div>
+        <div class="form-group">
+            <label>Nosaukums *</label>
+            <input type="text" id="qp_name" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label>Mērvienība</label>
+            <select id="qp_unit" class="form-control">
+                {% for u in units %}
+                <option value="{{ u }}">{{ u }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-outline"
+                    onclick="document.getElementById('quickAddProductModal').classList.remove('active')">Atcelt</button>
+            <button type="button" class="btn btn-primary" onclick="quickAddProduct()">Pievienot</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const products = {{ products | tojson }};
+let products = {{ products | tojson }};
+let clientsData = {{ clients | tojson }};
 const units = {{ units | tojson }};
 const isVatPayer = {{ 'true' if settings.get('is_vat_payer', '1') == '1' else 'false' }};
 const presetItems = {{ items_pre | tojson }};
 let itemIndex = 0;
+let quickAddProductTargetRow = null;
 
+/* ---------- Searchable Client Picker ---------- */
+(function() {
+    let highlightIdx = -1;
+    const searchInput = document.getElementById('clientSearch');
+    const hiddenId = document.getElementById('clientId');
+    const dropdown = document.getElementById('clientDropdown');
+
+    function renderResults(query) {
+        const q = query.trim().toLowerCase();
+        const matches = q
+            ? clientsData.filter(c => (c.name || '').toLowerCase().includes(q))
+            : clientsData.slice(0, 30);
+        if (!matches.length) {
+            dropdown.innerHTML = '<div class="registry-item" style="cursor:default;color:var(--text-light)">Nav atrasts. Izmantojiet "+" pogu, lai pievienotu jaunu klientu.</div>';
+            dropdown.classList.add('active');
+            highlightIdx = -1;
+            return;
+        }
+        dropdown.innerHTML = matches.map(c => `
+            <div class="registry-item" data-id="${c.id}" data-name="${(c.name || '').replace(/"/g, '&quot;')}">
+                <div class="registry-item-name">${escapeHtml(c.name)}</div>
+                ${c.reg_number ? '<div class="registry-item-details"><span class="registry-item-regcode">' + escapeHtml(c.reg_number) + '</span></div>' : ''}
+            </div>
+        `).join('');
+        dropdown.querySelectorAll('.registry-item[data-id]').forEach(el => {
+            el.addEventListener('click', () => {
+                selectClient(el.dataset.id, el.dataset.name);
+            });
+        });
+        highlightIdx = -1;
+        dropdown.classList.add('active');
+    }
+
+    function selectClient(id, name) {
+        hiddenId.value = id;
+        searchInput.value = name;
+        dropdown.classList.remove('active');
+    }
+
+    function highlight(items) {
+        items.forEach((el, i) => el.classList.toggle('selected', i === highlightIdx));
+        if (highlightIdx >= 0 && items[highlightIdx]) {
+            items[highlightIdx].scrollIntoView({block: 'nearest'});
+        }
+    }
+
+    searchInput.addEventListener('input', function() {
+        // Typing invalidates the previously-picked client until they pick again
+        hiddenId.value = '';
+        renderResults(this.value);
+    });
+
+    searchInput.addEventListener('focus', function() {
+        renderResults(this.value);
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        const items = dropdown.querySelectorAll('.registry-item[data-id]');
+        if (!dropdown.classList.contains('active') || !items.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); highlightIdx = Math.min(highlightIdx + 1, items.length - 1); highlight(items); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); highlightIdx = Math.max(highlightIdx - 1, 0); highlight(items); }
+        else if (e.key === 'Enter' && highlightIdx >= 0) { e.preventDefault(); items[highlightIdx].click(); }
+        else if (e.key === 'Escape') { dropdown.classList.remove('active'); }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#clientSearch') && !e.target.closest('#clientDropdown')) {
+            dropdown.classList.remove('active');
+        }
+    });
+
+    // Expose for quick-add to call after creating a new client
+    window._selectClient = selectClient;
+})();
+
+function escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ---------- Items ---------- */
 function addItemRow(preset) {
     const idx = itemIndex++;
     const tr = document.createElement('tr');
@@ -193,7 +359,7 @@ function addItemRow(preset) {
     let productOptions = '<option value="">— Produkts —</option>';
     products.forEach(p => {
         const selected = preset && preset.product_id == p.id ? ' selected' : '';
-        productOptions += '<option value="' + p.id + '" data-unit="' + p.unit + '"' + selected + '>' + p.name + '</option>';
+        productOptions += '<option value="' + p.id + '" data-unit="' + p.unit + '"' + selected + '>' + escapeHtml(p.name) + '</option>';
     });
 
     const presetUnit = preset ? preset.unit : '';
@@ -208,9 +374,12 @@ function addItemRow(preset) {
 
     tr.innerHTML = `
         <td>
-            <select name="items[${idx}][product_id]" class="form-control" onchange="onProductChange(this, ${idx})" required>
-                ${productOptions}
-            </select>
+            <div style="display:flex;gap:4px">
+                <select name="items[${idx}][product_id]" class="form-control" onchange="onProductChange(this, ${idx})" required>
+                    ${productOptions}
+                </select>
+                <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddProduct(this)" style="flex-shrink:0;font-size:14px;padding:4px 8px" title="Ātri pievienot produktu">+</button>
+            </div>
         </td>
         <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control">${unitOptions}</select></td>
         <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" oninput="recalculate()" required></td>
@@ -267,7 +436,205 @@ function toggleEmailSection() {
     document.getElementById('emailSection').style.display = checked ? '' : 'none';
 }
 
-// Initial render
+/* ---------- Quick Add Client ---------- */
+function showQuickAddClient() {
+    document.getElementById('quickAddClientModal').classList.add('active');
+    document.getElementById('qc_name').focus();
+}
+
+(function() {
+    let timer = null, idx = -1;
+    const nameInput = document.getElementById('qc_name');
+    const dropdown = document.getElementById('qc_registry_dropdown');
+    if (!nameInput || !dropdown) return;
+
+    nameInput.addEventListener('input', function() {
+        clearTimeout(timer);
+        const q = this.value.trim();
+        if (q.length < 2) { dropdown.classList.remove('active'); return; }
+        timer = setTimeout(() => doSearch(q), 250);
+    });
+
+    nameInput.addEventListener('keydown', function(e) {
+        const items = dropdown.querySelectorAll('.registry-item');
+        if (!dropdown.classList.contains('active') || !items.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, items.length - 1); hl(items); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); hl(items); }
+        else if (e.key === 'Enter' && idx >= 0) { e.preventDefault(); items[idx].click(); }
+        else if (e.key === 'Escape') { dropdown.classList.remove('active'); }
+    });
+
+    function hl(items) {
+        items.forEach((el, i) => el.classList.toggle('selected', i === idx));
+        if (idx >= 0 && items[idx]) items[idx].scrollIntoView({block: 'nearest'});
+    }
+
+    async function doSearch(q) {
+        try {
+            const resp = await fetch('/api/registry/search?q=' + encodeURIComponent(q));
+            const data = await resp.json();
+            if (!data.length) { dropdown.classList.remove('active'); return; }
+            dropdown.innerHTML = data.map(b => `
+                <div class="registry-item" data-regcode="${b.regcode}" data-name="${(b.name || '').replace(/"/g, '&quot;')}"
+                     data-address="${(b.address||'').replace(/"/g, '&quot;')}" data-type="${(b.type_text||'').replace(/"/g, '&quot;')}">
+                    <div class="registry-item-name">${escapeHtml(b.name)}</div>
+                    <div class="registry-item-details"><span class="registry-item-regcode">${escapeHtml(b.regcode)}</span> <span class="registry-item-type">${escapeHtml(b.type_text || '')}</span></div>
+                    ${b.address ? '<div class="registry-item-details">' + escapeHtml(b.address) + '</div>' : ''}
+                </div>
+            `).join('');
+            dropdown.querySelectorAll('.registry-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    document.getElementById('qc_name').value = el.dataset.name;
+                    document.getElementById('qc_reg_number').value = el.dataset.regcode;
+                    document.getElementById('qc_legal_address').value = el.dataset.address;
+                    const type = (el.dataset.type || '').toLowerCase();
+                    const isBusiness = type.includes('sabiedr') || type.includes('akciju') || type.includes('komersants');
+                    document.getElementById('qc_vat_payer').checked = isBusiness;
+                    document.getElementById('qc_vat_group').style.display = isBusiness ? '' : 'none';
+                    document.getElementById('qc_vat_number').value = isBusiness ? 'LV' + el.dataset.regcode : '';
+                    document.getElementById('qc_vat_status').textContent = '';
+                    document.getElementById('qc_vat_status').className = 'vat-status';
+                    dropdown.classList.remove('active');
+                });
+            });
+            idx = -1;
+            dropdown.classList.add('active');
+        } catch(e) { dropdown.classList.remove('active'); }
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#quickAddClientModal .registry-wrapper')) {
+            dropdown.classList.remove('active');
+        }
+    });
+})();
+
+async function validateVat(inputId, statusId) {
+    const input = document.getElementById(inputId);
+    const status = document.getElementById(statusId);
+    const vat = input.value.trim();
+    if (!vat) { status.textContent = ''; return; }
+    status.textContent = 'Pārbauda...';
+    status.className = 'vat-status';
+    try {
+        const resp = await fetch('/api/vat/validate?vat_number=' + encodeURIComponent(vat));
+        const data = await resp.json();
+        if (data.valid) {
+            status.textContent = '✓ Derīgs PVN numurs' + (data.name ? ' — ' + data.name : '');
+            status.className = 'vat-status valid';
+        } else {
+            status.textContent = '✗ ' + (data.error || 'Nederīgs PVN numurs');
+            status.className = 'vat-status invalid';
+        }
+    } catch(e) {
+        status.textContent = '✗ Neizdevās pārbaudīt';
+        status.className = 'vat-status invalid';
+    }
+}
+
+async function quickAddClient() {
+    const data = {
+        name: document.getElementById('qc_name').value,
+        reg_number: document.getElementById('qc_reg_number').value,
+        vat_number: document.getElementById('qc_vat_number').value,
+        vat_payer: document.getElementById('qc_vat_payer').checked ? 1 : 0,
+        legal_address: document.getElementById('qc_legal_address').value,
+        email: document.getElementById('qc_email').value,
+        bank_name: document.getElementById('qc_bank_name').value,
+        bank_account: document.getElementById('qc_bank_account').value,
+    };
+    if (!data.name) return;
+
+    const resp = await fetch('/api/clients/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+
+    if (!resp.ok) {
+        if (result.duplicate && result.client) {
+            const existing = clientsData.find(c => c.id == result.client.id);
+            if (!existing) clientsData.push(result.client);
+            window._selectClient(result.client.id, result.client.name);
+            document.getElementById('quickAddClientModal').classList.remove('active');
+            alert(result.error);
+            return;
+        }
+        alert(result.error || 'Kļūda saglabājot klientu');
+        return;
+    }
+
+    clientsData.push(result);
+    window._selectClient(result.id, result.name);
+
+    document.getElementById('quickAddClientModal').classList.remove('active');
+    ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_email', 'qc_bank_name', 'qc_bank_account'].forEach(
+        id => document.getElementById(id).value = ''
+    );
+    document.getElementById('qc_vat_payer').checked = false;
+    document.getElementById('qc_vat_group').style.display = 'none';
+    document.getElementById('qc_vat_status').textContent = '';
+}
+
+/* ---------- Quick Add Product ---------- */
+function showQuickAddProduct(rowBtn) {
+    quickAddProductTargetRow = rowBtn ? rowBtn.closest('.item-row') : null;
+    document.getElementById('quickAddProductModal').classList.add('active');
+    document.getElementById('qp_name').focus();
+}
+
+async function quickAddProduct() {
+    const name = document.getElementById('qp_name').value;
+    const unit = document.getElementById('qp_unit').value;
+    if (!name) return;
+
+    const resp = await fetch('/api/products/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, unit})
+    });
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert(err.error || 'Kļūda saglabājot produktu');
+        return;
+    }
+    const product = await resp.json();
+    products.push(product);
+
+    // Add the new product as an option in every existing row
+    document.querySelectorAll('.item-row select[name*="product_id"]').forEach(select => {
+        const opt = new Option(product.name, product.id);
+        opt.dataset.unit = product.unit;
+        select.add(opt);
+    });
+
+    if (quickAddProductTargetRow) {
+        const sel = quickAddProductTargetRow.querySelector('select[name*="product_id"]');
+        if (sel) {
+            sel.value = product.id;
+            sel.dispatchEvent(new Event('change'));
+        }
+    } else {
+        // Opened from header — add a new row pre-selected with this product
+        addItemRow({product_id: product.id, unit: product.unit, quantity: 1, price_per_unit: 0});
+    }
+
+    document.getElementById('quickAddProductModal').classList.remove('active');
+    document.getElementById('qp_name').value = '';
+    quickAddProductTargetRow = null;
+}
+
+/* ---------- Form submit validation ---------- */
+document.getElementById('recForm').addEventListener('submit', function(e) {
+    if (!document.getElementById('clientId').value) {
+        e.preventDefault();
+        document.getElementById('clientSearch').focus();
+        alert('Lūdzu, izvēlieties klientu no saraksta');
+    }
+});
+
+/* ---------- Initial render ---------- */
 if (presetItems && presetItems.length > 0) {
     presetItems.forEach(it => addItemRow(it));
 } else {
