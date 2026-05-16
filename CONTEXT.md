@@ -68,7 +68,8 @@
 │       ├── clients.html           # Client CRUD
 │       ├── products.html          # Product/service CRUD
 │       ├── stock.html             # Inventory dashboard
-│       ├── recurring.html         # Recurring invoice management
+│       ├── recurring.html         # Recurring invoice list
+│       ├── recurring_form.html    # Create/edit recurring schedule (no source doc needed)
 │       ├── export.html            # Bulk PDF/ZIP + e-invoice XML export
 │       ├── settings.html          # Company & document config (20KB)
 │       ├── account.html           # User profile & password
@@ -144,6 +145,7 @@
 9. **recurring_invoices** — Scheduled auto-generation
    - `id, user_id, doc_type, client_id, vat_rate, notes, template`
    - `frequency, next_run, send_email, active`
+   - `email_subject, email_body` — per-schedule custom email template (with `{doc_number}`, `{doc_type}`, `{date}`, `{company}`, `{client_name}` variables)
    - `items_json` (serialized line items), `created_at`
 
 10. **email_log** — Tracks emails sent per user (for monthly limit enforcement)
@@ -394,7 +396,11 @@
 
 ### Stock, Recurring, Export
 - `GET /stock`, `GET /api/stock/{product_id}`
-- `GET /recurring`, `POST /recurring/create`, `POST /recurring/from-document/{id}`, `POST /recurring/{id}/toggle`, `POST /recurring/{id}/delete`
+- `GET /recurring`, `GET /recurring/new`, `POST /recurring/create`
+- `GET /recurring/{id}/edit`, `POST /recurring/{id}/update`
+- `POST /recurring/from-document/{id}` (legacy "create from doc" flow, still supported)
+- `POST /recurring/{id}/toggle`, `POST /recurring/{id}/delete`
+- Direct-create form (`/recurring/new`) lets users build a recurring schedule without an existing source document: pick client, product(s), price, first-send date, frequency, and customize the email subject/body that goes out with each generated invoice.
 - `GET /export`, `POST /export/pdf`, `POST /export/einvoice`, `POST /export/accounting`
 - `POST /api/accounting-presets/save`, `GET /api/accounting-presets`
 

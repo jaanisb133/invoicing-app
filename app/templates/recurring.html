@@ -3,6 +3,9 @@
 {% block content %}
 <div class="page-header">
     <h2>Periodiskie rēķini</h2>
+    {% if tier_limits.recurring %}
+    <a href="/recurring/new" class="btn btn-primary">+ Jauns periodiskais rēķins</a>
+    {% endif %}
 </div>
 
 <div class="page-body{% if not tier_limits.recurring %} page-gated{% endif %}">
@@ -13,6 +16,9 @@
     {% endif %}
     {% if request.query_params.get('created') %}
     <div class="alert alert-success">Periodiskais rēķins veiksmīgi izveidots!</div>
+    {% endif %}
+    {% if request.query_params.get('updated') %}
+    <div class="alert alert-success">Periodiskais rēķins atjaunināts!</div>
     {% endif %}
     {% if request.query_params.get('error') == 'no_items' %}
     <div class="alert alert-danger">Jāpievieno vismaz viena pozīcija.</div>
@@ -63,12 +69,13 @@
                             </td>
                             <td>
                                 <div class="btn-group">
-                                    <form method="post" action="/recurring/{{ rec.id }}/toggle">
+                                    <a href="/recurring/{{ rec.id }}/edit" class="btn btn-outline btn-sm">Rediģēt</a>
+                                    <form method="post" action="/recurring/{{ rec.id }}/toggle" style="margin:0">
                                         <button type="submit" class="btn btn-outline btn-sm">
                                             {% if rec.active %}Apturēt{% else %}Aktivizēt{% endif %}
                                         </button>
                                     </form>
-                                    <form method="post" action="/recurring/{{ rec.id }}/delete"
+                                    <form method="post" action="/recurring/{{ rec.id }}/delete" style="margin:0"
                                           onsubmit="return confirm('Vai tiešām dzēst šo periodisko rēķinu?')">
                                         <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
                                     </form>
@@ -86,9 +93,12 @@
         <div class="card-body">
             <div class="empty-state">
                 <p>Nav periodisko rēķinu.</p>
+                {% if tier_limits.recurring %}
                 <p style="font-size:13px;color:var(--text-light);margin-top:8px">
-                    Lai izveidotu periodisku rēķinu, atveriet esošu dokumentu un nospiediet pogu "Periodiskais rēķins".
+                    Izveidojiet jaunu periodisko rēķinu un automatizējiet sava klienta apmaksas.
                 </p>
+                <a href="/recurring/new" class="btn btn-primary" style="margin-top:12px">+ Jauns periodiskais rēķins</a>
+                {% endif %}
             </div>
         </div>
     </div>

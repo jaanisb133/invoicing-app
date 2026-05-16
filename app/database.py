@@ -161,6 +161,8 @@ def init_db():
             frequency TEXT NOT NULL DEFAULT 'monthly',
             next_run DATE NOT NULL,
             send_email INTEGER NOT NULL DEFAULT 0,
+            email_subject TEXT NOT NULL DEFAULT '',
+            email_body TEXT NOT NULL DEFAULT '',
             active INTEGER NOT NULL DEFAULT 1,
             items_json TEXT NOT NULL DEFAULT '[]',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -227,6 +229,13 @@ def _run_migrations():
     client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
     if "vat_payer" not in client_cols:
         cursor.execute("ALTER TABLE clients ADD COLUMN vat_payer INTEGER NOT NULL DEFAULT 0")
+
+    # Add email_subject / email_body to recurring_invoices if missing
+    rec_cols = {row[1] for row in cursor.execute("PRAGMA table_info(recurring_invoices)").fetchall()}
+    if "email_subject" not in rec_cols:
+        cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN email_subject TEXT NOT NULL DEFAULT ''")
+    if "email_body" not in rec_cols:
+        cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN email_body TEXT NOT NULL DEFAULT ''")
 
     # Create user_settings table if not exists
     cursor.execute("""
@@ -1204,19 +1213,39 @@ def log_email_sent(user_id: int, document_id: int, recipient: str):
 # --- Recurring Invoices ---
 
 def create_recurring_invoice(user_id, doc_type, client_id, vat_rate, notes, template,
-                             frequency, next_run, send_email, items_json):
+                             frequency, next_run, send_email, items_json,
+                             email_subject="", email_body=""):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO recurring_invoices
-           (user_id, doc_type, client_id, vat_rate, notes, template, frequency, next_run, send_email, items_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (user_id, doc_type, client_id, vat_rate, notes, template, frequency,
+            next_run, send_email, email_subject, email_body, items_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (user_id, doc_type, client_id, vat_rate, notes, template, frequency, next_run,
-         1 if send_email else 0, items_json)
+         1 if send_email else 0, email_subject, email_body, items_json)
     )
     rid = cursor.lastrowid
     conn.commit()
     conn.close()
     return rid
+
+
+def update_recurring_invoice(user_id, recurring_id, doc_type, client_id, vat_rate, notes,
+                             template, frequency, next_run, send_email, items_json,
+                             email_subject="", email_body=""):
+    conn = get_connection()
+    conn.execute(
+        """UPDATE recurring_invoices
+           SET doc_type = ?, client_id = ?, vat_rate = ?, notes = ?, template = ?,
+               frequency = ?, next_run = ?, send_email = ?, email_subject = ?,
+               email_body = ?, items_json = ?
+           WHERE id = ? AND user_id = ?""",
+        (doc_type, client_id, vat_rate, notes, template, frequency, next_run,
+         1 if send_email else 0, email_subject, email_body, items_json,
+         recurring_id, user_id)
+    )
+    conn.commit()
+    conn.close()
 
 
 def get_recurring_invoices(user_id):

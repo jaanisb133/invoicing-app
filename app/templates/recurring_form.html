@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>
+        {% if edit_mode %}
+            Rediģēt periodisko rēķinu
+        {% else %}
+            Jauns periodiskais rēķins
+        {% endif %}
+    </h2>
+    <a href="/recurring" class="btn btn-outline">Atcelt</a>
+</div>
+
+<div class="page-body">
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    {% if not clients %}
+    <div class="alert alert-warning">
+        Lai izveidotu periodisko rēķinu, vispirms <a href="/clients">pievienojiet klientu</a>.
+    </div>
+    {% endif %}
+    {% if not products %}
+    <div class="alert alert-warning">
+        Lai izveidotu periodisko rēķinu, vispirms <a href="/products">pievienojiet produktu vai pakalpojumu</a>.
+    </div>
+    {% endif %}
+
+    <form method="post" action="{% if edit_mode %}/recurring/{{ recurring.id }}/update{% else %}/recurring/create{% endif %}" id="recForm">
+        <input type="hidden" name="doc_type" value="{{ recurring.doc_type if edit_mode else 'sell' }}">
+
+        <div class="card">
+            <div class="card-header">Pamatdati</div>
+            <div class="card-body">
+                <div class="form-row-3">
+                    <div class="form-group">
+                        <label>Klients *</label>
+                        <select name="client_id" class="form-control" required>
+                            <option value="">— Izvēlieties klientu —</option>
+                            {% for c in clients %}
+                            <option value="{{ c.id }}" {% if edit_mode and recurring.client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Biežums *</label>
+                        <select name="frequency" id="freqSelect" class="form-control" required>
+                            {% for key, label in frequency_labels.items() %}
+                            <option value="{{ key }}" {% if edit_mode and recurring.frequency == key %}selected{% elif not edit_mode and key == 'monthly' %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Pirmā izpilde *</label>
+                        <input type="date" name="next_run" id="nextRun" class="form-control"
+                               value="{{ recurring.next_run if edit_mode else today }}"
+                               min="{{ today }}" required>
+                        <span style="font-size:12px;color:var(--text-light)">Datums, kad tiks ģenerēts pirmais rēķins</span>
+                    </div>
+                </div>
+                <div class="form-row-3">
+                    {% if settings.get('is_vat_payer', '1') == '1' %}
+                    <div class="form-group">
+                        <label>PVN likme (%)</label>
+                        <input type="number" name="vat_rate" class="form-control"
+                               value="{{ recurring.vat_rate if edit_mode else settings.get('default_vat_rate', '21') }}" step="0.1" min="0">
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="vat_rate" value="0">
+                    {% endif %}
+                    <div class="form-group">
+                        <label>PDF veidne</label>
+                        <select name="template" class="form-control">
+                            {% for key, label in templates.items() %}
+                            {% if tier_limits.all_templates or key == 'classic' %}
+                            <option value="{{ key }}"
+                                {% if edit_mode and recurring.template == key %}selected
+                                {% elif not edit_mode and key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
+                            {% else %}
+                            <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Piezīmes</label>
+                        <input type="text" name="notes" class="form-control"
+                               value="{{ recurring.notes if edit_mode and recurring.notes else '' }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                <span>Pakalpojumi / Preces</span>
+                <button type="button" class="btn btn-primary btn-sm" onclick="addItemRow()">+ Pievienot rindu</button>
+            </div>
+            <div class="card-body">
+                <div class="table-wrapper">
+                    <table class="doc-items-table">
+                        <thead>
+                            <tr>
+                                <th>Produkts / Pakalpojums</th>
+                                <th style="width:100px">Mērvienība</th>
+                                <th style="width:110px">Daudzums</th>
+                                <th style="width:110px">Cena</th>
+                                <th style="width:110px">Summa</th>
+                                <th style="width:40px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsBody"></tbody>
+                        <tfoot>
+                            {% if settings.get('is_vat_payer', '1') == '1' %}
+                            <tr>
+                                <td colspan="4" class="text-right" style="font-weight:600">Summa bez PVN:</td>
+                                <td id="subtotalDisplay" style="font-weight:600">0.00</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" class="text-right">PVN:</td>
+                                <td id="vatDisplay">0.00</td>
+                                <td></td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td colspan="4" class="text-right" style="font-weight:700;font-size:16px">Kopā:</td>
+                                <td id="totalDisplay" style="font-weight:700;font-size:16px">0.00</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Automātiska nosūtīšana</div>
+            <div class="card-body">
+                <div class="form-group" style="margin-bottom:16px">
+                    <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                        <input type="checkbox" name="send_email" value="1" id="sendEmailToggle"
+                               onchange="toggleEmailSection()"
+                               style="width:18px;height:18px;cursor:pointer"
+                               {% if edit_mode and recurring.send_email %}checked{% elif not edit_mode %}checked{% endif %}>
+                        Automātiski nosūtīt klientam pa e-pastu
+                    </label>
+                    <span style="font-size:12px;color:var(--text-light);margin-left:26px;display:block">
+                        Rēķins tiks izveidots un nosūtīts klienta e-pastā norādītajā izpildes datumā.
+                    </span>
+                </div>
+                <div id="emailSection">
+                    <div class="form-group">
+                        <label>E-pasta tēma</label>
+                        <input type="text" name="email_subject" id="emailSubject" class="form-control"
+                               value="{{ recurring.email_subject if edit_mode and recurring.email_subject else default_email_subject }}">
+                    </div>
+                    <div class="form-group">
+                        <label>E-pasta teksts</label>
+                        <textarea name="email_body" id="emailBody" class="form-control" rows="7"
+                                  style="font-family:inherit;font-size:13px;line-height:1.5;resize:vertical">{{ recurring.email_body if edit_mode and recurring.email_body else default_email_body }}</textarea>
+                        <span style="font-size:12px;color:var(--text-light);margin-top:4px;display:block">
+                            Pieejamie mainīgie: <code>{doc_number}</code>, <code>{doc_type}</code>, <code>{date}</code>, <code>{company}</code>, <code>{client_name}</code>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 32px">
+            {% if edit_mode %}Saglabāt izmaiņas{% else %}Izveidot periodisko rēķinu{% endif %}
+        </button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const products = {{ products | tojson }};
+const units = {{ units | tojson }};
+const isVatPayer = {{ 'true' if settings.get('is_vat_payer', '1') == '1' else 'false' }};
+const presetItems = {{ items_pre | tojson }};
+let itemIndex = 0;
+
+function addItemRow(preset) {
+    const idx = itemIndex++;
+    const tr = document.createElement('tr');
+    tr.className = 'item-row';
+    tr.id = 'item-' + idx;
+
+    let productOptions = '<option value="">— Produkts —</option>';
+    products.forEach(p => {
+        const selected = preset && preset.product_id == p.id ? ' selected' : '';
+        productOptions += '<option value="' + p.id + '" data-unit="' + p.unit + '"' + selected + '>' + p.name + '</option>';
+    });
+
+    const presetUnit = preset ? preset.unit : '';
+    let unitOptions = '';
+    units.forEach(u => {
+        const selected = (presetUnit && u === presetUnit) ? ' selected' : '';
+        unitOptions += '<option value="' + u + '"' + selected + '>' + u + '</option>';
+    });
+
+    const qty = preset ? preset.quantity : 1;
+    const price = preset ? preset.price_per_unit : 0;
+
+    tr.innerHTML = `
+        <td>
+            <select name="items[${idx}][product_id]" class="form-control" onchange="onProductChange(this, ${idx})" required>
+                ${productOptions}
+            </select>
+        </td>
+        <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control">${unitOptions}</select></td>
+        <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" oninput="recalculate()" required></td>
+        <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" oninput="recalculate()" required></td>
+        <td class="item-total text-right" id="total-${idx}">0.00</td>
+        <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
+    `;
+    document.getElementById('itemsBody').appendChild(tr);
+    recalculate();
+}
+
+function removeItemRow(idx) {
+    const row = document.getElementById('item-' + idx);
+    if (row) row.remove();
+    if (document.querySelectorAll('.item-row').length === 0) {
+        addItemRow();
+    }
+    recalculate();
+}
+
+function onProductChange(select, idx) {
+    const option = select.selectedOptions[0];
+    if (option && option.dataset.unit) {
+        document.getElementById('unit-' + idx).value = option.dataset.unit;
+    }
+    recalculate();
+}
+
+function recalculate() {
+    let subtotal = 0;
+    document.querySelectorAll('.item-row').forEach(row => {
+        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
+        const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
+        const lineTotal = qty * price;
+        subtotal += lineTotal;
+        const idx = row.id.split('-')[1];
+        document.getElementById('total-' + idx).textContent = lineTotal.toFixed(2);
+    });
+
+    const vatRateInput = document.querySelector('input[name="vat_rate"]');
+    const vatRate = isVatPayer && vatRateInput ? (parseFloat(vatRateInput.value) || 0) : 0;
+    const vat = subtotal * (vatRate / 100);
+    const total = subtotal + vat;
+
+    const sd = document.getElementById('subtotalDisplay');
+    if (sd) sd.textContent = subtotal.toFixed(2);
+    const vd = document.getElementById('vatDisplay');
+    if (vd) vd.textContent = vat.toFixed(2);
+    document.getElementById('totalDisplay').textContent = total.toFixed(2);
+}
+
+function toggleEmailSection() {
+    const checked = document.getElementById('sendEmailToggle').checked;
+    document.getElementById('emailSection').style.display = checked ? '' : 'none';
+}
+
+// Initial render
+if (presetItems && presetItems.length > 0) {
+    presetItems.forEach(it => addItemRow(it));
+} else {
+    addItemRow();
+}
+toggleEmailSection();
+
+const vatInput = document.querySelector('input[name="vat_rate"]');
+if (vatInput) vatInput.addEventListener('input', recalculate);
+</script>
+{% endblock %}

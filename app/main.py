@@ -341,6 +341,14 @@ def _calc_next_run(current_date, frequency):
     return current_date
 
 
+def _fill_email_template(template: str, variables: dict) -> str:
+    """Substitute {var} placeholders in an email template (subject or body)."""
+    out = template or ""
+    for key, value in variables.items():
+        out = out.replace("{" + key + "}", str(value or ""))
+    return out
+
+
 async def _process_recurring_invoices():
     """Background task that checks and processes due recurring invoices."""
     while True:
@@ -371,14 +379,31 @@ async def _process_recurring_invoices():
                             doc_type_name = settings.get("sell_doc_name", "Rēķins") if rec["doc_type"] == "sell" else settings.get("buy_doc_name", "Rēķins")
                             rec_user = db.get_user(rec["user_id"])
                             user_email = rec_user.get("email", "") if rec_user else ""
+                            tp = today.split("-")
+                            display_date = f"{tp[2]}.{tp[1]}.{tp[0]}" if len(tp) == 3 else today
+
+                            email_vars = {
+                                "doc_type": doc_type_name,
+                                "doc_number": doc_number,
+                                "date": display_date,
+                                "company": company_name,
+                                "client_name": client.get("name", ""),
+                            }
+                            subject_tpl = rec.get("email_subject") or f"{doc_type_name} Nr. {{doc_number}} — {{company}}"
+                            body_tpl = rec.get("email_body") or settings.get("email_template", "") or \
+                                f"Labdien!\n\nPielikumā nosūtām dokumentu: {{doc_type}} Nr. {{doc_number}}\nDatums: {{date}}\n\nAr cieņu,\n{{company}}\n"
+
+                            subject = _fill_email_template(subject_tpl, email_vars)
+                            body = _fill_email_template(body_tpl, email_vars)
 
                             _send_email(
                                 to_email=client["email"],
-                                subject=f"{doc_type_name} Nr. {doc_number} — {company_name}",
-                                body=f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc_number}\nDatums: {today}\n\nAr cieņu,\n{company_name}\n",
+                                subject=subject,
+                                body=body,
                                 reply_to=user_email,
                                 attachment_path=filepath,
                             )
+                            db.log_email_sent(rec["user_id"], doc_id, client["email"])
 
                     # Calculate next run
                     next_run = _calc_next_run(rec["next_run"], rec["frequency"])
@@ -1804,6 +1829,14 @@ FREQUENCY_LABELS = {
 }
 
 
+DEFAULT_RECURRING_EMAIL_BODY = (
+    "Labdien!\n\n"
+    "Pielikumā nosūtām dokumentu: {doc_type} Nr. {doc_number}\n"
+    "Datums: {date}\n\n"
+    "Ar cieņu,\n{company}\n"
+)
+
+
 @app.get("/recurring", response_class=HTMLResponse)
 async def recurring_page(request: Request):
     ctx = _base_context(request)
@@ -1817,46 +1850,189 @@ async def recurring_page(request: Request):
     return templates.TemplateResponse("recurring.html", ctx)
 
 
+def _render_recurring_form(request: Request, recurring=None, error: str = ""):
+    """Render the create/edit recurring invoice form."""
+    ctx = _base_context(request)
+    user = request.state.user
+    settings = _user_settings(user["id"])
+
+    items_pre = []
+    if recurring:
+        try:
+            raw_items = json.loads(recurring.get("items_json") or "[]")
+        except (ValueError, TypeError):
+            raw_items = []
+        for it in raw_items:
+            prod = db.get_product(it.get("product_id"))
+            items_pre.append({
+                "product_id": it.get("product_id"),
+                "product_name": prod["name"] if prod else "",
+                "unit": it.get("unit", ""),
+                "quantity": it.get("quantity", 1),
+                "price_per_unit": it.get("price_per_unit", 0),
+            })
+
+    default_email_body = settings.get("email_template", "") or DEFAULT_RECURRING_EMAIL_BODY
+    default_email_subject = "{doc_type} Nr. {doc_number} — {company}"
+
+    ctx.update({
+        "recurring": recurring,
+        "edit_mode": recurring is not None,
+        "clients": db.get_all_clients(user["id"]),
+        "products": db.get_all_products(user["id"]),
+        "templates": TEMPLATES,
+        "frequency_labels": FREQUENCY_LABELS,
+        "settings": settings,
+        "units": UNITS,
+        "items_pre": items_pre,
+        "today": datetime.date.today().isoformat(),
+        "default_email_body": default_email_body,
+        "default_email_subject": default_email_subject,
+        "error": error,
+        "page": "recurring",
+    })
+    return templates.TemplateResponse("recurring_form.html", ctx)
+
+
+@app.get("/recurring/new", response_class=HTMLResponse)
+async def new_recurring_page(request: Request):
+    user = request.state.user
+    if not _check_tier_feature(user, "recurring"):
+        return RedirectResponse("/pricing", status_code=303)
+    return _render_recurring_form(request)
+
+
+@app.get("/recurring/{recurring_id}/edit", response_class=HTMLResponse)
+async def edit_recurring_page(request: Request, recurring_id: int):
+    user = request.state.user
+    if not _check_tier_feature(user, "recurring"):
+        return RedirectResponse("/pricing", status_code=303)
+    rec = db.get_recurring_invoice(recurring_id)
+    if not rec or rec.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404)
+    return _render_recurring_form(request, recurring=rec)
+
+
+def _parse_recurring_form(form):
+    """Parse and validate the recurring form. Returns dict or raises ValueError."""
+    try:
+        client_id = int(form.get("client_id", 0))
+    except (ValueError, TypeError):
+        client_id = 0
+    if client_id <= 0:
+        raise ValueError("Lūdzu, izvēlieties klientu")
+
+    doc_type = form.get("doc_type", "sell")
+    if doc_type not in ("sell", "buy"):
+        doc_type = "sell"
+
+    try:
+        vat_rate = float(form.get("vat_rate", 21.0))
+    except (ValueError, TypeError):
+        vat_rate = 21.0
+
+    notes = form.get("notes", "")
+    template = form.get("template", "minimal")
+    if template not in TEMPLATES:
+        template = "minimal"
+
+    frequency = form.get("frequency", "monthly")
+    if frequency not in FREQUENCY_LABELS:
+        frequency = "monthly"
+
+    next_run = form.get("next_run", "").strip()
+    if not next_run:
+        next_run = _calc_next_run(datetime.date.today(), frequency).isoformat()
+    else:
+        try:
+            datetime.date.fromisoformat(next_run)
+        except ValueError:
+            raise ValueError("Nederīgs datums pirmajai izpildei")
+
+    send_email = form.get("send_email", "0") == "1"
+    email_subject = form.get("email_subject", "").strip()
+    email_body = form.get("email_body", "").strip()
+
+    items = []
+    i = 0
+    while f"items[{i}][product_id]" in form:
+        try:
+            pid = int(form[f"items[{i}][product_id]"])
+            qty = float(form[f"items[{i}][quantity]"])
+            price = float(form[f"items[{i}][price_per_unit]"])
+        except (ValueError, TypeError):
+            i += 1
+            continue
+        if pid > 0 and qty > 0:
+            items.append({
+                "product_id": pid,
+                "quantity": qty,
+                "unit": form[f"items[{i}][unit]"],
+                "price_per_unit": price,
+            })
+        i += 1
+
+    if not items:
+        raise ValueError("Jāpievieno vismaz viena pozīcija")
+
+    return {
+        "doc_type": doc_type,
+        "client_id": client_id,
+        "vat_rate": vat_rate,
+        "notes": notes,
+        "template": template,
+        "frequency": frequency,
+        "next_run": next_run,
+        "send_email": send_email,
+        "email_subject": email_subject,
+        "email_body": email_body,
+        "items": items,
+    }
+
+
 @app.post("/recurring/create")
 async def create_recurring(request: Request):
     user = request.state.user
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
     form = await request.form()
-
-    doc_type = form.get("doc_type", "sell")
-    client_id = int(form.get("client_id", 0))
-    vat_rate = float(form.get("vat_rate", 21.0))
-    notes = form.get("notes", "")
-    template = form.get("template", "minimal")
-    frequency = form.get("frequency", "monthly")
-    next_run = form.get("next_run", "")
-    send_email = form.get("send_email", "0") == "1"
-
-    if not next_run:
-        next_run = _calc_next_run(datetime.date.today(), frequency).isoformat()
-
-    # Collect items from form
-    items = []
-    i = 0
-    while f"items[{i}][product_id]" in form:
-        items.append({
-            "product_id": int(form[f"items[{i}][product_id]"]),
-            "quantity": float(form[f"items[{i}][quantity]"]),
-            "unit": form[f"items[{i}][unit]"],
-            "price_per_unit": float(form[f"items[{i}][price_per_unit]"]),
-        })
-        i += 1
-
-    if not items:
-        return RedirectResponse("/recurring?error=no_items", status_code=303)
+    try:
+        data = _parse_recurring_form(form)
+    except ValueError as e:
+        return _render_recurring_form(request, error=str(e))
 
     db.create_recurring_invoice(
-        user["id"], doc_type, client_id, vat_rate, notes, template,
-        frequency, next_run, send_email, json.dumps(items)
+        user["id"], data["doc_type"], data["client_id"], data["vat_rate"],
+        data["notes"], data["template"], data["frequency"], data["next_run"],
+        data["send_email"], json.dumps(data["items"]),
+        email_subject=data["email_subject"], email_body=data["email_body"],
     )
 
     return RedirectResponse("/recurring?created=1", status_code=303)
+
+
+@app.post("/recurring/{recurring_id}/update")
+async def update_recurring(request: Request, recurring_id: int):
+    user = request.state.user
+    if not _check_tier_feature(user, "recurring"):
+        return RedirectResponse("/pricing", status_code=303)
+    rec = db.get_recurring_invoice(recurring_id)
+    if not rec or rec.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404)
+    form = await request.form()
+    try:
+        data = _parse_recurring_form(form)
+    except ValueError as e:
+        return _render_recurring_form(request, recurring=rec, error=str(e))
+
+    db.update_recurring_invoice(
+        user["id"], recurring_id, data["doc_type"], data["client_id"],
+        data["vat_rate"], data["notes"], data["template"], data["frequency"],
+        data["next_run"], data["send_email"], json.dumps(data["items"]),
+        email_subject=data["email_subject"], email_body=data["email_body"],
+    )
+
+    return RedirectResponse("/recurring?updated=1", status_code=303)
 
 
 @app.post("/recurring/from-document/{doc_id}")
