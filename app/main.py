@@ -39,7 +39,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-UNITS = ["kg", "gab", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
+UNITS = ["gab", "kg", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
 
 
 # --- Simple in-memory rate limiter ---
