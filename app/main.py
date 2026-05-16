@@ -1842,6 +1842,12 @@ async def recurring_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
     recurring = db.get_recurring_invoices(user["id"])
+    for rec in recurring:
+        try:
+            items = json.loads(rec.get("items_json") or "[]")
+            rec["total"] = sum(it.get("quantity", 0) * it.get("price_per_unit", 0) for it in items)
+        except (ValueError, TypeError):
+            rec["total"] = 0
     ctx.update({
         "recurring": recurring,
         "frequency_labels": FREQUENCY_LABELS,

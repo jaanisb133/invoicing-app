@@ -31,8 +31,10 @@
                 <table>
                     <thead>
                         <tr>
+                            <th>#</th>
                             <th>Klients</th>
                             <th>Tips</th>
+                            <th>Summa</th>
                             <th>Biežums</th>
                             <th>Nākamā izpilde</th>
                             <th>E-pasts</th>
@@ -43,6 +45,7 @@
                     <tbody>
                         {% for rec in recurring %}
                         <tr style="{% if not rec.active %}opacity:0.5{% endif %}">
+                            <td style="color:var(--text-light)">{{ loop.index }}</td>
                             <td>{{ rec.client_name }}</td>
                             <td>
                                 {% if rec.doc_type == 'buy' %}
@@ -51,6 +54,7 @@
                                 <span class="badge badge-sell">Pārdošana</span>
                                 {% endif %}
                             </td>
+                            <td style="text-align:right">{{ "%.2f"|format(rec.total) }} &euro;</td>
                             <td>{{ frequency_labels.get(rec.frequency, rec.frequency) }}</td>
                             <td>{{ rec.next_run }}</td>
                             <td>
