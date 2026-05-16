@@ -1845,9 +1845,11 @@ async def recurring_page(request: Request):
     for rec in recurring:
         try:
             items = json.loads(rec.get("items_json") or "[]")
-            rec["total"] = sum(it.get("quantity", 0) * it.get("price_per_unit", 0) for it in items)
+            subtotal = sum(it.get("quantity", 0) * it.get("price_per_unit", 0) for it in items)
         except (ValueError, TypeError):
-            rec["total"] = 0
+            subtotal = 0
+        vat_rate = rec.get("vat_rate", 0) or 0
+        rec["total"] = round(subtotal * (1 + vat_rate / 100), 2)
     ctx.update({
         "recurring": recurring,
         "frequency_labels": FREQUENCY_LABELS,

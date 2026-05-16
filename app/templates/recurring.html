@@ -1,6 +1,32 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+.row-menu-wrapper { position: relative; display: inline-block; }
+.row-menu-trigger {
+    background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+    padding: 4px 6px; color: #6b7280; display: flex; align-items: center; transition: all 0.15s;
+}
+.row-menu-trigger:hover { background: var(--bg-secondary, #f3f4f6); color: #111827; border-color: var(--border-color, #e5e7eb); }
+.row-menu-dropdown {
+    display: none; position: fixed;
+    background: var(--bg-primary, #fff); border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 180px;
+    z-index: 9999; padding: 4px 0; white-space: nowrap;
+}
+.row-menu-wrapper.open .row-menu-dropdown { display: block; }
+.row-menu-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+    font-size: 14px; color: var(--text-primary, #111827); text-decoration: none;
+    cursor: pointer; transition: background 0.1s; border: none; background: none;
+    width: 100%; text-align: left; font-family: inherit;
+}
+.row-menu-item:hover { background: var(--bg-secondary, #f3f4f6); }
+.row-menu-item svg { flex-shrink: 0; opacity: 0.6; }
+.row-menu-danger { color: #dc2626 !important; }
+.row-menu-danger:hover { background: #fef2f2 !important; }
+.row-menu-divider { height: 1px; background: var(--border-color, #e5e7eb); margin: 4px 0; }
+</style>
 <div class="page-header">
     <h2>Periodiskie rēķini</h2>
     {% if tier_limits.recurring %}
@@ -72,17 +98,35 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <div class="btn-group">
-                                    <a href="/recurring/{{ rec.id }}/edit" class="btn btn-outline btn-sm">Rediģēt</a>
-                                    <form method="post" action="/recurring/{{ rec.id }}/toggle" style="margin:0">
-                                        <button type="submit" class="btn btn-outline btn-sm">
-                                            {% if rec.active %}Apturēt{% else %}Aktivizēt{% endif %}
-                                        </button>
-                                    </form>
-                                    <form method="post" action="/recurring/{{ rec.id }}/delete" style="margin:0"
-                                          onsubmit="return confirm('Vai tiešām dzēst šo periodisko rēķinu?')">
-                                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
-                                    </form>
+                                <div class="row-menu-wrapper">
+                                    <button type="button" class="row-menu-trigger" aria-label="Darbības">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                                    </button>
+                                    <div class="row-menu-dropdown">
+                                        <a href="/recurring/{{ rec.id }}/edit" class="row-menu-item">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                            Rediģēt
+                                        </a>
+                                        <form method="post" action="/recurring/{{ rec.id }}/toggle" style="margin:0">
+                                            <button type="submit" class="row-menu-item">
+                                                {% if rec.active %}
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                                Apturēt
+                                                {% else %}
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                                Aktivizēt
+                                                {% endif %}
+                                            </button>
+                                        </form>
+                                        <div class="row-menu-divider"></div>
+                                        <form method="post" action="/recurring/{{ rec.id }}/delete" style="margin:0"
+                                              onsubmit="return confirm('Vai tiešām dzēst šo periodisko rēķinu?')">
+                                            <button type="submit" class="row-menu-item row-menu-danger">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                                Dzēst
+                                            </button>
+                                        </form>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -108,4 +152,49 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+function positionDropdown(trigger, dropdown) {
+    var rect = trigger.getBoundingClientRect();
+    dropdown.style.left = '';
+    dropdown.style.right = '';
+    dropdown.style.top = '';
+    dropdown.style.bottom = '';
+    dropdown.style.visibility = 'hidden';
+    dropdown.style.display = 'block';
+    var dh = dropdown.offsetHeight;
+    var dw = dropdown.offsetWidth;
+    dropdown.style.display = '';
+    dropdown.style.visibility = '';
+    var spaceBelow = window.innerHeight - rect.bottom;
+    var top;
+    if (spaceBelow < dh + 8 && rect.top > dh + 8) {
+        top = rect.top - dh - 4;
+    } else {
+        top = rect.bottom + 4;
+    }
+    top = Math.max(8, Math.min(top, window.innerHeight - dh - 8));
+    dropdown.style.top = top + 'px';
+    var left = rect.right - dw;
+    left = Math.max(8, Math.min(left, window.innerWidth - dw - 8));
+    dropdown.style.left = left + 'px';
+}
+
+document.addEventListener('click', function(e) {
+    var trigger = e.target.closest('.row-menu-trigger');
+    if (trigger) {
+        e.stopPropagation();
+        var wrapper = trigger.closest('.row-menu-wrapper');
+        var dropdown = wrapper.querySelector('.row-menu-dropdown');
+        var wasOpen = wrapper.classList.contains('open');
+        document.querySelectorAll('.row-menu-wrapper.open').forEach(function(w) { w.classList.remove('open'); });
+        if (!wasOpen) {
+            positionDropdown(trigger, dropdown);
+            wrapper.classList.add('open');
+        }
+        return;
+    }
+    document.querySelectorAll('.row-menu-wrapper.open').forEach(function(w) { w.classList.remove('open'); });
+});
+</script>
 {% endblock %}
