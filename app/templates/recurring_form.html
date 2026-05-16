@@ -154,6 +154,15 @@
                 </div>
                 <div id="emailSection">
                     <div class="form-group">
+                        <label>Klienta e-pasts *</label>
+                        <input type="email" name="client_email" id="clientEmail" class="form-control"
+                               value="{{ selected_client_email }}"
+                               placeholder="klients@uzņēmums.lv">
+                        <span style="font-size:12px;color:var(--text-light);margin-top:4px;display:block">
+                            Adrese, uz kuru tiks sūtīts katrs ģenerētais rēķins. Aizpildās automātiski no klienta datiem; izmaiņas tiks saglabātas arī klienta kartiņā.
+                        </span>
+                    </div>
+                    <div class="form-group">
                         <label>E-pasta tēma</label>
                         <input type="text" name="email_subject" id="emailSubject" class="form-control"
                                value="{{ recurring.email_subject if edit_mode and recurring.email_subject else default_email_subject }}">
@@ -307,6 +316,10 @@ let quickAddProductTargetRow = null;
         hiddenId.value = id;
         searchInput.value = name;
         dropdown.classList.remove('active');
+        // Auto-fill the email field from the picked client's record.
+        const picked = clientsData.find(c => String(c.id) === String(id));
+        const emailField = document.getElementById('clientEmail');
+        if (emailField) emailField.value = (picked && picked.email) ? picked.email : '';
     }
 
     function highlight(items) {
@@ -631,6 +644,14 @@ document.getElementById('recForm').addEventListener('submit', function(e) {
         e.preventDefault();
         document.getElementById('clientSearch').focus();
         alert('Lūdzu, izvēlieties klientu no saraksta');
+        return;
+    }
+    const sendEmail = document.getElementById('sendEmailToggle').checked;
+    const email = document.getElementById('clientEmail').value.trim();
+    if (sendEmail && !email) {
+        e.preventDefault();
+        document.getElementById('clientEmail').focus();
+        alert('Lai automātiski sūtītu rēķinu, norādiet klienta e-pastu');
     }
 });
 

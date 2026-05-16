@@ -1876,10 +1876,12 @@ def _render_recurring_form(request: Request, recurring=None, error: str = ""):
     default_email_subject = "{doc_type} Nr. {doc_number} — {company}"
 
     selected_client_name = ""
+    selected_client_email = ""
     if recurring:
         client = db.get_client(recurring.get("client_id"))
         if client:
             selected_client_name = client.get("name", "")
+            selected_client_email = client.get("email", "")
 
     ctx.update({
         "recurring": recurring,
@@ -1895,6 +1897,7 @@ def _render_recurring_form(request: Request, recurring=None, error: str = ""):
         "default_email_body": default_email_body,
         "default_email_subject": default_email_subject,
         "selected_client_name": selected_client_name,
+        "selected_client_email": selected_client_email,
         "error": error,
         "page": "recurring",
     })
@@ -1918,6 +1921,20 @@ async def edit_recurring_page(request: Request, recurring_id: int):
     if not rec or rec.get("user_id") != user["id"]:
         raise HTTPException(status_code=404)
     return _render_recurring_form(request, recurring=rec)
+
+
+def _sync_client_email(user_id: int, client_id: int, email: str):
+    """Persist the form's email back to the client record if it changed.
+
+    Empty input does not wipe an existing email — silently ignored.
+    """
+    if not email:
+        return
+    client = db.get_client(client_id)
+    if not client or client.get("user_id") != user_id:
+        return
+    if (client.get("email") or "").strip() != email:
+        db.update_client(user_id, client_id, email=email)
 
 
 def _parse_recurring_form(form):
@@ -1959,6 +1976,9 @@ def _parse_recurring_form(form):
     send_email = form.get("send_email", "0") == "1"
     email_subject = form.get("email_subject", "").strip()
     email_body = form.get("email_body", "").strip()
+    client_email = form.get("client_email", "").strip()
+    if send_email and not client_email:
+        raise ValueError("Lai automātiski sūtītu rēķinu, norādiet klienta e-pastu")
 
     items = []
     i = 0
@@ -1993,6 +2013,7 @@ def _parse_recurring_form(form):
         "send_email": send_email,
         "email_subject": email_subject,
         "email_body": email_body,
+        "client_email": client_email,
         "items": items,
     }
 
@@ -2007,6 +2028,8 @@ async def create_recurring(request: Request):
         data = _parse_recurring_form(form)
     except ValueError as e:
         return _render_recurring_form(request, error=str(e))
+
+    _sync_client_email(user["id"], data["client_id"], data["client_email"])
 
     db.create_recurring_invoice(
         user["id"], data["doc_type"], data["client_id"], data["vat_rate"],
@@ -2031,6 +2054,8 @@ async def update_recurring(request: Request, recurring_id: int):
         data = _parse_recurring_form(form)
     except ValueError as e:
         return _render_recurring_form(request, recurring=rec, error=str(e))
+
+    _sync_client_email(user["id"], data["client_id"], data["client_email"])
 
     db.update_recurring_invoice(
         user["id"], recurring_id, data["doc_type"], data["client_id"],
