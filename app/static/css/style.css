@@ -419,6 +419,7 @@ tbody tr:last-child td { border-bottom: none; }
     border: 1px solid var(--border);
 }
 .btn-outline:hover { background: var(--bg); border-color: var(--text-lighter); }
+.btn-outline.btn-active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
 

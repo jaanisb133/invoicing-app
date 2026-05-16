@@ -175,6 +175,7 @@ def init_db():
             user_id INTEGER NOT NULL,
             document_id INTEGER,
             recipient TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
             sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
@@ -236,6 +237,11 @@ def _run_migrations():
         cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN email_subject TEXT NOT NULL DEFAULT ''")
     if "email_body" not in rec_cols:
         cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN email_body TEXT NOT NULL DEFAULT ''")
+
+    # Add source column to email_log if missing
+    email_cols = {row[1] for row in cursor.execute("PRAGMA table_info(email_log)").fetchall()}
+    if "source" not in email_cols:
+        cursor.execute("ALTER TABLE email_log ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
 
     # Create user_settings table if not exists
     cursor.execute("""
@@ -1199,15 +1205,44 @@ def get_emails_sent_this_month(user_id: int) -> int:
     return row["cnt"] if row else 0
 
 
-def log_email_sent(user_id: int, document_id: int, recipient: str):
+def log_email_sent(user_id: int, document_id: int, recipient: str, source: str = "manual"):
     """Record an email send event."""
     conn = get_connection()
     conn.execute(
-        "INSERT INTO email_log (user_id, document_id, recipient) VALUES (?, ?, ?)",
-        (user_id, document_id, recipient)
+        "INSERT INTO email_log (user_id, document_id, recipient, source) VALUES (?, ?, ?, ?)",
+        (user_id, document_id, recipient, source)
     )
     conn.commit()
     conn.close()
+
+
+def get_email_log(user_id: int, source: str = None) -> list:
+    """Get email log entries for a user, optionally filtered by source."""
+    conn = get_connection()
+    if source:
+        rows = conn.execute(
+            """SELECT e.id, e.document_id, e.recipient, e.source, e.sent_at,
+                      d.doc_number, d.doc_type, c.name as client_name
+               FROM email_log e
+               LEFT JOIN documents d ON e.document_id = d.id
+               LEFT JOIN clients c ON d.client_id = c.id
+               WHERE e.user_id = ?  AND e.source = ?
+               ORDER BY e.sent_at DESC""",
+            (user_id, source)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT e.id, e.document_id, e.recipient, e.source, e.sent_at,
+                      d.doc_number, d.doc_type, c.name as client_name
+               FROM email_log e
+               LEFT JOIN documents d ON e.document_id = d.id
+               LEFT JOIN clients c ON d.client_id = c.id
+               WHERE e.user_id = ?
+               ORDER BY e.sent_at DESC""",
+            (user_id,)
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # --- Recurring Invoices ---

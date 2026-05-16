@@ -403,7 +403,7 @@ async def _process_recurring_invoices():
                                 reply_to=user_email,
                                 attachment_path=filepath,
                             )
-                            db.log_email_sent(rec["user_id"], doc_id, client["email"])
+                            db.log_email_sent(rec["user_id"], doc_id, client["email"], source="recurring")
 
                     # Calculate next run
                     next_run = _calc_next_run(rec["next_run"], rec["frequency"])
@@ -2121,6 +2121,26 @@ async def delete_recurring(request: Request, recurring_id: int):
         return RedirectResponse("/pricing", status_code=303)
     db.delete_recurring_invoice(user["id"], recurring_id)
     return RedirectResponse("/recurring", status_code=303)
+
+
+# =============================================================================
+# Email Log
+# =============================================================================
+
+@app.get("/email-log", response_class=HTMLResponse)
+async def email_log_page(request: Request):
+    ctx = _base_context(request)
+    user = request.state.user
+    source = request.query_params.get("source")
+    if source not in ("manual", "recurring"):
+        source = None
+    emails = db.get_email_log(user["id"], source=source)
+    ctx.update({
+        "emails": emails,
+        "active_source": source,
+        "page": "email_log",
+    })
+    return templates.TemplateResponse("email_log.html", ctx)
 
 
 # =============================================================================

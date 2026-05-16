@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>E-pasta žurnāls</h2>
+    <div class="btn-group">
+        <a href="/email-log" class="btn btn-outline btn-sm{% if not active_source %} btn-active{% endif %}">Visi</a>
+        <a href="/email-log?source=manual" class="btn btn-outline btn-sm{% if active_source == 'manual' %} btn-active{% endif %}">Manuālie</a>
+        <a href="/email-log?source=recurring" class="btn btn-outline btn-sm{% if active_source == 'recurring' %} btn-active{% endif %}">Periodiskie</a>
+    </div>
+</div>
+
+<div class="page-body">
+    {% if emails %}
+    <div class="card">
+        <div class="card-body">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Datums</th>
+                            <th>Adresāts</th>
+                            <th>Klients</th>
+                            <th>Dokuments</th>
+                            <th>Tips</th>
+                            <th>Avots</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in emails %}
+                        <tr>
+                            <td>{{ e.sent_at[:16] if e.sent_at else '—' }}</td>
+                            <td>{{ e.recipient }}</td>
+                            <td>{{ e.client_name or '—' }}</td>
+                            <td>
+                                {% if e.document_id and e.doc_number %}
+                                <a href="/documents/{{ e.document_id }}">{{ e.doc_number }}</a>
+                                {% elif e.document_id %}
+                                <a href="/documents/{{ e.document_id }}">#{{ e.document_id }}</a>
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if e.doc_type == 'buy' %}
+                                <span class="badge badge-buy">Iegāde</span>
+                                {% elif e.doc_type == 'sell' %}
+                                <span class="badge badge-sell">Pārdošana</span>
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if e.source == 'recurring' %}
+                                <span class="badge" style="background:var(--primary-light);color:var(--primary)">Periodisks</span>
+                                {% else %}
+                                <span class="badge" style="background:var(--bg-alt);color:var(--text-light)">Manuāls</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body">
+            <div class="empty-state">
+                <p>Nav nosūtīto e-pastu.</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
