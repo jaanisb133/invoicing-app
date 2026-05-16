@@ -39,6 +39,63 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
+OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
+
+# ---------------------------------------------------------------------------
+# Offline license protection (machine-locked)
+# ---------------------------------------------------------------------------
+import hashlib
+import uuid
+import platform
+
+# SHA-256 hashes of valid license keys (keys are NOT stored in source code)
+_OFFLINE_LICENSE_HASHES = {
+    "01e59cba7c8bf7cc942afe8571b458974d92429011fa726e48a59acbdd23e4b2",
+    "a55071558393e2523fcc9943ff031d55227905d97cac054be69686f7f7b46bca",
+    "0cb81b36d79f902673244912bb1f705967258d1f9b7f85c5c87a4c76bfcd4de6",
+}
+
+def _get_machine_id() -> str:
+    """Generate a stable fingerprint for this machine."""
+    raw = f"{platform.node()}|{uuid.getnode()}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+def _get_license_file_path():
+    data_dir = os.environ.get("VREKINI_DB_PATH", "")
+    if data_dir:
+        return os.path.join(os.path.dirname(data_dir), "license.key")
+    return os.path.join(BASE_DIR, "..", "data", "license.key")
+
+def _is_offline_licensed():
+    """Check if a valid license key file exists and is bound to this machine."""
+    if not OFFLINE_MODE:
+        return True
+    path = _get_license_file_path()
+    if not os.path.exists(path):
+        return False
+    try:
+        lines = open(path, "r", encoding="utf-8").read().strip().splitlines()
+        if len(lines) < 2:
+            return False
+        key = lines[0].strip().upper()
+        stored_machine = lines[1].strip()
+        h = hashlib.sha256(key.encode()).hexdigest()
+        return h in _OFFLINE_LICENSE_HASHES and stored_machine == _get_machine_id()
+    except Exception:
+        return False
+
+def _activate_license(key: str) -> bool:
+    """Validate and save a license key bound to this machine. Returns True if valid."""
+    key = key.strip().upper()
+    h = hashlib.sha256(key.encode()).hexdigest()
+    if h not in _OFFLINE_LICENSE_HASHES:
+        return False
+    path = _get_license_file_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"{key}\n{_get_machine_id()}\n")
+    return True
+
 UNITS = ["gab", "kg", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
 
 
@@ -102,28 +159,28 @@ def _smtp_connect():
 
 
 def _send_email(*, to_email: str, subject: str, body: str,
-                reply_to: str = "", attachment_path: str = ""):
-    """Send email via Brevo API (preferred) or SMTP fallback."""
-    if BREVO_API_KEY:
-        return _send_via_brevo(
-            to_email=to_email, subject=subject, body=body,
-            reply_to=reply_to, attachment_path=attachment_path,
-        )
+                reply_to: str = "", attachment_path: str = "", sender_name: str = ""):
+    """Send email via SMTP (preferred) or Brevo API fallback."""
     if SMTP_PASS:
         return _send_via_smtp(
             to_email=to_email, subject=subject, body=body,
-            reply_to=reply_to, attachment_path=attachment_path,
+            reply_to=reply_to, attachment_path=attachment_path, sender_name=sender_name,
         )
-    raise RuntimeError("E-pasta serviss nav konfigurēts (nav ne BREVO_API_KEY, ne SMTP_PASS).")
+    if BREVO_API_KEY:
+        return _send_via_brevo(
+            to_email=to_email, subject=subject, body=body,
+            reply_to=reply_to, attachment_path=attachment_path, sender_name=sender_name,
+        )
+    raise RuntimeError("E-pasta serviss nav konfigurēts (nav ne SMTP_PASS, ne BREVO_API_KEY).")
 
 
-def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path=""):
+def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="", sender_name=""):
     """Send email using Brevo HTTP API."""
     import httpx
     import base64
 
     payload = {
-        "sender": {"name": BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
+        "sender": {"name": sender_name or BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
         "to": [{"email": to_email}],
         "subject": subject,
         "textContent": body,
@@ -153,10 +210,13 @@ def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="")
         raise RuntimeError(f"Brevo API kļūda ({resp.status_code}): {resp.text}")
 
 
-def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path=""):
-    """Send email using SMTP (legacy fallback)."""
+def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path="", sender_name=""):
+    """Send email using SMTP."""
     msg = MIMEMultipart()
-    msg["From"] = SMTP_FROM
+    if sender_name:
+        msg["From"] = f"{sender_name} <{SMTP_USER}>"
+    else:
+        msg["From"] = SMTP_FROM
     msg["To"] = to_email
     msg["Subject"] = subject
     if reply_to:
@@ -229,6 +289,7 @@ def _base_context(request):
         "tier_label": db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
         "tier_limits": db.get_tier_limits(tier),
         "needs_setup": not db.get_user_setting(user["id"], "company_name"),
+        "offline_mode": OFFLINE_MODE,
     }
 
 
@@ -267,13 +328,45 @@ def _get_logo_path(user_id):
     return None
 
 
+def _ensure_offline_user():
+    """Create or retrieve the single local user for offline mode."""
+    user = db.get_user_by_username("local")
+    if not user:
+        db.create_user("local", "offline", display_name="Lietotājs", is_admin=True)
+        user = db.get_user_by_username("local")
+        if user:
+            # Set tier to admin so all features are unlocked
+            conn = db.get_connection()
+            conn.execute("UPDATE users SET tier = 'admin' WHERE id = ?", (user["id"],))
+            conn.commit()
+            conn.close()
+            user = db.get_user(user["id"])
+    return user
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms")
+        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms", "/license")
                 or path == "/everypay/callback" or path == "/api/registry/search"):
             return await call_next(request)
+
+        # Offline mode: require valid license before anything else
+        if OFFLINE_MODE and not _is_offline_licensed() and path != "/license":
+            return RedirectResponse("/license", status_code=303)
+
+        # Offline mode: auto-login as local user, skip auth entirely
+        if OFFLINE_MODE:
+            user = _ensure_offline_user()
+            if user:
+                request.state.user = user
+                # Skip setup redirect — let user access everything
+                setup_exempt = {"/settings", "/setup", "/logout", "/set-password"}
+                if path not in setup_exempt and not path.startswith("/static") and not path.startswith("/api/") and not path.startswith("/settings/logo"):
+                    if not db.get_user_setting(user["id"], "company_name"):
+                        return RedirectResponse("/setup", status_code=303)
+                return await call_next(request)
 
         user = _get_current_user(request)
 
@@ -362,6 +455,13 @@ async def _process_recurring_invoices():
                     if not items:
                         continue
 
+                    # Check monthly document limit before creating
+                    rec_user = db.get_user(rec["user_id"])
+                    if rec_user:
+                        allowed, _, _ = _check_tier_limit(rec_user, "documents")
+                        if not allowed:
+                            continue
+
                     doc_id, doc_number = db.create_document(
                         rec["user_id"], rec["doc_type"], rec["client_id"],
                         today, items, rec["vat_rate"], rec["notes"]
@@ -371,7 +471,7 @@ async def _process_recurring_invoices():
                     filepath = generate_invoice_pdf(doc_id, template=template)
 
                     # Send email if enabled
-                    if rec["send_email"] and (BREVO_API_KEY or SMTP_PASS):
+                    if rec["send_email"] and (SMTP_PASS or BREVO_API_KEY):
                         client = db.get_client(rec["client_id"])
                         if client and client.get("email"):
                             settings = db.get_all_user_settings(rec["user_id"])
@@ -402,6 +502,7 @@ async def _process_recurring_invoices():
                                 body=body,
                                 reply_to=user_email,
                                 attachment_path=filepath,
+                                sender_name=company_name,
                             )
                             db.log_email_sent(rec["user_id"], doc_id, client["email"], source="recurring")
 
@@ -415,6 +516,12 @@ async def _process_recurring_invoices():
 
         except Exception as e:
             logger.error(f"Error in recurring invoice loop: {e}")
+
+        # Purge documents deleted more than 7 days ago
+        try:
+            db.purge_old_deleted_documents()
+        except Exception as e:
+            print(f"[TRASH] Purge error: {e}")
 
         await asyncio.sleep(3600)  # Check every hour
 
@@ -449,6 +556,29 @@ async def startup():
 
     # Start recurring invoice background task
     asyncio.create_task(_process_recurring_invoices())
+
+
+# =============================================================================
+# Offline license activation
+# =============================================================================
+
+@app.get("/license", response_class=HTMLResponse)
+async def license_page(request: Request, error: str = ""):
+    if not OFFLINE_MODE or _is_offline_licensed():
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("license.html", {"request": request, "error": error})
+
+
+@app.post("/license")
+async def license_activate(request: Request, license_key: str = Form(...)):
+    if not OFFLINE_MODE:
+        return RedirectResponse("/", status_code=303)
+    if _activate_license(license_key):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("license.html", {
+        "request": request,
+        "error": "Nederīga licences atslēga. Lūdzu pārbaudiet un mēģiniet vēlreiz.",
+    })
 
 
 # =============================================================================
@@ -577,7 +707,7 @@ async def register(request: Request,
         display_name=display_name,
         email=email,
         phone=phone,
-        tier="free",
+        tier="business" if OFFLINE_MODE else "free",
     )
 
     # Save registration data as settings (but NOT company_name — that's set
@@ -680,6 +810,7 @@ async def setup_page(request: Request):
         "display_name": user.get("display_name") or "",
         "settings": settings,
         "has_logo": has_logo,
+        "offline_mode": OFFLINE_MODE,
     })
 
 
@@ -719,6 +850,10 @@ async def save_setup(
         "payment_due_days": payment_due_days,
     }
     db.save_all_user_settings(user["id"], settings_dict)
+
+    # Offline mode: already on business tier, go straight to dashboard
+    if OFFLINE_MODE:
+        return RedirectResponse("/", status_code=303)
 
     # After onboarding, check if user has a pending plan from registration
     all_settings = db.get_all_user_settings(user["id"])
@@ -828,12 +963,14 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
             "has_payments": everypay.is_configured(),
             "upgrade": upgrade,
             "upgrade_cycle": cycle,
+            "lifetime_sold": db.count_lifetime_users(),
         })
         return templates.TemplateResponse("pricing_auth.html", ctx)
     return templates.TemplateResponse("pricing.html", {
         "request": request,
         "current_user": None,
         "page": "pricing",
+        "lifetime_sold": db.count_lifetime_users(),
     })
 
 
@@ -841,17 +978,25 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
 async def billing_checkout(request: Request, tier: str = Form(...), cycle: str = Form("monthly")):
     """Initiate an EveryPay payment and redirect to hosted payment page."""
     user = request.state.user
-    if tier not in ("starter", "business") or cycle not in ("monthly", "yearly"):
+    if tier == "lifetime":
+        cycle = "lifetime"
+    if tier not in ("mini", "starter", "business", "lifetime") or cycle not in ("monthly", "yearly", "lifetime"):
         return RedirectResponse("/pricing?error=invalid", status_code=303)
+
+    # Enforce 30-user cap for lifetime plan
+    if tier == "lifetime":
+        lifetime_count = db.count_lifetime_users()
+        if lifetime_count >= 10:
+            return RedirectResponse("/pricing?error=lifetime_sold_out", status_code=303)
 
     amount = everypay.get_plan_price(tier, cycle)
     if not amount or not everypay.is_configured():
         return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
-    # Build order reference: VR-{counter}-{plan label}
-    tier_label = db.TIER_LIMITS[tier]["label"]
-    counter = db.next_payment_counter()
-    order_ref = f"VR-{counter:04d}-{tier_label}"
+    # Build order reference: VR-{plan}-{user_id}-{timestamp} (ASCII-safe, max ~20 chars for EveryPay)
+    tier_code = {"mini": "M", "starter": "S", "business": "B", "lifetime": "L"}[tier]
+    ts = datetime.datetime.now().strftime("%y%m%d%H%M%S")
+    order_ref = f"VR{tier_code}-{user['id']}-{ts}"
     base_url = str(request.base_url).rstrip("/")
     customer_url = f"{base_url}/billing/return"
     client_ip = _get_client_ip(request)
@@ -886,6 +1031,127 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     return RedirectResponse(payment_link, status_code=303)
 
 
+def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, payment_reference):
+    """Create a subscription invoice in the admin account and email it to the paying user.
+
+    The invoice flows into the admin's normal document numbering and
+    includes the EveryPay payment reference in the notes field.
+    """
+    try:
+        # Find admin user
+        all_users = db.get_all_users()
+        admin = next((u for u in all_users if u.get("is_admin")), None)
+        if not admin:
+            logger.warning("No admin user found — skipping subscription invoice")
+            return
+
+        admin_id = admin["id"]
+        today = datetime.date.today().isoformat()
+
+        # Ensure a subscription product exists for the admin
+        admin_products = db.get_all_products(admin_id)
+        sub_product = next(
+            (p for p in admin_products if p["name"] == "V-Rēķini abonements"), None
+        )
+        if not sub_product:
+            sub_product_id = db.add_product(admin_id, "V-Rēķini abonements", "gab")
+        else:
+            sub_product_id = sub_product["id"]
+
+        # Ensure paying user exists as a client in admin's account
+        paying_settings = db.get_all_user_settings(paying_user["id"])
+        client_name = (paying_settings.get("company_name", "")
+                       or paying_user.get("display_name", "")
+                       or paying_user["username"])
+        client_reg = paying_settings.get("reg_number", "")
+        client_vat = paying_settings.get("vat_number", "")
+
+        # Try to find by reg number first, then by name
+        existing_client = None
+        if client_reg:
+            existing_client = db.get_client_by_reg_number(admin_id, client_reg)
+        if not existing_client:
+            admin_clients = db.get_all_clients(admin_id)
+            existing_client = next(
+                (c for c in admin_clients if c["name"] == client_name), None
+            )
+
+        if existing_client:
+            client_id = existing_client["id"]
+        else:
+            client_id = db.add_client(
+                admin_id, client_name,
+                reg_number=client_reg,
+                vat_number=client_vat,
+                vat_payer=1 if client_vat else 0,
+                legal_address=paying_settings.get("legal_address", ""),
+                bank_name=paying_settings.get("bank_name", ""),
+                bank_account=paying_settings.get("bank_account", ""),
+                email=paying_user.get("email", ""),
+            )
+
+        # Build plan description
+        tier_labels = {"mini": "Mini", "starter": "Sākums", "business": "Bizness", "lifetime": "Mūža licence"}
+        cycle_labels = {"monthly": "mēnesī", "yearly": "gadā", "lifetime": "vienreizējs"}
+        plan_desc = f"V-Rēķini — {tier_labels.get(tier, tier)} ({cycle_labels.get(cycle, cycle)})"
+
+        admin_settings = db.get_all_user_settings(admin_id)
+        vat_rate = float(admin_settings.get("default_vat_rate", "21"))
+
+        # Plan prices are VAT-inclusive; calculate net price for the invoice
+        net_price = round(amount / (1 + vat_rate / 100), 2)
+
+        notes = (
+            f"Maksājuma ref.: {payment_reference}\n"
+            f"Pasūtījuma ref.: {order_ref}"
+        )
+
+        items = [{
+            "product_id": sub_product_id,
+            "quantity": 1,
+            "unit": "gab",
+            "price_per_unit": net_price,
+        }]
+
+        doc_id, doc_number = db.create_document(
+            admin_id, "sell", client_id, today, items,
+            vat_rate=vat_rate, notes=notes,
+        )
+
+        # Mark as paid since payment already settled
+        db.update_document_status(admin_id, doc_id, "paid")
+
+        logger.info("Subscription invoice %s created for user %s (doc_id=%s)",
+                     doc_number, paying_user["username"], doc_id)
+
+        # Generate PDF and email to paying user
+        paying_email = paying_user.get("email", "")
+        if paying_email:
+            filepath = generate_invoice_pdf(doc_id, template="minimal")
+            admin_company = admin_settings.get("company_name", "V-Rēķini")
+
+            email_body = (
+                f"Labdien!\n\n"
+                f"Paldies par V-Rēķini abonementa iegādi!\n"
+                f"Jūsu plāns: {plan_desc}\n"
+                f"Jūsu konts ir aktīvs un gatavs lietošanai.\n\n"
+                f"Pielikumā nosūtām maksājuma rēķinu Nr. {doc_number}.\n\n"
+                f"Ar cieņu,\n{admin_company}\n"
+            )
+
+            _send_email(
+                to_email=paying_email,
+                subject=f"Rēķins Nr. {doc_number} — {admin_company}",
+                body=email_body,
+                attachment_path=filepath,
+            )
+            logger.info("Subscription invoice emailed to %s", paying_email)
+
+    except Exception:
+        logger.exception("Failed to generate subscription invoice for user %s",
+                         paying_user.get("username", "?"))
+
+
 @app.get("/billing/return", response_class=HTMLResponse)
 async def billing_return(request: Request, payment_reference: str = ""):
     """Handle customer return from EveryPay payment page."""
@@ -912,7 +1178,9 @@ async def billing_return(request: Request, payment_reference: str = ""):
         card_token = cc_details.get("token", "")
 
         # Calculate subscription end date
-        if pending_cycle == "yearly":
+        if pending_cycle == "lifetime":
+            end_date = "2099-12-31"
+        elif pending_cycle == "yearly":
             end_date = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
         else:
             end_date = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
@@ -932,6 +1200,15 @@ async def billing_return(request: Request, payment_reference: str = ""):
                      (end_date, user["id"]))
         conn.commit()
         conn.close()
+
+        # Generate subscription invoice and email to user
+        pending_order_ref = settings.get("_pending_order_ref", "")
+        amount = everypay.get_plan_price(pending_tier, pending_cycle)
+        if amount:
+            _generate_subscription_invoice(
+                user, pending_tier, pending_cycle, amount,
+                pending_order_ref, payment_reference,
+            )
 
         # Clean up pending settings
         db.save_all_user_settings(user["id"], {
@@ -1128,16 +1405,26 @@ async def change_user_tier(request: Request, user_id: int, tier: str = Form(...)
 # =============================================================================
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, date_from: str = "", date_to: str = ""):
+    import json as _json
     ctx = _base_context(request)
     user = request.state.user
     uid = user["id"]
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
+
+    # Default to current month
+    today = datetime.date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+
     recent_docs = db.get_documents(uid)[:5]
     clients = db.get_all_clients(uid)
     stock = db.get_stock(uid) if stock_on else []
     stats = db.get_dashboard_stats(uid)
+    range_stats = db.get_dashboard_stats_range(uid, date_from, date_to)
 
     ctx.update({
         "recent_docs": recent_docs,
@@ -1145,12 +1432,32 @@ async def dashboard(request: Request):
         "stock": stock,
         "settings": settings,
         "stats": stats,
+        "range_stats": range_stats,
+        "date_from": date_from,
+        "date_to": date_to,
+        "range_stats_json": _json.dumps(range_stats, default=str),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": user.get("tier", "free") != "free",
+        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "page": "dashboard",
     })
     return templates.TemplateResponse("dashboard.html", ctx)
+
+
+@app.get("/api/dashboard-stats")
+async def api_dashboard_stats(request: Request, date_from: str = "", date_to: str = ""):
+    import json as _json
+    user = request.state.user
+    if not user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    uid = user["id"]
+    today = datetime.date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+    range_stats = db.get_dashboard_stats_range(uid, date_from, date_to)
+    return JSONResponse(range_stats)
 
 
 # =============================================================================
@@ -1370,6 +1677,7 @@ async def add_client(
     contact_person: str = Form(""),
     phone: str = Form(""),
     email: str = Form(""),
+    client_type: str = Form("business"),
 ):
     user = request.state.user
     if reg_number:
@@ -1380,7 +1688,7 @@ async def add_client(
     if not allowed:
         return RedirectResponse(f"/clients?error=limit", status_code=303)
     db.add_client(user["id"], name, reg_number, vat_number, int(vat_payer), legal_address,
-                  bank_name, bank_account, contact_person, phone, email)
+                  bank_name, bank_account, contact_person, phone, email, client_type=client_type)
     return RedirectResponse("/clients", status_code=303)
 
 
@@ -1398,12 +1706,14 @@ async def edit_client(
     contact_person: str = Form(""),
     phone: str = Form(""),
     email: str = Form(""),
+    client_type: str = Form("business"),
 ):
     user = request.state.user
     db.update_client(user["id"], client_id, name=name, reg_number=reg_number,
                      vat_number=vat_number, vat_payer=int(vat_payer), legal_address=legal_address,
                      bank_name=bank_name, bank_account=bank_account,
-                     contact_person=contact_person, phone=phone, email=email)
+                     contact_person=contact_person, phone=phone, email=email,
+                     client_type=client_type)
     return RedirectResponse("/clients", status_code=303)
 
 
@@ -1443,7 +1753,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         "limits": limits,
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": user.get("tier", "free") != "free",
+        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to,
                      "status": status},
@@ -1453,7 +1763,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
 
 
 @app.get("/documents/new", response_class=HTMLResponse)
-async def new_document_page(request: Request, doc_type: str = "buy"):
+async def new_document_page(request: Request, doc_type: str = "sell"):
     ctx = _base_context(request)
     user = request.state.user
     uid = user["id"]
@@ -1461,6 +1771,9 @@ async def new_document_page(request: Request, doc_type: str = "buy"):
     products = db.get_all_products(uid)
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
+    # If stock management is off, force sell doc type
+    if not stock_on and doc_type == "buy":
+        return RedirectResponse("/documents/new?doc_type=sell", status_code=302)
     stock_data = db.get_stock(uid) if stock_on else []
     stock_map = {s["id"]: s["stock"] for s in stock_data}
     ctx.update({
@@ -1485,16 +1798,22 @@ async def create_document(request: Request):
     allowed, current, maximum = _check_tier_limit(user, "documents")
     if not allowed:
         return RedirectResponse(
-            f"/documents?error=Dokumentu limits sasniegts ({current}/{maximum}). "
+            f"/documents?error=Ikmēneša dokumentu limits sasniegts ({current}/{maximum}). "
             f"<a href='/pricing'>Uzlabojiet plānu</a>, lai turpinātu.",
             status_code=303)
 
     form = await request.form()
-    doc_type = form.get("doc_type", "buy")
+    doc_type = form.get("doc_type", "sell")
+    # Block buy doc creation if stock management is off
+    if doc_type == "buy" and not _stock_enabled(user["id"]):
+        return RedirectResponse("/documents?error=Iegādes dokumenti nav pieejami bez noliktavas pārvaldības.", status_code=303)
     client_id = int(form.get("client_id", 0))
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
     payment_due_date = form.get("payment_due_date", "")
     vat_rate = float(form.get("vat_rate", 21.0))
+    reverse_charge = form.get("reverse_charge", "0") == "1"
+    if reverse_charge:
+        vat_rate = 0.0
     notes = form.get("notes", "")
     template = form.get("template", "minimal")
 
@@ -1519,7 +1838,7 @@ async def create_document(request: Request):
     try:
         doc_id, doc_number = db.create_document(
             user["id"], doc_type, client_id, doc_date, items, vat_rate, notes,
-            payment_due_date=payment_due_date,
+            payment_due_date=payment_due_date, reverse_charge=reverse_charge,
         )
     except ValueError as e:
         logger.warning("Document creation error: %s", e)
@@ -1568,10 +1887,13 @@ async def edit_document_page(request: Request, doc_id: int):
 async def update_document(request: Request, doc_id: int):
     user = request.state.user
     form = await request.form()
-    doc_type = form.get("doc_type", "buy")
+    doc_type = form.get("doc_type", "sell")
     client_id = int(form.get("client_id", 0))
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
     vat_rate = float(form.get("vat_rate", 21.0))
+    reverse_charge = form.get("reverse_charge", "0") == "1"
+    if reverse_charge:
+        vat_rate = 0.0
     notes = form.get("notes", "")
     template = form.get("template", "minimal")
     payment_due_date = form.get("payment_due_date", "")
@@ -1595,7 +1917,8 @@ async def update_document(request: Request, doc_id: int):
         return RedirectResponse(f"/documents/{doc_id}/edit?error=no_items", status_code=303)
 
     try:
-        db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes, payment_due_date=payment_due_date)
+        db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes,
+                           payment_due_date=payment_due_date, reverse_charge=reverse_charge)
     except ValueError as e:
         logger.warning("Document update error: %s", e)
         return RedirectResponse(f"/documents/{doc_id}/edit?error={quote(str(e))}", status_code=303)
@@ -1657,7 +1980,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "all_templates": _check_tier_feature(user, "all_templates"),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": user.get("tier", "free") != "free",
+        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "page": "documents",
     })
     return templates.TemplateResponse("document_view.html", ctx)
@@ -1737,6 +2060,11 @@ async def send_document_email(request: Request, doc_id: int):
     else:
         display_date = raw_date
 
+    # Build default subject
+    default_subject = f"{company_name} - {doc_type_name} {doc['doc_number']}"
+    custom_subject = form.get("email_subject", "").strip()
+    email_subject = custom_subject if custom_subject else default_subject
+
     # Use custom body if provided, otherwise build default
     custom_body = form.get("email_body", "").strip()
     if custom_body:
@@ -1748,13 +2076,17 @@ async def send_document_email(request: Request, doc_id: int):
         else:
             email_body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}\nDatums: {display_date}\n\nAr cieņu,\n{company_name}\n"
 
+    # Append v-rekini.lv footer
+    email_body += "\n\n---\nE-pasts sagatavots un nosūtīts no v-rekini.lv"
+
     try:
         _send_email(
             to_email=recipient_email,
-            subject=f"{doc_type_name} Nr. {doc['doc_number']} — {company_name}",
+            subject=email_subject,
             body=email_body,
             reply_to=user_email,
             attachment_path=filepath,
+            sender_name=company_name,
         )
     except Exception as e:
         return RedirectResponse(
@@ -1780,6 +2112,32 @@ async def delete_document(request: Request, doc_id: int):
     user = request.state.user
     db.delete_document(user["id"], doc_id)
     return RedirectResponse("/documents", status_code=303)
+
+
+@app.get("/trash")
+async def trash_page(request: Request):
+    user = request.state.user
+    deleted_docs = db.get_deleted_documents(user["id"])
+    return templates.TemplateResponse("trash.html", {
+        "request": request, "current_user": user, "page": "trash",
+        "documents": deleted_docs,
+        "tier": user.get("tier", "free"),
+        "tier_limits": db.get_tier_limits(user.get("tier", "free")),
+    })
+
+
+@app.post("/trash/{doc_id}/restore")
+async def restore_document(request: Request, doc_id: int):
+    user = request.state.user
+    db.restore_document(user["id"], doc_id)
+    return RedirectResponse("/trash", status_code=303)
+
+
+@app.post("/trash/{doc_id}/delete")
+async def permanently_delete_document(request: Request, doc_id: int):
+    user = request.state.user
+    db.permanently_delete_document(user["id"], doc_id)
+    return RedirectResponse("/trash", status_code=303)
 
 
 @app.post("/documents/{doc_id}/status")
@@ -2031,6 +2389,13 @@ async def create_recurring(request: Request):
     user = request.state.user
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
+    # Check recurring invoice limit for tier
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    max_rec = limits.get("max_recurring", 0)
+    if max_rec > 0:
+        active_count = db.count_active_recurring(user["id"])
+        if active_count >= max_rec:
+            return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
     try:
         data = _parse_recurring_form(form)
@@ -2081,6 +2446,13 @@ async def create_recurring_from_document(request: Request, doc_id: int):
     user = request.state.user
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
+    # Check recurring invoice limit for tier
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    max_rec = limits.get("max_recurring", 0)
+    if max_rec > 0:
+        active_count = db.count_active_recurring(user["id"])
+        if active_count >= max_rec:
+            return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
     frequency = form.get("frequency", "monthly")
     send_email = form.get("send_email", "0") == "1"
@@ -2118,6 +2490,13 @@ async def toggle_recurring(request: Request, recurring_id: int):
     user = request.state.user
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
+    # Check limit when activating (not when deactivating)
+    rec = db.get_recurring_invoice(recurring_id)
+    if rec and not rec.get("active"):
+        limits = db.get_tier_limits(user.get("tier", "free"))
+        max_rec = limits.get("max_recurring", 0)
+        if max_rec > 0 and db.count_active_recurring(user["id"]) >= max_rec:
+            return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     db.toggle_recurring_invoice(user["id"], recurring_id)
     return RedirectResponse("/recurring", status_code=303)
 
@@ -2656,6 +3035,35 @@ async def api_add_product(request: Request):
     return JSONResponse(product)
 
 
+@app.get("/api/documents")
+async def api_documents(request: Request, doc_type: str = "", client_id: str = "",
+                        date_from: str = "", date_to: str = "", status: str = ""):
+    user = request.state.user
+    docs = db.get_documents(
+        user["id"],
+        doc_type=doc_type or None,
+        client_id=int(client_id) if client_id else None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        status=status or None,
+    )
+    settings = _user_settings(user["id"])
+    status_tracking = settings.get("status_tracking", "0") == "1"
+    rows = []
+    for d in docs:
+        rows.append({
+            "id": d["id"],
+            "doc_number": d["doc_number"],
+            "doc_type": d["doc_type"],
+            "client_name": d["client_name"],
+            "client_id": d.get("client_id", 0),
+            "doc_date": d["doc_date"],
+            "total_with_vat": round(d.get("total_with_vat") or 0, 2),
+            "status": d.get("status", "issued") if status_tracking else None,
+        })
+    return JSONResponse(rows)
+
+
 @app.post("/api/clients/add")
 async def api_add_client(request: Request):
     user = request.state.user
@@ -2677,6 +3085,7 @@ async def api_add_client(request: Request):
         legal_address=data.get("legal_address", ""),
         bank_name=data.get("bank_name", ""),
         bank_account=data.get("bank_account", ""),
+        client_type=data.get("client_type", "business"),
     )
     client = db.get_client(client_id)
     return JSONResponse(client)

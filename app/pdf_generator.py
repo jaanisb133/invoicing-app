@@ -233,6 +233,7 @@ def _get_doc_data(doc_id):
         "total": total,
         "is_vat_payer": is_vat_payer,
         "entity_type": entity_type,
+        "reverse_charge": bool(doc.get("reverse_charge", 0)),
     }
 
 
@@ -406,10 +407,11 @@ def _generate_classic(doc_id):
                                textColor=C_BLACK, alignment=TA_RIGHT)
 
     if data["is_vat_payer"]:
+        vat_label = "PVN (0% - Reverse Charge):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
         totals_data = [
             [Paragraph("Summa bez PVN:", total_label),
              Paragraph(f"{data['subtotal']:.2f} EUR", total_val)],
-            [Paragraph(f"PVN ({data['vat_rate']:.0f}%):", total_label),
+            [Paragraph(vat_label, total_label),
              Paragraph(f"{data['vat_amount']:.2f} EUR", total_val)],
             [Paragraph("Kopā ar PVN:", grand_label),
              Paragraph(f"{data['total']:.2f} EUR", grand_val)],
@@ -594,10 +596,11 @@ def _generate_modern(doc_id):
 
     # Totals
     if data["is_vat_payer"]:
+        vat_label = "PVN (0% - Reverse Charge):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
         totals_data = [
             [Paragraph("Summa bez PVN:", styles["total_label"]),
              Paragraph(f"{data['subtotal']:.2f} EUR", styles["total_value"])],
-            [Paragraph(f"PVN ({data['vat_rate']:.0f}%):", styles["total_label"]),
+            [Paragraph(vat_label, styles["total_label"]),
              Paragraph(f"{data['vat_amount']:.2f} EUR", styles["total_value"])],
             [Paragraph("KOPĀ AR PVN:", styles["grand_label"]),
              Paragraph(f"{data['total']:.2f} EUR", styles["grand_value"])],
@@ -794,9 +797,10 @@ def _generate_minimal(doc_id):
                              textColor=C_BLACK, alignment=TA_RIGHT)
 
     if data["is_vat_payer"]:
+        vat_label = "PVN 0% - Reverse Charge" if data["reverse_charge"] else f"PVN {data['vat_rate']:.0f}%"
         totals_data = [
             [Paragraph("Bez PVN", tr), Paragraph(f"{data['subtotal']:.2f} EUR", tr)],
-            [Paragraph(f"PVN {data['vat_rate']:.0f}%", tr),
+            [Paragraph(vat_label, tr),
              Paragraph(f"{data['vat_amount']:.2f} EUR", tr)],
             [Paragraph("Kopā", tr_bold), Paragraph(f"{data['total']:.2f} EUR", tr_bold)],
         ]

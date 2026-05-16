@@ -1,6 +1,20 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+.search-dropdown {
+    position: absolute; top: 100%; left: 0; z-index: 100;
+    min-width: 100%; width: max-content; max-width: 500px;
+    background: var(--bg-card, #fff); border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 240px;
+    overflow-y: auto; margin-top: 2px;
+}
+.search-dropdown-item {
+    padding: 8px 12px; cursor: pointer; font-size: 14px;
+    color: var(--text, #111827);
+}
+.search-dropdown-item:hover { background: var(--bg-secondary, #f3f4f6); }
+</style>
 <div class="page-header">
     <h2>
         {% if edit_mode %}
@@ -18,10 +32,12 @@
         {% if edit_mode %}
         <a href="/documents/{{ doc.id }}" class="btn btn-outline">Atcelt</a>
         {% else %}
-        <a href="/documents/new?doc_type=buy"
-           class="btn {% if doc_type == 'buy' %}btn-success{% else %}btn-outline{% endif %}">Iegāde</a>
-        <a href="/documents/new?doc_type=sell"
-           class="btn {% if doc_type == 'sell' %}btn-primary{% else %}btn-outline{% endif %}">Pārdošana</a>
+            {% if stock_enabled %}
+            <a href="/documents/new?doc_type=buy"
+               class="btn {% if doc_type == 'buy' %}btn-success{% else %}btn-outline{% endif %}">Iegāde</a>
+            {% endif %}
+            <a href="/documents/new?doc_type=sell"
+               class="btn {% if doc_type == 'sell' %}btn-primary{% else %}btn-outline{% endif %}">Pārdošana</a>
         {% endif %}
     </div>
 </div>
@@ -31,7 +47,8 @@
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
 
-    <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm">
+    <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm"
+          onsubmit="if(!document.getElementById('clientSelect').value){document.getElementById('clientSearchInput').focus();return false;}">
         <input type="hidden" name="doc_type" value="{{ doc_type }}">
 
         <div class="doc-editor-layout">
@@ -44,12 +61,16 @@
                             <div class="form-group">
                                 <label>Klients *</label>
                                 <div style="display:flex;gap:8px">
-                                    <select name="client_id" id="clientSelect" class="form-control" required onchange="updatePreview()">
-                                        <option value="">— Izvēlieties klientu —</option>
-                                        {% for c in clients %}
-                                        <option value="{{ c.id }}" {% if edit_mode and doc.client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
-                                        {% endfor %}
-                                    </select>
+                                    <div style="flex:1;position:relative">
+                                        <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if edit_mode else '' }}" required>
+                                        <input type="text" id="clientSearchInput" class="form-control" placeholder="Meklēt klientu..."
+                                               autocomplete="off" onfocus="showFormClientDropdown()" oninput="filterFormClients()">
+                                        <div id="formClientDropdown" class="search-dropdown" style="display:none">
+                                            {% for c in clients %}
+                                            <div class="search-dropdown-item" data-id="{{ c.id }}" onclick="selectFormClient('{{ c.id }}','{{ c.name | e }}')">{{ c.name }}</div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
                                     <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddClient()" title="Ātri pievienot klientu" style="font-size:16px;padding:6px 12px">+</button>
                                 </div>
                             </div>
@@ -64,6 +85,12 @@
                                 <label>PVN likme (%)</label>
                                 <input type="number" name="vat_rate" id="vatRate" class="form-control"
                                        value="{{ doc.vat_rate if edit_mode else settings.get('default_vat_rate', '21') }}" step="0.1" min="0" onchange="updatePreview()" oninput="updatePreview()">
+                                <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400;font-size:13px;cursor:pointer">
+                                    <input type="checkbox" name="reverse_charge" id="reverseCharge" value="1"
+                                           {% if edit_mode and doc.reverse_charge %}checked{% endif %}
+                                           onchange="toggleReverseCharge()">
+                                    Reverse Charge
+                                </label>
                             </div>
                             {% else %}
                             <input type="hidden" name="vat_rate" id="vatRate" value="0">
@@ -127,7 +154,7 @@
                                         <td></td>
                                     </tr>
                                     <tr id="vatRow" style="{% if settings.get('is_vat_payer', '1') != '1' %}display:none{% endif %}">
-                                        <td colspan="4" class="text-right">PVN:</td>
+                                        <td colspan="4" class="text-right"><span id="vatLabel">PVN:</span></td>
                                         <td id="vatDisplay">0.00</td>
                                         <td></td>
                                     </tr>
@@ -171,6 +198,21 @@
     <div class="modal">
         <div class="modal-title">Ātrā klienta pievienošana</div>
         <div class="form-group">
+            <div class="client-type-toggle" style="display:flex;gap:0;border:1px solid var(--border-color, #d1d5db);border-radius:8px;overflow:hidden;margin-bottom:4px">
+                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #111827);color:#fff;transition:all 0.2s" id="qc_type_business_label">
+                    <input type="radio" name="qc_client_type" value="business" checked
+                           onchange="qcToggleClientType('business')" style="display:none">
+                    Juridiska persona
+                </label>
+                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #111827);transition:all 0.2s" id="qc_type_individual_label">
+                    <input type="radio" name="qc_client_type" value="individual"
+                           onchange="qcToggleClientType('individual')" style="display:none">
+                    Fiziska persona
+                </label>
+            </div>
+        </div>
+        <!-- Business name with registry search -->
+        <div class="form-group" id="qc_business_name_group">
             <label>Nosaukums *</label>
             <div class="registry-wrapper">
                 <input type="text" id="qc_name" class="form-control" required
@@ -179,8 +221,21 @@
             </div>
             <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
         </div>
+        <!-- Individual name fields -->
+        <div id="qc_individual_name_group" style="display:none">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Vārds *</label>
+                    <input type="text" id="qc_first_name" class="form-control" placeholder="Vārds">
+                </div>
+                <div class="form-group">
+                    <label>Uzvārds *</label>
+                    <input type="text" id="qc_last_name" class="form-control" placeholder="Uzvārds">
+                </div>
+            </div>
+        </div>
         <div class="form-group">
-            <label>Reģ. Nr.</label>
+            <label id="qc_reg_label">Reģ. Nr.</label>
             <input type="text" id="qc_reg_number" class="form-control">
         </div>
         <div class="form-group">
@@ -250,12 +305,62 @@ const products = {{ products | tojson }};
 const clientsData = {{ clients | tojson }};
 const stockMap = {{ stock_map | tojson }};
 const units = {{ units | tojson }};
+
+// --- Searchable client select ---
+function showFormClientDropdown() {
+    document.getElementById('formClientDropdown').style.display = 'block';
+    filterFormClients();
+}
+function filterFormClients() {
+    var q = document.getElementById('clientSearchInput').value.toLowerCase();
+    document.querySelectorAll('#formClientDropdown .search-dropdown-item').forEach(function(el) {
+        el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
+    });
+}
+function selectFormClient(id, name) {
+    document.getElementById('clientSelect').value = id;
+    document.getElementById('clientSearchInput').value = name;
+    document.getElementById('formClientDropdown').style.display = 'none';
+    updatePreview();
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#clientSearchInput') && !e.target.closest('#formClientDropdown')) {
+        document.getElementById('formClientDropdown').style.display = 'none';
+    }
+});
+// Init with current selection
+(function() {
+    var cid = document.getElementById('clientSelect').value;
+    if (cid) {
+        var c = clientsData.find(function(x) { return String(x.id) === String(cid); });
+        if (c) document.getElementById('clientSearchInput').value = c.name;
+    }
+})();
 const docType = "{{ doc_type }}";
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
 const companySettings = {{ settings | tojson }};
 const isVatPayer = companySettings.is_vat_payer !== '0';
 const entityType = companySettings.entity_type || 'business';
 const editMode = {{ 'true' if edit_mode else 'false' }};
+let savedVatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+
+function toggleReverseCharge() {
+    const cb = document.getElementById('reverseCharge');
+    const vatInput = document.getElementById('vatRate');
+    if (cb && cb.checked) {
+        savedVatRate = parseFloat(vatInput.value) || savedVatRate;
+        vatInput.value = '0';
+        vatInput.disabled = true;
+    } else {
+        vatInput.disabled = false;
+        vatInput.value = savedVatRate || companySettings.default_vat_rate || '21';
+    }
+    recalculate();
+}
+// Initialize on page load if editing a reverse charge doc
+if (document.getElementById('reverseCharge') && document.getElementById('reverseCharge').checked) {
+    document.getElementById('vatRate').disabled = true;
+}
 const editItems = {{ edit_items | tojson if edit_mode else '[]' }};
 const editDocNumber = "{{ doc.doc_number if edit_mode else '' }}";
 let itemIndex = 0;
@@ -269,20 +374,28 @@ const paymentDueDays = parseInt("{{ settings.get('payment_due_days', '') }}") ||
 const dueDateInput = document.getElementById('paymentDueDate');
 const dueDateHint = document.getElementById('dueDateHint');
 
+function setDateValue(el, isoDate) {
+    if (el._flatpickr) {
+        el._flatpickr.setDate(isoDate, false);
+    } else {
+        el.value = isoDate;
+    }
+}
+
 function calcDefaultDueDate() {
     if (dueDateInput.value || !paymentDueDays) return;
     const docDate = dateInput.value;
     if (!docDate) return;
     const d = new Date(docDate);
     d.setDate(d.getDate() + paymentDueDays);
-    dueDateInput.value = d.toISOString().slice(0, 10);
+    setDateValue(dueDateInput, d.toISOString().slice(0, 10));
     dueDateHint.textContent = paymentDueDays + ' dienas no dokumenta datuma';
 }
 
 if (!editMode && paymentDueDays) {
     calcDefaultDueDate();
     dateInput.addEventListener('change', function() {
-        dueDateInput.value = '';
+        setDateValue(dueDateInput, '');
         calcDefaultDueDate();
     });
 }
@@ -322,9 +435,9 @@ function addItemRow(presetProduct, presetUnit, presetQty, presetPrice) {
             </div>
             <div class="stock-hint" id="stock-hint-${idx}"></div>
         </td>
-        <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control" ${stockEnabled ? 'disabled' : ''}>${unitOptions}</select>${stockEnabled ? `<input type="hidden" name="items[${idx}][unit]" id="unit-hidden-${idx}" value="${presetUnit || units[0]}">` : ''}</td>
-        <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" onchange="recalculate()" oninput="recalculate()" required></td>
-        <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" onchange="recalculate()" oninput="recalculate()" required></td>
+        <td data-label="Mērvienība"><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control" ${stockEnabled ? 'disabled' : ''}>${unitOptions}</select>${stockEnabled ? `<input type="hidden" name="items[${idx}][unit]" id="unit-hidden-${idx}" value="${presetUnit || units[0]}">` : ''}</td>
+        <td data-label="Daudzums"><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" placeholder="Daudzums" onchange="recalculate()" oninput="recalculate()" required></td>
+        <td data-label="Cena"><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" placeholder="Cena" onchange="recalculate()" oninput="recalculate()" required></td>
         <td class="item-total text-right" id="total-${idx}">0.00</td>
         <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
     `;
@@ -369,6 +482,8 @@ function recalculate() {
         document.getElementById('total-' + idx).textContent = lineTotal.toFixed(2);
     });
 
+    const rcCheckbox = document.getElementById('reverseCharge');
+    const isReverseCharge = rcCheckbox && rcCheckbox.checked;
     const vatRate = isVatPayer ? (parseFloat(document.getElementById('vatRate').value) || 0) : 0;
     const vat = subtotal * (vatRate / 100);
     const total = subtotal + vat;
@@ -376,6 +491,10 @@ function recalculate() {
     document.getElementById('subtotalDisplay').textContent = subtotal.toFixed(2);
     document.getElementById('vatDisplay').textContent = vat.toFixed(2);
     document.getElementById('totalDisplay').textContent = total.toFixed(2);
+    const vatLabel = document.getElementById('vatLabel');
+    if (vatLabel) {
+        vatLabel.textContent = isReverseCharge ? 'PVN (0% - Reverse Charge):' : 'PVN:';
+    }
 
     validateStock();
     updatePreview();
@@ -503,8 +622,10 @@ function getPreviewData() {
     const vatAmount = subtotal * (vatRate / 100);
     const total = subtotal + vatAmount;
     const docNumber = editMode ? editDocNumber : '(automātiski)';
+    const rcCb = document.getElementById('reverseCharge');
+    const reverseCharge = rcCb && rcCb.checked;
 
-    return { template, docTypeName, docNumber, displayDate, supplier, buyer, items, subtotal, vatRate, vatAmount, total, notes, isVatPayer };
+    return { template, docTypeName, docNumber, displayDate, supplier, buyer, items, subtotal, vatRate, vatAmount, total, notes, isVatPayer, reverseCharge };
 }
 
 function partyLines(info, showVat) {
@@ -588,7 +709,7 @@ function renderClassicPreview(d) {
         </table>
         <div style="text-align:right;font-size:10px">
             ${d.isVatPayer ? `<div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
-            <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
+            <div style="color:#6b7280">${d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + d.vatRate + '%)'}: <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
             <div style="font-size:12px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
@@ -629,7 +750,7 @@ function renderModernPreview(d) {
         </table>
         <div style="text-align:right;font-size:10px;padding:0 4px">
             ${d.isVatPayer ? `<div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
-            <div style="color:#6b7280">PVN (${d.vatRate}%): <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
+            <div style="color:#6b7280">${d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + d.vatRate + '%)'}: <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
             <div style="font-size:13px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${d.total.toFixed(2)} EUR</div>
         </div>
         ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280;padding:0 4px"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
@@ -668,7 +789,7 @@ function renderMinimalPreview(d) {
             </table>
             <div style="text-align:right;font-size:10px">
                 ${d.isVatPayer ? `<div style="color:#9ca3af">Bez PVN: <span style="color:#9ca3af">${d.subtotal.toFixed(2)} EUR</span></div>
-                <div style="color:#9ca3af">PVN ${d.vatRate}%: <span style="color:#9ca3af">${d.vatAmount.toFixed(2)} EUR</span></div>` : ''}
+                <div style="color:#9ca3af">${d.reverseCharge ? 'PVN 0% - Reverse Charge' : 'PVN ' + d.vatRate + '%'}: <span style="color:#9ca3af">${d.vatAmount.toFixed(2)} EUR</span></div>` : ''}
                 <div style="font-size:11px;font-weight:800;color:#111827;margin-top:3px;padding-top:3px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
             </div>
             ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:8px 0 4px"><div style="font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
@@ -698,7 +819,36 @@ function updatePreview() {
 
 function showQuickAddClient() {
     document.getElementById('quickAddClientModal').classList.add('active');
+    // Reset to business mode
+    document.querySelector('#quickAddClientModal input[name="qc_client_type"][value="business"]').checked = true;
+    qcToggleClientType('business');
     document.getElementById('qc_name').focus();
+}
+
+/* --- Quick-Add Client Type Toggle --- */
+function qcToggleClientType(type) {
+    const bizLabel = document.getElementById('qc_type_business_label');
+    const indLabel = document.getElementById('qc_type_individual_label');
+    const bizGroup = document.getElementById('qc_business_name_group');
+    const indGroup = document.getElementById('qc_individual_name_group');
+    const regLabel = document.getElementById('qc_reg_label');
+    if (type === 'business') {
+        bizLabel.style.background = 'var(--bg-primary, #111827)';
+        bizLabel.style.color = '#fff';
+        indLabel.style.background = 'transparent';
+        indLabel.style.color = 'var(--text-primary, #111827)';
+        bizGroup.style.display = '';
+        indGroup.style.display = 'none';
+        regLabel.textContent = 'Reģ. Nr.';
+    } else {
+        indLabel.style.background = 'var(--bg-primary, #111827)';
+        indLabel.style.color = '#fff';
+        bizLabel.style.background = 'transparent';
+        bizLabel.style.color = 'var(--text-primary, #111827)';
+        bizGroup.style.display = 'none';
+        indGroup.style.display = '';
+        regLabel.textContent = 'Personas kods';
+    }
 }
 
 /* --- Registry Autocomplete (Quick Add Client) --- */
@@ -802,8 +952,19 @@ function showQuickAddProduct(rowBtn) {
 }
 
 async function quickAddClient() {
+    const clientType = document.querySelector('#quickAddClientModal input[name="qc_client_type"]:checked').value;
+    let name;
+    if (clientType === 'individual') {
+        const first = (document.getElementById('qc_first_name') || {}).value || '';
+        const last = (document.getElementById('qc_last_name') || {}).value || '';
+        if (!first.trim() || !last.trim()) { alert('Lūdzu aizpildiet vārdu un uzvārdu'); return; }
+        name = first.trim() + ' ' + last.trim();
+    } else {
+        name = document.getElementById('qc_name').value;
+    }
     const data = {
-        name: document.getElementById('qc_name').value,
+        name: name,
+        client_type: clientType,
         reg_number: document.getElementById('qc_reg_number').value,
         vat_number: document.getElementById('qc_vat_number').value,
         vat_payer: document.getElementById('qc_vat_payer').checked ? 1 : 0,
@@ -823,18 +984,8 @@ async function quickAddClient() {
     if (!resp.ok) {
         if (result.duplicate && result.client) {
             // Duplicate found — select the existing client instead
-            const select = document.getElementById('clientSelect');
-            const existing = select.querySelector(`option[value="${result.client.id}"]`);
-            if (existing) {
-                select.value = result.client.id;
-            } else {
-                clientsData.push(result.client);
-                const opt = new Option(result.client.name, result.client.id, true, true);
-                select.add(opt);
-            }
+            _addAndSelectClient(result.client);
             document.getElementById('quickAddClientModal').classList.remove('active');
-            updatePreview();
-            alert(result.error);
             return;
         }
         alert(result.error || 'Kļūda saglabājot klientu');
@@ -842,19 +993,31 @@ async function quickAddClient() {
     }
     const client = result;
 
-    clientsData.push(client);
-
-    const select = document.getElementById('clientSelect');
-    const opt = new Option(client.name, client.id, true, true);
-    select.add(opt);
+    _addAndSelectClient(client);
 
     document.getElementById('quickAddClientModal').classList.remove('active');
     ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_bank_name', 'qc_bank_account'].forEach(
         id => document.getElementById(id).value = ''
     );
+    if (document.getElementById('qc_first_name')) document.getElementById('qc_first_name').value = '';
+    if (document.getElementById('qc_last_name')) document.getElementById('qc_last_name').value = '';
     document.getElementById('qc_vat_payer').checked = false;
     document.getElementById('qc_vat_group').style.display = 'none';
-    updatePreview();
+}
+
+function _addAndSelectClient(client) {
+    if (!clientsData.find(function(c) { return c.id === client.id; })) {
+        clientsData.push(client);
+        // Add to dropdown
+        var dd = document.getElementById('formClientDropdown');
+        var div = document.createElement('div');
+        div.className = 'search-dropdown-item';
+        div.setAttribute('data-id', client.id);
+        div.textContent = client.name;
+        div.onclick = function() { selectFormClient(String(client.id), client.name); };
+        dd.appendChild(div);
+    }
+    selectFormClient(String(client.id), client.name);
 }
 
 async function quickAddProduct() {

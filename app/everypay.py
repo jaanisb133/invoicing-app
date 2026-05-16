@@ -21,10 +21,13 @@ API_URL = os.getenv("EVERYPAY_API_URL", "https://igw-seb-demo.every-pay.com/api/
 
 # Plan prices (EUR)
 PLAN_PRICES = {
+    "mini_monthly": 4.99,
+    "mini_yearly": 49.00,
     "starter_monthly": 9.99,
-    "starter_yearly": 97.99,
+    "starter_yearly": 99.00,
     "business_monthly": 19.99,
-    "business_yearly": 195.99,
+    "business_yearly": 199.00,
+    "lifetime_lifetime": 499.00,
 }
 
 

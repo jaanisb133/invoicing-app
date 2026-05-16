@@ -4,14 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>V-Rēķini</title>
+    {% if offline_mode %}
+    <link rel="stylesheet" href="/static/css/style.css?v=11">
+    <link rel="stylesheet" href="/static/vendor/flatpickr.min.css">
+    <script src="/static/vendor/chart.umd.min.js"></script>
+    <script src="/static/vendor/flatpickr.min.js"></script>
+    {% else %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&subset=latin-ext&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=6">
+    <link rel="stylesheet" href="/static/css/style.css?v=11">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    {% endif %}
     <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t)document.documentElement.setAttribute('data-theme',t);})()</script>
 </head>
 <body>
-    <button class="hamburger" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+    <header class="mobile-header">
+        <a href="/" class="mobile-header-logo">
+            <div class="mobile-header-logo-icon">VR</div>
+            <span>V-Rēķini</span>
+        </a>
+        <button class="mobile-header-menu" onclick="document.querySelector('.sidebar').classList.toggle('open')" aria-label="Izvēlne">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+    </header>
 
     <aside class="sidebar">
         <div class="sidebar-header">
@@ -39,11 +57,13 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                 Produkti / Pakalpojumi
             </a>
+            {% if not offline_mode %}
             <a href="/recurring" class="{% if page == 'recurring' %}active{% endif %}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                 Periodiskie rēķini
                 {% if not tier_limits.recurring %}<span class="sidebar-lock">PRO</span>{% endif %}
             </a>
+            {% endif %}
             {% if stock_enabled %}
             <a href="/stock" class="{% if page == 'stock' %}active{% endif %}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
@@ -51,24 +71,31 @@
             </a>
             {% endif %}
 
+            <a href="/trash" class="{% if page == 'trash' %}active{% endif %}">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Papīrgrozs
+            </a>
+
             <div class="sidebar-divider"></div>
 
             <a href="/export" class="{% if page == 'export' %}active{% endif %}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Eksports
-                {% if not tier_limits.accounting_export %}<span class="sidebar-lock">PRO</span>{% endif %}
+                {% if not offline_mode and not tier_limits.accounting_export %}<span class="sidebar-lock">PRO</span>{% endif %}
             </a>
 
+            {% if not offline_mode %}
             <a href="/pricing" class="{% if page == 'pricing' %}active{% endif %}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                 Mans abonements
             </a>
+            {% endif %}
 
             <a href="/settings" class="{% if page == 'settings' %}active{% endif %}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 Iestatījumi
             </a>
-            {% if current_user and current_user.is_admin %}
+            {% if current_user and current_user.is_admin and not offline_mode %}
             <a href="/users" class="{% if page == 'users' %}active{% endif %}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 Lietotāji (Admin)
@@ -81,6 +108,15 @@
             </button>
         </nav>
 
+        {% if offline_mode %}
+        <div class="sidebar-account" style="cursor:default">
+            <div class="account-avatar">{{ (current_user.display_name or current_user.username)[:1] | upper }}</div>
+            <div class="account-info">
+                <div class="account-name">{{ current_user.display_name or current_user.username }}</div>
+                <div class="account-tier">Offline</div>
+            </div>
+        </div>
+        {% else %}
         <div class="sidebar-account" onclick="toggleAccountMenu(event)">
             <div class="account-avatar">{{ (current_user.display_name or current_user.username)[:1] | upper }}</div>
             <div class="account-info">
@@ -100,6 +136,7 @@
                 </a>
             </div>
         </div>
+        {% endif %}
     </aside>
 
     <main class="main-content">
@@ -160,6 +197,49 @@
                 sidebar.classList.remove('open');
             }
         });
+    </script>
+    <script>
+    // Flatpickr: convert all date inputs to dd/mm/yy format
+    function initDatePicker(el, extraOpts) {
+        if (el._flatpickr) return el._flatpickr;
+        var existingVal = el.value;
+        el.type = 'text';
+        el.setAttribute('autocomplete', 'off');
+        var opts = {
+            dateFormat: 'Y-m-d',
+            altInput: true,
+            altFormat: 'd/m/y',
+            allowInput: true,
+            defaultDate: existingVal || null,
+            onChange: function() {
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        };
+        if (extraOpts) Object.assign(opts, extraOpts);
+        var fp = flatpickr(el, opts);
+        // Patch value setter so programmatic .value = 'YYYY-MM-DD' updates the alt input
+        var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        var setting = false;
+        Object.defineProperty(el, 'value', {
+            get: function() { return desc.get.call(el); },
+            set: function(v) {
+                desc.set.call(el, v);
+                if (!setting && fp) {
+                    setting = true;
+                    if (v) fp.setDate(v, false);
+                    else fp.clear();
+                    setting = false;
+                }
+            },
+            configurable: true
+        });
+        return fp;
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('input[type="date"]').forEach(function(el) {
+            initDatePicker(el);
+        });
+    });
     </script>
 </body>
 </html>

@@ -27,6 +27,18 @@
 .row-menu-danger:hover { background: #fef2f2 !important; }
 tr.clickable-row { cursor: pointer; }
 tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
+.search-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+    background: var(--bg-card, #fff); border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 240px;
+    overflow-y: auto; margin-top: 2px;
+}
+.search-dropdown-item {
+    padding: 8px 12px; cursor: pointer; font-size: 14px;
+    color: var(--text, #111827); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.search-dropdown-item:hover, .search-dropdown-item.active { background: var(--bg-secondary, #f3f4f6); }
+.search-dropdown-item[style*="display:none"] + .search-dropdown-item { border-top: none; }
 .row-menu-divider { height: 1px; background: var(--border-color, #e5e7eb); margin: 4px 0; }
 .row-menu-disabled { opacity: 0.5; }
 .badge-pro-menu {
@@ -37,7 +49,9 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
 <div class="page-header">
     <h2>Dokumenti</h2>
     <div class="btn-group">
+        {% if stock_enabled %}
         <a href="/documents/new?doc_type=buy" class="btn btn-success"><span class="btn-label-full">+ Jauns iegādes dokuments</span><span class="btn-label-short">+ Iegāde</span></a>
+        {% endif %}
         <a href="/documents/new?doc_type=sell" class="btn btn-primary"><span class="btn-label-full">+ Jauns pārdošanas dokuments</span><span class="btn-label-short">+ Pārdošana</span></a>
     </div>
 </div>
@@ -46,71 +60,71 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
+    {% if not offline_mode %}
     <div class="usage-section" style="margin-bottom:16px">
         <div class="usage-item">
-            <div class="usage-label">Dokumenti</div>
+            <div class="usage-label">Dokumenti (šomēnes)</div>
             <div class="usage-bar">
                 <div class="usage-fill" style="width: {{ [(usage.documents / limits.max_documents * 100) | int, 100] | min }}%"></div>
             </div>
             <div class="usage-count">{{ usage.documents }} / {{ limits.max_documents }}</div>
         </div>
     </div>
+    {% endif %}
     <div class="card">
         <div class="card-body">
-            <form method="get" action="/documents" class="filters-bar" id="filterForm">
-                <div class="form-group">
+            <div class="filters-bar" id="filterForm" style="flex-wrap:nowrap;align-items:end;gap:8px">
+                {% if stock_enabled %}
+                <div class="form-group" style="margin-bottom:0;min-width:0;flex:0 0 auto">
                     <label>Tips</label>
-                    <select name="doc_type" class="form-control">
+                    <select id="fDocType" class="form-control" style="min-width:100px" onchange="loadDocs()">
                         <option value="">Visi</option>
                         <option value="buy" {% if filters.doc_type == 'buy' %}selected{% endif %}>Iegāde</option>
                         <option value="sell" {% if filters.doc_type == 'sell' %}selected{% endif %}>Pārdošana</option>
                     </select>
                 </div>
-                <div class="form-group">
+                {% endif %}
+                <div class="form-group" style="margin-bottom:0;min-width:0;flex:1 1 120px;position:relative">
                     <label>Klients</label>
-                    <select name="client_id" class="form-control">
-                        <option value="">Visi</option>
+                    <input type="text" id="fClientSearch" class="form-control" placeholder="Meklēt..." autocomplete="off"
+                           style="min-width:0" onfocus="showClientDropdown()" oninput="filterClients()">
+                    <input type="hidden" id="fClientId" value="{{ filters.client_id }}">
+                    <div id="fClientDropdown" class="search-dropdown" style="display:none">
+                        <div class="search-dropdown-item" data-id="" onclick="selectFilterClient('','Visi')">Visi</div>
                         {% for c in clients %}
-                        <option value="{{ c.id }}" {% if filters.client_id == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+                        <div class="search-dropdown-item" data-id="{{ c.id }}" onclick="selectFilterClient('{{ c.id }}','{{ c.name | e }}')">{{ c.name }}</div>
                         {% endfor %}
-                    </select>
+                    </div>
                 </div>
                 {% if settings.get('status_tracking', '0') == '1' %}
-                <div class="form-group">
+                <div class="form-group" style="margin-bottom:0;min-width:0;flex:0 0 auto">
                     <label>Statuss</label>
-                    <select name="status" class="form-control">
+                    <select id="fStatus" class="form-control" style="min-width:100px" onchange="loadDocs()">
                         <option value="">Visi</option>
                         <option value="issued" {% if filters.status == 'issued' %}selected{% endif %}>Izrakstīts</option>
                         <option value="paid" {% if filters.status == 'paid' %}selected{% endif %}>Apmaksāts</option>
                     </select>
                 </div>
                 {% endif %}
-                <div class="form-group">
-                    <label>No datuma</label>
-                    <input type="date" name="date_from" id="dateFrom" class="form-control" value="{{ filters.date_from }}">
+                <div class="form-group" style="margin-bottom:0;min-width:0;flex:0 0 auto">
+                    <label>No</label>
+                    <input type="date" id="dateFrom" class="form-control" style="min-width:0;width:120px" value="{{ filters.date_from }}">
                 </div>
-                <div class="form-group">
-                    <label>Līdz datumam</label>
-                    <input type="date" name="date_to" id="dateTo" class="form-control" value="{{ filters.date_to }}">
+                <div class="form-group" style="margin-bottom:0;min-width:0;flex:0 0 auto">
+                    <label>Līdz</label>
+                    <input type="date" id="dateTo" class="form-control" style="min-width:0;width:120px" value="{{ filters.date_to }}">
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="margin-bottom:0;flex:0 0 auto">
                     <label>&nbsp;</label>
-                    <div class="btn-group">
-                        <button type="submit" class="btn btn-outline">Filtrēt</button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>&nbsp;</label>
-                    <div class="btn-group">
+                    <div class="btn-group" style="gap:4px">
                         <button type="button" class="btn btn-outline btn-sm" onclick="setThisMonth()">Šomēnes</button>
                         <button type="button" class="btn btn-outline btn-sm" onclick="setLastMonth()">Iepr. mēnesis</button>
                     </div>
                 </div>
-            </form>
+            </div>
 
-            {% if documents %}
             <div class="table-wrapper">
-                <table>
+                <table class="mobile-cards">
                     <thead>
                         <tr>
                             <th>Nr.</th>
@@ -124,20 +138,21 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
                             <th></th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="docsBody">
+                    {% if documents %}
                         {% for doc in documents %}
                         <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
-                            <td>{{ doc.doc_number }}</td>
-                            <td>
+                            <td data-label="Nr.">{{ doc.doc_number }}</td>
+                            <td data-label="Tips">
                                 {% if doc.doc_type == 'buy' %}
                                 <span class="badge badge-buy">Iegāde</span>
                                 {% else %}
                                 <span class="badge badge-sell">Pārdošana</span>
                                 {% endif %}
                             </td>
-                            <td>{{ doc.client_name }}</td>
-                            <td>{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
-                            <td>{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
+                            <td data-label="Klients">{{ doc.client_name }}</td>
+                            <td data-label="Datums">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
+                            <td data-label="Summa">{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <td>
                                 <span class="badge badge-status {% if doc.status == 'paid' %}badge-paid{% else %}badge-issued{% endif %}"
@@ -202,11 +217,10 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
                                         </a>
                                         {% endif %}
                                         <div class="row-menu-divider"></div>
-                                        <form method="post" action="/documents/{{ doc.id }}/delete"
-                                              onsubmit="return confirm('Vai tiešām dzēst dokumentu {{ doc.doc_number }}?')">
+                                        <form method="post" action="/documents/{{ doc.id }}/delete">
                                             <button type="submit" class="row-menu-item row-menu-danger">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                                Dzēst
+                                                Pārvietot uz papīrgrozu
                                             </button>
                                         </form>
                                     </div>
@@ -214,12 +228,12 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
                             </td>
                         </tr>
                         {% endfor %}
+                    {% else %}
+                        <tr><td colspan="{{ 7 if settings.get('status_tracking', '0') == '1' else 6 }}" style="text-align:center;padding:32px;color:var(--text-light)">Nav dokumentu ar izvēlētajiem filtriem.</td></tr>
+                    {% endif %}
                     </tbody>
                 </table>
             </div>
-            {% else %}
-            <div class="empty-state">Nav dokumentu ar izvēlētajiem filtriem.</div>
-            {% endif %}
         </div>
     </div>
 </div>
@@ -278,6 +292,11 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
 
 {% block scripts %}
 <script>
+const statusTracking = {{ 'true' if settings.get('status_tracking', '0') == '1' else 'false' }};
+const einvoiceEnabled = {{ 'true' if einvoice_enabled else 'false' }};
+const recurringEnabled = {{ 'true' if recurring_enabled else 'false' }};
+const emailEnabled = {{ 'true' if email_enabled else 'false' }};
+
 async function toggleStatus(el) {
     const docId = el.dataset.docId;
     el.style.opacity = '0.5';
@@ -303,31 +322,153 @@ async function toggleStatus(el) {
     el.style.opacity = '1';
 }
 
+// --- Searchable client filter ---
+function showClientDropdown() {
+    document.getElementById('fClientDropdown').style.display = 'block';
+    filterClients();
+}
+function filterClients() {
+    var q = document.getElementById('fClientSearch').value.toLowerCase();
+    document.querySelectorAll('#fClientDropdown .search-dropdown-item').forEach(function(el) {
+        var name = el.textContent.toLowerCase();
+        el.style.display = (!q || name.includes(q)) ? '' : 'none';
+    });
+}
+function selectFilterClient(id, name) {
+    document.getElementById('fClientId').value = id;
+    document.getElementById('fClientSearch').value = id ? name : '';
+    document.getElementById('fClientDropdown').style.display = 'none';
+    loadDocs();
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#fClientSearch') && !e.target.closest('#fClientDropdown')) {
+        document.getElementById('fClientDropdown').style.display = 'none';
+    }
+});
+// Init client search field with current selection
+(function() {
+    var cid = document.getElementById('fClientId').value;
+    if (cid) {
+        var item = document.querySelector('#fClientDropdown .search-dropdown-item[data-id="' + cid + '"]');
+        if (item) document.getElementById('fClientSearch').value = item.textContent.trim();
+    }
+})();
+
+// --- AJAX document loading ---
+var loadTimer = null;
+function loadDocs() {
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(_doLoad, 150);
+}
+
+function _doLoad() {
+    var params = new URLSearchParams();
+    var docType = document.getElementById('fDocType');
+    if (docType && docType.value) params.set('doc_type', docType.value);
+    var clientId = document.getElementById('fClientId').value;
+    if (clientId) params.set('client_id', clientId);
+    var status = document.getElementById('fStatus');
+    if (status && status.value) params.set('status', status.value);
+    var df = document.getElementById('dateFrom').value;
+    var dt = document.getElementById('dateTo').value;
+    if (df) params.set('date_from', df);
+    if (dt) params.set('date_to', dt);
+
+    // Update URL without reload
+    var newUrl = '/documents' + (params.toString() ? '?' + params.toString() : '');
+    history.replaceState(null, '', newUrl);
+
+    fetch('/api/documents?' + params.toString(), {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(docs) { renderDocs(docs); });
+}
+
+function fmtDate(iso) {
+    if (!iso || !iso.includes('-')) return iso;
+    var p = iso.split('-');
+    return p[2] + '/' + p[1] + '/' + p[0];
+}
+
+function renderDocs(docs) {
+    var tbody = document.getElementById('docsBody');
+    if (!tbody) return;
+    if (!docs.length) {
+        tbody.innerHTML = '<tr><td colspan="' + (statusTracking ? 7 : 6) + '" style="text-align:center;padding:32px;color:var(--text-light)">Nav dokumentu ar izvēlētajiem filtriem.</td></tr>';
+        return;
+    }
+    var html = '';
+    docs.forEach(function(d) {
+        var badge = d.doc_type === 'buy'
+            ? '<span class="badge badge-buy">Iegāde</span>'
+            : '<span class="badge badge-sell">Pārdošana</span>';
+        var statusHtml = '';
+        if (statusTracking) {
+            var isPaid = d.status === 'paid';
+            statusHtml = '<td><span class="badge badge-status ' + (isPaid ? 'badge-paid' : 'badge-issued') + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" title="Noklikšķiniet, lai mainītu statusu">' + (isPaid ? 'Apmaksāts' : 'Izrakstīts') + '</span></td>';
+        }
+        html += '<tr data-href="/documents/' + d.id + '" class="clickable-row">'
+            + '<td data-label="Nr.">' + d.doc_number + '</td>'
+            + '<td data-label="Tips">' + badge + '</td>'
+            + '<td data-label="Klients">' + (d.client_name || '') + '</td>'
+            + '<td data-label="Datums">' + fmtDate(d.doc_date) + '</td>'
+            + '<td data-label="Summa">' + d.total_with_vat.toFixed(2) + ' €</td>'
+            + statusHtml
+            + '<td>' + menuHtml(d) + '</td>'
+            + '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function menuHtml(d) {
+    var items = '<a href="/documents/' + d.id + '" class="row-menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Skatīt</a>';
+    items += '<a href="/documents/' + d.id + '/edit" class="row-menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Rediģēt</a>';
+    items += '<a href="/documents/' + d.id + '/pdf" class="row-menu-item" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Lejupielādēt PDF</a>';
+    if (einvoiceEnabled) {
+        items += '<a href="/documents/' + d.id + '/einvoice" class="row-menu-item" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Lejupielādēt E-rēķinu (XML)</a>';
+    } else {
+        items += '<a href="/pricing" class="row-menu-item row-menu-disabled"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>E-rēķins (XML) <span class="badge-pro-menu">PRO</span></a>';
+    }
+    items += '<div class="row-menu-divider"></div>';
+    if (emailEnabled) {
+        items += '<button type="button" class="row-menu-item" data-action="send" data-doc-id="' + d.id + '" data-client-id="' + (d.client_id || '') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Nosūtīt klientam</button>';
+    } else {
+        items += '<a href="/pricing" class="row-menu-item row-menu-disabled"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Nosūtīt klientam <span class="badge-pro-menu">PRO</span></a>';
+    }
+    if (recurringEnabled) {
+        items += '<button type="button" class="row-menu-item" data-action="recurring" data-doc-id="' + d.id + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Periodiskais rēķins</button>';
+    } else {
+        items += '<a href="/pricing" class="row-menu-item row-menu-disabled"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Periodiskais rēķins <span class="badge-pro-menu">PRO</span></a>';
+    }
+    items += '<div class="row-menu-divider"></div>';
+    items += '<form method="post" action="/documents/' + d.id + '/delete"><button type="submit" class="row-menu-item row-menu-danger"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Pārvietot uz papīrgrozu</button></form>';
+    return '<div class="row-menu-wrapper"><button type="button" class="row-menu-trigger" aria-label="Darbības"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button><div class="row-menu-dropdown">' + items + '</div></div>';
+}
+
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
 function setThisMonth() {
     var now = new Date();
     var y = now.getFullYear();
     var m = now.getMonth();
-    var first = y + '-' + pad(m + 1) + '-01';
+    document.getElementById('dateFrom').value = y + '-' + pad(m + 1) + '-01';
     var last = new Date(y, m + 1, 0);
-    var lastStr = y + '-' + pad(m + 1) + '-' + pad(last.getDate());
-    document.getElementById('dateFrom').value = first;
-    document.getElementById('dateTo').value = lastStr;
-    document.getElementById('filterForm').submit();
+    document.getElementById('dateTo').value = y + '-' + pad(m + 1) + '-' + pad(last.getDate());
+    loadDocs();
 }
 
 function setLastMonth() {
     var now = new Date();
     var y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
     var m = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-    var first = y + '-' + pad(m + 1) + '-01';
+    document.getElementById('dateFrom').value = y + '-' + pad(m + 1) + '-01';
     var last = new Date(y, m + 1, 0);
-    var lastStr = y + '-' + pad(m + 1) + '-' + pad(last.getDate());
-    document.getElementById('dateFrom').value = first;
-    document.getElementById('dateTo').value = lastStr;
-    document.getElementById('filterForm').submit();
+    document.getElementById('dateTo').value = y + '-' + pad(m + 1) + '-' + pad(last.getDate());
+    loadDocs();
 }
+
+// Wire up date inputs for AJAX
+document.getElementById('dateFrom').addEventListener('change', loadDocs);
+document.getElementById('dateTo').addEventListener('change', loadDocs);
 
 // Client email lookup for send modal
 const clientEmailMap = {

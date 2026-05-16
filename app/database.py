@@ -225,11 +225,17 @@ def _run_migrations():
         cursor.execute("ALTER TABLE documents ADD COLUMN status TEXT NOT NULL DEFAULT 'issued'")
     if "payment_due_date" not in doc_cols:
         cursor.execute("ALTER TABLE documents ADD COLUMN payment_due_date DATE")
+    if "reverse_charge" not in doc_cols:
+        cursor.execute("ALTER TABLE documents ADD COLUMN reverse_charge INTEGER NOT NULL DEFAULT 0")
+    if "deleted_at" not in doc_cols:
+        cursor.execute("ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP")
 
     # Add vat_payer column to clients if missing
     client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
     if "vat_payer" not in client_cols:
         cursor.execute("ALTER TABLE clients ADD COLUMN vat_payer INTEGER NOT NULL DEFAULT 0")
+    if "client_type" not in client_cols:
+        cursor.execute("ALTER TABLE clients ADD COLUMN client_type TEXT NOT NULL DEFAULT 'business'")
 
     # Add email_subject / email_body to recurring_invoices if missing
     rec_cols = {row[1] for row in cursor.execute("PRAGMA table_info(recurring_invoices)").fetchall()}
@@ -254,6 +260,9 @@ def _run_migrations():
             UNIQUE(user_id, key)
         )
     """)
+
+    # Indexes for common queries (monthly document counting, etc.)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_monthly ON documents(user_id, deleted_at, created_at)")
 
     conn.commit()
     conn.close()
@@ -435,14 +444,15 @@ def get_product(product_id):
 # --- Clients (per-user) ---
 
 def add_client(user_id, name, reg_number="", vat_number="", vat_payer=0, legal_address="",
-               bank_name="", bank_account="", contact_person="", phone="", email=""):
+               bank_name="", bank_account="", contact_person="", phone="", email="",
+               client_type="business"):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO clients (user_id, name, reg_number, vat_number, vat_payer, legal_address,
-           bank_name, bank_account, contact_person, phone, email)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           bank_name, bank_account, contact_person, phone, email, client_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (user_id, name, reg_number, vat_number, int(vat_payer), legal_address,
-         bank_name, bank_account, contact_person, phone, email)
+         bank_name, bank_account, contact_person, phone, email, client_type)
     )
     client_id = cursor.lastrowid
     conn.commit()
@@ -452,7 +462,8 @@ def add_client(user_id, name, reg_number="", vat_number="", vat_payer=0, legal_a
 
 def update_client(user_id, client_id, **kwargs):
     allowed_fields = {"name", "reg_number", "vat_number", "vat_payer", "legal_address",
-                      "bank_name", "bank_account", "contact_person", "phone", "email"}
+                      "bank_name", "bank_account", "contact_person", "phone", "email",
+                      "client_type"}
     conn = get_connection()
     for key, value in kwargs.items():
         if key in allowed_fields:
@@ -607,7 +618,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
 
-def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date=""):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
@@ -630,11 +641,11 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
 
         cursor = conn.execute(
-            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
-             payment_due_date or None, vat_rate, notes)
+             payment_due_date or None, vat_rate, notes, int(reverse_charge))
         )
         doc_id = cursor.lastrowid
 
@@ -656,7 +667,7 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         conn.close()
 
 
-def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date=""):
+def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False):
     """
     Update an existing document and its line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
@@ -692,10 +703,10 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
 
         # Update document fields
         conn.execute(
-            """UPDATE documents SET client_id = ?, doc_date = ?, payment_due_date = ?, vat_rate = ?, notes = ?
+            """UPDATE documents SET client_id = ?, doc_date = ?, payment_due_date = ?, vat_rate = ?, notes = ?, reverse_charge = ?
                WHERE id = ? AND user_id = ?""",
             (client_id, doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
-             payment_due_date or None, vat_rate, notes, doc_id, user_id)
+             payment_due_date or None, vat_rate, notes, int(reverse_charge), doc_id, user_id)
         )
 
         # Delete old items and insert new ones
@@ -737,7 +748,7 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
                ROUND(COALESCE((SELECT SUM(di.total) FROM document_items di WHERE di.document_id = d.id), 0) * (1 + d.vat_rate / 100.0), 2) as total_with_vat
                FROM documents d
                JOIN clients c ON d.client_id = c.id
-               WHERE d.user_id = ?"""
+               WHERE d.user_id = ? AND d.deleted_at IS NULL"""
     params = [user_id]
 
     if doc_type:
@@ -771,8 +782,57 @@ def update_document_status(user_id, doc_id, status):
 
 
 def delete_document(user_id, doc_id):
+    """Soft-delete a document (move to trash). Permanently deleted after 7 days."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE documents SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+        (doc_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def restore_document(user_id, doc_id):
+    """Restore a soft-deleted document from trash."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE documents SET deleted_at = NULL WHERE id = ? AND user_id = ?",
+        (doc_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def permanently_delete_document(user_id, doc_id):
+    """Permanently delete a document (no recovery)."""
     conn = get_connection()
     conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_deleted_documents(user_id):
+    """Get all soft-deleted documents for a user (trash)."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT d.*, c.name as client_name,
+           ROUND(COALESCE((SELECT SUM(di.total) FROM document_items di WHERE di.document_id = d.id), 0) * (1 + d.vat_rate / 100.0), 2) as total_with_vat
+           FROM documents d
+           JOIN clients c ON d.client_id = c.id
+           WHERE d.user_id = ? AND d.deleted_at IS NOT NULL
+           ORDER BY d.deleted_at DESC""",
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def purge_old_deleted_documents():
+    """Permanently delete documents that have been in trash for more than 7 days."""
+    conn = get_connection()
+    conn.execute(
+        "DELETE FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-7 days')"
+    )
     conn.commit()
     conn.close()
 
@@ -988,7 +1048,7 @@ def get_dashboard_stats(user_id: int) -> dict:
 
     # Invoices in last 7 days
     row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date >= ?",
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_date >= ?",
         (user_id, week_ago)
     ).fetchone()
     docs_last_7_days = row["cnt"] if row else 0
@@ -998,7 +1058,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell'
     """, (user_id,)).fetchone()
     total_revenue = row["total"] if row else 0
 
@@ -1007,7 +1067,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell' AND d.doc_date >= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ?
     """, (user_id, week_ago)).fetchone()
     revenue_last_7_days = row["total"] if row else 0
 
@@ -1016,7 +1076,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT c.name, COUNT(*) as cnt
         FROM documents d
         JOIN clients c ON d.client_id = c.id
-        WHERE d.user_id = ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL
         GROUP BY d.client_id
         ORDER BY cnt DESC
         LIMIT 1
@@ -1029,7 +1089,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         FROM document_items di
         JOIN documents d ON di.document_id = d.id
         JOIN products p ON di.product_id = p.id
-        WHERE d.user_id = ? AND d.doc_type = 'sell'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell'
         GROUP BY di.product_id
         ORDER BY total_qty DESC
         LIMIT 1
@@ -1038,7 +1098,7 @@ def get_dashboard_stats(user_id: int) -> dict:
 
     # Total documents
     row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ?", (user_id,)
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL", (user_id,)
     ).fetchone()
     total_docs = row["cnt"] if row else 0
 
@@ -1050,6 +1110,115 @@ def get_dashboard_stats(user_id: int) -> dict:
         "top_client": top_client,
         "top_product": top_product,
         "total_docs": total_docs,
+    }
+
+
+def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dict:
+    """Get dashboard statistics for a user within a date range."""
+    conn = get_connection()
+    today_str = datetime.date.today().isoformat()
+
+    # Total revenue (sell documents in range)
+    row = conn.execute("""
+        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
+        FROM documents d
+        JOIN document_items di ON di.document_id = d.id
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+    """, (user_id, date_from, date_to)).fetchone()
+    total_revenue = row["total"] if row else 0
+
+    # Total expenses (buy documents in range)
+    row = conn.execute("""
+        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
+        FROM documents d
+        JOIN document_items di ON di.document_id = d.id
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'buy' AND d.doc_date >= ? AND d.doc_date <= ?
+    """, (user_id, date_from, date_to)).fetchone()
+    total_expenses = row["total"] if row else 0
+
+    # Unpaid invoices total (status = 'issued', sell docs, all time — not filtered by range)
+    row = conn.execute("""
+        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
+        FROM documents d
+        JOIN document_items di ON di.document_id = d.id
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.status = 'issued'
+    """, (user_id,)).fetchone()
+    unpaid_total = row["total"] if row else 0
+
+    # Document count in range
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_date >= ? AND doc_date <= ?",
+        (user_id, date_from, date_to)
+    ).fetchone()
+    doc_count = row["cnt"] if row else 0
+
+    # Average invoice value in range (sell docs only)
+    row = conn.execute("""
+        SELECT AVG(inv_total) as avg_val FROM (
+            SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as inv_total
+            FROM documents d
+            LEFT JOIN document_items di ON di.document_id = d.id
+            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+            GROUP BY d.id
+        )
+    """, (user_id, date_from, date_to)).fetchone()
+    avg_invoice = row["avg_val"] if row and row["avg_val"] else 0
+
+    # Top client in range
+    row = conn.execute("""
+        SELECT c.name, COUNT(*) as cnt,
+               COALESCE(SUM(
+                   (SELECT SUM(di.quantity * di.price_per_unit * (1 + d2.vat_rate / 100))
+                    FROM document_items di
+                    JOIN documents d2 ON di.document_id = d2.id
+                    WHERE d2.id = d.id)
+               ), 0) as revenue
+        FROM documents d
+        JOIN clients c ON d.client_id = c.id
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        GROUP BY d.client_id
+        ORDER BY revenue DESC
+        LIMIT 1
+    """, (user_id, date_from, date_to)).fetchone()
+    top_client = {"name": row["name"], "count": row["cnt"], "revenue": row["revenue"]} if row else None
+
+    # Overdue invoices (past payment_due_date, still issued)
+    row = conn.execute("""
+        SELECT COUNT(*) as cnt,
+               COALESCE(SUM(
+                   (SELECT SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100))
+                    FROM document_items di WHERE di.document_id = d.id)
+               ), 0) as total
+        FROM documents d
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.status = 'issued'
+              AND d.payment_due_date IS NOT NULL AND d.payment_due_date != '' AND d.payment_due_date < ?
+    """, (user_id, today_str)).fetchone()
+    overdue_count = row["cnt"] if row else 0
+    overdue_total = row["total"] if row else 0
+
+    # Daily revenue breakdown for chart (sell docs in range)
+    rows = conn.execute("""
+        SELECT d.doc_date,
+               COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as daily_total
+        FROM documents d
+        JOIN document_items di ON di.document_id = d.id
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        GROUP BY d.doc_date
+        ORDER BY d.doc_date
+    """, (user_id, date_from, date_to)).fetchall()
+    daily_revenue = [{"date": r["doc_date"], "total": round(r["daily_total"], 2)} for r in rows]
+
+    conn.close()
+    return {
+        "total_revenue": total_revenue,
+        "total_expenses": total_expenses,
+        "unpaid_total": unpaid_total,
+        "doc_count": doc_count,
+        "avg_invoice": avg_invoice,
+        "top_client": top_client,
+        "overdue_count": overdue_count,
+        "overdue_total": overdue_total,
+        "daily_revenue": daily_revenue,
     }
 
 
@@ -1080,29 +1249,49 @@ def ensure_default_admin():
 
 TIER_LIMITS = {
     "free": {
-        "max_documents": 5, "max_clients": 3, "max_products": 3,
-        "max_emails_month": 0, "recurring": False, "all_templates": False,
+        "max_documents": 5, "max_clients": 5, "max_products": 5,
+        "max_emails_month": 0, "recurring": False, "max_recurring": 0,
+        "all_templates": False,
         "einvoice": False, "accounting_export": False,
         "label": "Bezmaksas",
         "price_monthly": 0, "price_yearly": 0,
     },
+    "mini": {
+        "max_documents": 25, "max_clients": 15, "max_products": 10,
+        "max_emails_month": 10, "recurring": False, "max_recurring": 0,
+        "all_templates": False,
+        "einvoice": False, "accounting_export": False,
+        "label": "Mini",
+        "price_monthly": 499, "price_yearly": 4900,  # cents
+    },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": 200,
-        "max_emails_month": 50, "recurring": True, "all_templates": True,
+        "max_emails_month": 50, "recurring": True, "max_recurring": 3,
+        "all_templates": True,
         "einvoice": True, "accounting_export": True,
         "label": "Sākums",
         "price_monthly": 999, "price_yearly": 9900,  # cents
     },
     "business": {
         "max_documents": 5000, "max_clients": 500, "max_products": 1000,
-        "max_emails_month": 0, "recurring": True, "all_templates": True,  # 0 = unlimited
+        "max_emails_month": 0, "recurring": True, "max_recurring": 0,  # 0 = unlimited
+        "all_templates": True,
         "einvoice": True, "accounting_export": True,
         "label": "Bizness",
         "price_monthly": 1999, "price_yearly": 19900,  # cents
     },
+    "lifetime": {
+        "max_documents": 5000, "max_clients": 500, "max_products": 1000,
+        "max_emails_month": 0, "recurring": True, "max_recurring": 0,  # 0 = unlimited
+        "all_templates": True,
+        "einvoice": True, "accounting_export": True,
+        "label": "Mūža licence",
+        "price_monthly": 0, "price_yearly": 0, "price_lifetime": 49900,  # cents
+    },
     "admin": {
         "max_documents": 999999, "max_clients": 999999, "max_products": 999999,
-        "max_emails_month": 0, "recurring": True, "all_templates": True,
+        "max_emails_month": 0, "recurring": True, "max_recurring": 0,
+        "all_templates": True,
         "einvoice": True, "accounting_export": True,
         "label": "Administrators",
         "price_monthly": 0, "price_yearly": 0,
@@ -1112,6 +1301,25 @@ TIER_LIMITS = {
 
 def get_tier_limits(tier):
     return TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
+
+def count_active_recurring(user_id):
+    """Count active recurring invoices for a user."""
+    conn = get_connection()
+    count = conn.execute(
+        "SELECT COUNT(*) FROM recurring_invoices WHERE user_id = ? AND active = 1",
+        (user_id,)
+    ).fetchone()[0]
+    conn.close()
+    return count
+
+
+def count_lifetime_users():
+    """Count users with lifetime tier."""
+    conn = get_connection()
+    count = conn.execute("SELECT COUNT(*) FROM users WHERE tier = 'lifetime'").fetchone()[0]
+    conn.close()
+    return count
 
 
 def update_user_subscription(user_id: int, tier: str, billing_cycle: str = "",
@@ -1179,9 +1387,14 @@ def cancel_user_subscription(user_id: int):
 
 
 def get_user_resource_counts(user_id: int) -> dict:
-    """Get current usage counts for a user."""
+    """Get current usage counts for a user.
+    Documents are counted per calendar month; clients/products are totals."""
     conn = get_connection()
-    docs = conn.execute("SELECT COUNT(*) as cnt FROM documents WHERE user_id = ?", (user_id,)).fetchone()
+    month_start = datetime.date.today().replace(day=1).isoformat()
+    docs = conn.execute(
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND created_at >= ?",
+        (user_id, month_start)
+    ).fetchone()
     clients = conn.execute("SELECT COUNT(*) as cnt FROM clients WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
     products = conn.execute("SELECT COUNT(*) as cnt FROM products WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
     conn.close()
@@ -1352,7 +1565,7 @@ def get_documents_for_export(user_id, doc_type=None, date_from=None, date_to=Non
                c.email as client_email
                FROM documents d
                JOIN clients c ON d.client_id = c.id
-               WHERE d.user_id = ?"""
+               WHERE d.user_id = ? AND d.deleted_at IS NULL"""
     params = [user_id]
 
     if doc_type:

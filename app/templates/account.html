@@ -97,7 +97,7 @@
 
                     <div class="usage-section">
                         <div class="usage-item">
-                            <div class="usage-label">Dokumenti</div>
+                            <div class="usage-label">Dokumenti (šomēnes)</div>
                             <div class="usage-bar">
                                 <div class="usage-fill" style="width: {{ [(usage.documents / limits.max_documents * 100) | int, 100] | min }}%"></div>
                             </div>
@@ -120,7 +120,7 @@
                     </div>
 
                     <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap">
-                        {% if current_user.tier == 'free' or current_user.tier == 'starter' %}
+                        {% if current_user.tier in ('free', 'mini', 'starter') %}
                         <a href="/pricing" class="btn btn-primary btn-sm">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                             Mans abonements

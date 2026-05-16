@@ -193,10 +193,72 @@
             <!-- ==================== STEP 1: Business details ==================== -->
             <div class="setup-step active" id="step1">
                 <div class="card">
-                    <div class="card-header">
+                    <div class="card-header" id="step1Header">
                         {% if settings.get('entity_type') == 'individual' %}Personīgā informācija{% else %}Uzņēmuma informācija{% endif %}
                     </div>
                     <div class="card-body">
+                        {% if offline_mode %}
+                        <!-- Offline mode: editable entity type, name, and VAT fields -->
+                        <div class="form-group">
+                            <label>Veids</label>
+                            <div style="display:flex;gap:8px">
+                                <label class="radio-card {% if settings.get('entity_type', 'business') == 'business' %}selected{% endif %}" style="flex:1;margin:0" id="setupTypeBusinessCard">
+                                    <input type="radio" name="entity_type" value="business"
+                                           {% if settings.get('entity_type', 'business') == 'business' %}checked{% endif %}
+                                           onchange="toggleSetupEntityType()">
+                                    <div class="radio-card-content" style="padding:10px 14px">
+                                        <strong>Uzņēmums</strong>
+                                    </div>
+                                </label>
+                                <label class="radio-card {% if settings.get('entity_type') == 'individual' %}selected{% endif %}" style="flex:1;margin:0" id="setupTypeIndividualCard">
+                                    <input type="radio" name="entity_type" value="individual"
+                                           {% if settings.get('entity_type') == 'individual' %}checked{% endif %}
+                                           onchange="toggleSetupEntityType()">
+                                    <div class="radio-card-content" style="padding:10px 14px">
+                                        <strong>Privātpersona</strong>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label id="setupNameLabel">{% if settings.get('entity_type') == 'individual' %}Vārds, Uzvārds *{% else %}Uzņēmuma nosaukums *{% endif %}</label>
+                                <input type="text" name="company_name" class="form-control" required
+                                       value="{{ settings.get('company_name', '') or display_name }}" placeholder="{% if settings.get('entity_type') == 'individual' %}piem. Jānis Bērziņš{% else %}piem. SIA Mana Firma{% endif %}">
+                            </div>
+                            <div class="form-group">
+                                <label id="setupRegLabel">{% if settings.get('entity_type') == 'individual' %}Personas kods{% else %}Reģistrācijas numurs{% endif %}</label>
+                                <input type="text" name="reg_number" class="form-control"
+                                       value="{{ settings.get('reg_number', '') }}">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Juridiskā adrese</label>
+                            <input type="text" name="legal_address" class="form-control"
+                                   value="{{ settings.get('legal_address', '') }}" placeholder="piem. Brīvības iela 1, Rīga, LV-1010">
+                        </div>
+                        <div class="form-group">
+                            <div style="margin-top:4px">
+                                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                                    <input type="hidden" name="is_vat_payer" value="0">
+                                    <input type="checkbox" id="setupVatPayerToggle" name="is_vat_payer" value="1"
+                                           {% if settings.get('is_vat_payer', '0') == '1' %}checked{% endif %}
+                                           onchange="toggleSetupVatFields()"
+                                           style="width:18px;height:18px;cursor:pointer">
+                                    Esmu PVN maksātājs
+                                </label>
+                                <span style="font-size:12px;color:var(--text-light)">
+                                    Ja neesat PVN maksātājs, PVN aprēķini un lauks netiks rādīti dokumentos
+                                </span>
+                            </div>
+                        </div>
+                        <div class="form-group setup-vat-field" style="{% if settings.get('is_vat_payer', '0') != '1' %}display:none{% endif %}">
+                            <label>PVN numurs</label>
+                            <input type="text" name="vat_number" class="form-control"
+                                   value="{{ settings.get('vat_number', '') }}" placeholder="piem. LV12345678901">
+                        </div>
+                        {% else %}
+                        <!-- Online mode: show prefilled info from registration -->
                         {% if settings.get('company_name') or settings.get('reg_number') or settings.get('legal_address') %}
                         <div class="prefilled-info">
                             <div style="display:flex;gap:24px;flex-wrap:wrap">
@@ -235,6 +297,7 @@
                         <input type="hidden" name="legal_address" value="{{ settings.get('legal_address', '') }}">
                         <input type="hidden" name="is_vat_payer" value="{{ settings.get('is_vat_payer', '0') }}">
                         <input type="hidden" name="vat_number" value="{{ settings.get('vat_number', '') }}">
+                        {% endif %}
 
                         <div class="form-row">
                             <div class="form-group">
@@ -279,9 +342,8 @@
                 <div class="card">
                     <div class="card-header">Dokumentu iestatījumi</div>
                     <div class="card-body">
-                        {% if settings.get('is_vat_payer', '0') == '1' %}
                         <div class="form-row">
-                            <div class="form-group" style="max-width:150px">
+                            <div class="form-group setup-vat-rate-field" style="max-width:150px;{% if settings.get('is_vat_payer', '0') != '1' %}display:none{% endif %}">
                                 <label>PVN likme (%)</label>
                                 <input type="text" name="default_vat_rate" id="setupVatRate" class="form-control" value="{{ settings.get('default_vat_rate', '21') }}">
                             </div>
@@ -292,15 +354,6 @@
                                 <span style="font-size:12px;color:var(--text-light)">No rēķina datuma</span>
                             </div>
                         </div>
-                        {% else %}
-                        <input type="hidden" name="default_vat_rate" value="0">
-                        <div class="form-group" style="max-width:200px">
-                            <label>Apmaksas termiņš (dienas)</label>
-                            <input type="number" name="payment_due_days" class="form-control" min="0"
-                                   value="{{ settings.get('payment_due_days', '') }}" placeholder="piem. 7">
-                            <span style="font-size:12px;color:var(--text-light)">No rēķina datuma</span>
-                        </div>
-                        {% endif %}
 
                         <div class="form-group">
                             <label>Parakstu lauks dokumentos</label>
@@ -453,6 +506,43 @@
         document.getElementById('setupPreviewText').textContent = preview;
     }
     updateSetupPreview();
+
+    function toggleSetupEntityType() {
+        const isBusiness = document.querySelector('input[name="entity_type"][value="business"]').checked;
+        // Update radio card selection styling
+        document.getElementById('setupTypeBusinessCard').classList.toggle('selected', isBusiness);
+        document.getElementById('setupTypeIndividualCard').classList.toggle('selected', !isBusiness);
+        // Update labels
+        document.getElementById('setupNameLabel').textContent = isBusiness ? 'Uzņēmuma nosaukums *' : 'Vārds, Uzvārds *';
+        document.getElementById('setupRegLabel').textContent = isBusiness ? 'Reģistrācijas numurs' : 'Personas kods';
+        // Update card header
+        document.getElementById('step1Header').textContent = isBusiness ? 'Uzņēmuma informācija' : 'Personīgā informācija';
+        // If individual, uncheck VAT payer (individuals can't be VAT payers)
+        if (!isBusiness) {
+            var cb = document.getElementById('setupVatPayerToggle');
+            if (cb) { cb.checked = false; toggleSetupVatFields(); }
+        }
+    }
+
+    function toggleSetupVatFields() {
+        var cb = document.getElementById('setupVatPayerToggle');
+        if (!cb) return;
+        var isVat = cb.checked;
+        // Toggle VAT fields in step 1
+        document.querySelectorAll('.setup-vat-field').forEach(function(el) {
+            el.style.display = isVat ? '' : 'none';
+        });
+        // Toggle VAT rate field in step 2
+        var vatRateField = document.querySelector('.setup-vat-rate-field');
+        if (vatRateField) {
+            vatRateField.style.display = isVat ? '' : 'none';
+        }
+        // Set VAT rate value
+        var vatRateInput = document.getElementById('setupVatRate');
+        if (vatRateInput) {
+            vatRateInput.value = isVat ? '21' : '0';
+        }
+    }
     </script>
 </body>
 </html>
