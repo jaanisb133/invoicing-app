@@ -57,7 +57,7 @@
     <div class="card">
         <div class="card-body">
             <div class="table-wrapper">
-                <table>
+                <table class="mobile-cards">
                     <thead>
                         <tr>
                             <th>#</th>
@@ -74,26 +74,26 @@
                     <tbody>
                         {% for rec in recurring %}
                         <tr style="{% if not rec.active %}opacity:0.5{% endif %}">
-                            <td style="color:var(--text-light)">{{ loop.index }}</td>
-                            <td>{{ rec.client_name }}</td>
-                            <td>
+                            <td data-label="#" style="color:var(--text-light)">{{ loop.index }}</td>
+                            <td data-label="Klients">{{ rec.client_name }}</td>
+                            <td data-label="Tips">
                                 {% if rec.doc_type == 'buy' %}
                                 <span class="badge badge-buy">Iegāde</span>
                                 {% else %}
                                 <span class="badge badge-sell">Pārdošana</span>
                                 {% endif %}
                             </td>
-                            <td style="text-align:right">{{ "%.2f"|format(rec.total) }} &euro;</td>
-                            <td>{{ frequency_labels.get(rec.frequency, rec.frequency) }}</td>
-                            <td>{{ rec.next_run }}</td>
-                            <td>
+                            <td data-label="Summa">{{ "%.2f"|format(rec.total) }} &euro;</td>
+                            <td data-label="Biežums">{{ frequency_labels.get(rec.frequency, rec.frequency) }}</td>
+                            <td data-label="Nākamā izpilde">{{ rec.next_run }}</td>
+                            <td data-label="E-pasts">
                                 {% if rec.send_email %}
                                 <span style="color:var(--success)">Jā</span>
                                 {% else %}
                                 <span style="color:var(--text-light)">Nē</span>
                                 {% endif %}
                             </td>
-                            <td>
+                            <td data-label="Statuss">
                                 {% if rec.active %}
                                 <span class="badge badge-sell">Aktīvs</span>
                                 {% else %}

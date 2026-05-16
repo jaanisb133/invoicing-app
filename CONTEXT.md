@@ -157,7 +157,7 @@
    - `items_json` (serialized line items), `created_at`
 
 10. **email_log** — Tracks emails sent per user (for monthly limit enforcement)
-    - `id, user_id, document_id, recipient, sent_at`
+    - `id, user_id, document_id, recipient, source` (manual/recurring), `sent_at`
 
 11. **settings** — Global system settings
     - `key, value`
@@ -340,7 +340,27 @@
   - Send endpoint enforces limits: free plan blocked entirely, starter capped at 50/month, business/admin unlimited
   - Error message shown when monthly limit exceeded
 
-### Phase 13: Business Registry Search & VAT Validation
+### Phase 13: Recurring Invoice Overhaul & Email Log (Session ctvCb)
+- **Direct-create recurring invoices** — new form at `/recurring/new` lets users create recurring schedules without first creating a regular invoice
+  - Searchable client dropdown with typeahead (same pattern as document form)
+  - Quick-add client modal with registry autocomplete + VIES VAT validation
+  - Quick-add product modal with per-row "+" buttons
+  - Email section: recipient field (auto-fills from client, syncs back), subject, body with variable hints
+  - Email fallback chain: per-schedule custom → user's email_template setting → hardcoded default
+  - Variable substitution: `{doc_number}`, `{doc_type}`, `{date}`, `{company}`, `{client_name}`
+- **Recurring invoice list improvements:**
+  - Row numbers (#) column to see count at a glance
+  - Price column (Summa) showing total with VAT
+  - 3-dot kebab dropdown menu (matching documents page) replaces inline buttons
+- **Email log page** (`/email-log`):
+  - Shows all sent emails with date, recipient, client, document link, doc type, source badge
+  - Filter tabs: Visi (all), Manuālie (manual), Periodiskie (recurring)
+  - `email_log` table has `source` column (manual/recurring) with migration for existing DBs
+  - Linked from settings page under email template section (not in sidebar)
+- **Default product unit** changed from "kg" to "gab" (both UNITS list order and DB default)
+- **Sidebar cleanup:** Noliktava only shown when stock_enabled is on (instead of always with PRO badge)
+
+### Phase 14: Business Registry Search & VAT Validation
 - **Latvian Business Registry integration** (`app/registry.py`):
   - Downloads official open data CSV from `dati.ur.gov.lv/register/register.csv` (~120MB, updated daily)
   - Imports into separate SQLite database (`data/registry.db`) for fast lookups
@@ -402,13 +422,15 @@
 - `GET /api/logo` — Retrieve logo image
 - `GET /users`, `POST /users/add`, `POST /users/{id}/delete`, `POST /users/{id}/tier`
 
-### Stock, Recurring, Export
+### Stock, Recurring, Export, Email Log
 - `GET /stock`, `GET /api/stock/{product_id}`
 - `GET /recurring`, `GET /recurring/new`, `POST /recurring/create`
 - `GET /recurring/{id}/edit`, `POST /recurring/{id}/update`
 - `POST /recurring/from-document/{id}` (legacy "create from doc" flow, still supported)
 - `POST /recurring/{id}/toggle`, `POST /recurring/{id}/delete`
 - Direct-create form (`/recurring/new`) lets users build a recurring schedule without an existing source document: pick client, product(s), price, first-send date, frequency, and customize the email subject/body that goes out with each generated invoice.
+- `GET /email-log` — Email sent history with manual/recurring filter tabs (linked from settings page, not in sidebar)
+- `GET /trash` — Soft-deleted documents with 7-day retention, restore/purge
 - `GET /export`, `POST /export/pdf`, `POST /export/einvoice`, `POST /export/accounting`
 - `POST /api/accounting-presets/save`, `GET /api/accounting-presets`
 
@@ -455,13 +477,11 @@
 ```bash
 ssh root@204.168.150.114
 cd /opt/vrekini
-git pull origin main
-# IMPORTANT: always update the systemd service after pull (in case it changed)
-sudo cp deploy/vrekini.service /etc/systemd/system/vrekini.service
-sudo systemctl daemon-reload
+sudo git fetch origin main
+sudo git reset --hard origin/main
 sudo systemctl restart vrekini
-# Verify it started cleanly (no port conflict errors)
-sudo journalctl -u vrekini --no-pager -n 10
+# Verify it started cleanly
+sudo systemctl status vrekini --no-pager | head -15
 ```
 
 ### Service Management
