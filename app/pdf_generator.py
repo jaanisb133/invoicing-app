@@ -476,7 +476,7 @@ def _generate_modern(doc_id):
     FONT, FONT_BOLD = _register_fonts()
     data = _get_doc_data(doc_id)
     doc = data["doc"]
-    accent = _hex_to_color(data["settings"].get("accent_color", "#1e3a5f"))
+    accent = _hex_to_color(data["settings"].get("accent_color", "#09090b"))
 
     output_dir = get_output_dir()
     filename = f"{_safe_filename(doc['doc_number'])}.pdf"

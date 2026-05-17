@@ -35,16 +35,16 @@
 .btn-download-split { display: inline-flex; align-items: stretch; border-radius: 8px; overflow: hidden; }
 .btn-download-split .btn-download-main {
     display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px;
-    font-size: 14px; font-weight: 700; color: #fff; background: #1e3a5f;
+    font-size: 14px; font-weight: 700; color: #fff; background: #09090b;
     text-decoration: none; border: none; cursor: pointer; transition: background 0.15s;
 }
-.btn-download-split .btn-download-main:hover { background: #162d4d; }
+.btn-download-split .btn-download-main:hover { background: #27272a; }
 .btn-download-split .btn-download-toggle {
     display: inline-flex; align-items: center; padding: 0 10px;
-    background: #1e3a5f; border: none; border-left: 1px solid rgba(255,255,255,0.2);
+    background: #09090b; border: none; border-left: 1px solid rgba(255,255,255,0.2);
     color: #fff; cursor: pointer; transition: background 0.15s;
 }
-.btn-download-split .btn-download-toggle:hover { background: #162d4d; }
+.btn-download-split .btn-download-toggle:hover { background: #27272a; }
 .btn-download-split.btn-download-disabled .btn-download-main,
 .btn-download-split.btn-download-disabled .btn-download-toggle { opacity: 0.5; }
 </style>
@@ -279,7 +279,7 @@ const docData = {
     displayDueDate: {% if doc.payment_due_date %}"{{ doc.payment_due_date.split('-')[2] }}.{{ doc.payment_due_date.split('-')[1] }}.{{ doc.payment_due_date.split('-')[0] }}"{% else %}""{% endif %},
     notes: {{ (doc.notes or '') | tojson }},
     hasLogo: {{ 'true' if has_logo else 'false' }},
-    accentColor: {{ settings.get('accent_color', '#1e3a5f') | tojson }},
+    accentColor: {{ settings.get('accent_color', '#09090b') | tojson }},
     electronicDoc: {{ 'true' if settings.get('electronic_doc', '0') == '1' else 'false' }},
     logoWidth: {{ settings.get('logo_width', '100') }},
     entityType: {{ settings.get('entity_type', 'business') | tojson }},
@@ -435,7 +435,7 @@ function renderClassic(d) {
 }
 
 function renderModern(d) {
-    var ac = docData.accentColor || '#1e3a5f';
+    var ac = docData.accentColor || '#09090b';
     return `
         <div class="preview-modern-header" style="background:${ac};color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
             <div>
