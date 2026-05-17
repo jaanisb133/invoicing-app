@@ -37,7 +37,7 @@
 
 .dash-stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat({{ 4 if settings.get('status_tracking', '0') == '1' else 3 }}, 1fr);
     gap: 14px;
     margin-bottom: 22px;
 }
@@ -60,6 +60,8 @@
 .dash-stat-value small { font-size: 13px; font-weight: 500; color: var(--text-light); margin-left: 4px; }
 .dash-stat-foot { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-lighter); }
 .dash-stat-foot .pill { font-size: 11px; padding: 2px 8px; }
+.dash-stats-grid.is-loading .dash-stat { opacity: 0.55; transition: opacity 0.15s; }
+.dash-stats-grid:not(.is-loading) .dash-stat { transition: opacity 0.15s; }
 
 .dash-chart-card { margin-bottom: 22px; }
 .dash-chart-header {
@@ -91,9 +93,11 @@
 }
 .dash-chart-switch button.active { background: var(--brand); color: #fff; }
 
+{# Compute how many insight cards will render: top-client always; revexp only with stock; overdue only with status tracking #}
+{% set insight_cols = 1 + (1 if stock_enabled else 0) + (1 if settings.get('status_tracking', '0') == '1' else 0) %}
 .dash-insights-grid {
     display: grid;
-    grid-template-columns: {% if stock_enabled %}1fr 1fr 1fr{% else %}1fr 1fr{% endif %};
+    grid-template-columns: repeat({{ insight_cols }}, 1fr);
     gap: 14px;
     margin-bottom: 22px;
 }
@@ -178,12 +182,6 @@
         <p>Šeit ir pārskats par Jūsu biznesa rādītājiem.</p>
     </div>
 
-    <!-- Mobile quick actions -->
-    <div class="dash-quick-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
-        <a href="/documents/new?doc_type=sell" class="btn btn-primary">+ Jauns rēķins</a>
-        <a href="/documents" class="btn btn-outline">Visi dokumenti</a>
-    </div>
-
     <!-- Date Range Bar -->
     <div class="dash-date-bar">
         <div class="dash-date-inputs">
@@ -216,6 +214,7 @@
                 <span>vs iepr. {{ 'gads' if range_stats.compare_mode == 'year' else 'mēnesis' }}</span>
             </div>
         </div>
+        {% if settings.get('status_tracking', '0') == '1' %}
         <a href="/documents?status=issued" class="dash-stat">
             <div class="dash-stat-top">
                 <div class="dash-stat-label">Neapmaksāti</div>
@@ -232,6 +231,7 @@
                 {% endif %}
             </div>
         </a>
+        {% endif %}
         <div class="dash-stat">
             <div class="dash-stat-top">
                 <div class="dash-stat-label">Dokumenti</div>
@@ -368,6 +368,7 @@
                 {% endif %}
             </div>
         </div>
+        {% if settings.get('status_tracking', '0') == '1' %}
         <div class="card insight-card" style="margin-bottom:0">
             <span class="icon-square lg {{ 'tint-rose' if range_stats.overdue_count > 0 else 'tint-green' }}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -383,6 +384,7 @@
                 {% endif %}
             </div>
         </div>
+        {% endif %}
     </div>
 
     {% if stock_enabled and stock %}
@@ -788,12 +790,21 @@ function switchChartType(type) {
         return '<span class="pill pill-neutral">0%</span>';
     }
 
+    var _loadCtrl = null;
     function loadStats() {
         var df = fromEl.value, dt = toEl.value;
         if (!df || !dt) return;
-        fetch('/api/dashboard-stats?date_from=' + df + '&date_to=' + dt, { credentials: 'same-origin' })
+        if (_loadCtrl) _loadCtrl.abort();
+        _loadCtrl = new AbortController();
+        var grid = document.getElementById('dashStatsGrid');
+        if (grid) grid.classList.add('is-loading');
+        fetch('/api/dashboard-stats?date_from=' + df + '&date_to=' + dt, {
+            credentials: 'same-origin',
+            signal: _loadCtrl.signal
+        })
             .then(function(r) { return r.json(); })
             .then(function(s) {
+                if (grid) grid.classList.remove('is-loading');
                 dashRangeStats = s;
                 // Update stat cards
                 var sm = ' <small>EUR</small>';
@@ -850,7 +861,11 @@ function switchChartType(type) {
                 ds.data = cdata.map(function(d) { return d.total; });
                 chart.data.datasets = [ds];
                 chart.config.type = _chartType;
-                chart.update();
+                chart.update('none');
+            })
+            .catch(function(e) {
+                if (e.name === 'AbortError') return;
+                if (grid) grid.classList.remove('is-loading');
             });
     }
 })();

@@ -1107,7 +1107,7 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
             )
 
         # Build plan description
-        tier_labels = {"mini": "Mini", "starter": "Sākums", "business": "Bizness", "lifetime": "Mūža licence"}
+        tier_labels = {"mini": "Mini", "starter": "Pamata", "business": "Bizness", "lifetime": "Mūža licence"}
         cycle_labels = {"monthly": "mēnesī", "yearly": "gadā", "lifetime": "vienreizējs"}
         plan_desc = f"V-Rēķini — {tier_labels.get(tier, tier)} ({cycle_labels.get(cycle, cycle)})"
 
@@ -1487,10 +1487,13 @@ async def settings_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
     settings = _user_settings(user["id"])
+    logo_path = _get_logo_path(user["id"])
+    logo_v = int(os.path.getmtime(logo_path)) if logo_path else 0
     ctx.update({
         "settings": settings,
         "page": "settings",
-        "has_logo": _get_logo_path(user["id"]) is not None,
+        "has_logo": logo_path is not None,
+        "logo_v": logo_v,
     })
     return templates.TemplateResponse("settings.html", ctx)
 
@@ -1614,7 +1617,10 @@ async def get_user_logo(request: Request):
     user = request.state.user
     path = _get_logo_path(user["id"])
     if path:
-        return FileResponse(path)
+        return FileResponse(path, headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        })
     raise HTTPException(404)
 
 

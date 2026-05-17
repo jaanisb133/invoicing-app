@@ -1368,15 +1368,15 @@ TIER_LIMITS = {
         "all_templates": False,
         "einvoice": False, "accounting_export": False,
         "label": "Mini",
-        "price_monthly": 499, "price_yearly": 4900,  # cents
+        "price_monthly": 299, "price_yearly": 2900,  # cents
     },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": 200,
         "max_emails_month": 50, "recurring": True, "max_recurring": 3,
         "all_templates": True,
         "einvoice": True, "accounting_export": True,
-        "label": "Sākums",
-        "price_monthly": 999, "price_yearly": 9900,  # cents
+        "label": "Pamata",
+        "price_monthly": 599, "price_yearly": 5900,  # cents
     },
     "business": {
         "max_documents": 5000, "max_clients": 500, "max_products": 1000,

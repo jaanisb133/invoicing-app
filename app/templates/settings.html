@@ -108,7 +108,7 @@
             <div class="card-body">
                 <div class="logo-upload-area">
                     {% if has_logo %}
-                    <img src="/api/logo" alt="Logo" class="logo-preview">
+                    <img src="/api/logo?v={{ logo_v }}" alt="Logo" class="logo-preview">
                     {% else %}
                     <div style="width:120px;height:60px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--text-lighter);font-size:12px">
                         Nav logotipa

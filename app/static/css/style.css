@@ -156,6 +156,10 @@ html, body {
 }
 body { display: flex; min-height: 100vh; }
 
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: none; }
+.alert a, .login-footer a, .registry-hint a { text-decoration: underline; }
+
 /* Flatpickr dark calendar */
 .flatpickr-input.form-control[readonly] { background: var(--bg-input); cursor: pointer; }
 .flatpickr-calendar { background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-md); border-radius: var(--radius); }
@@ -709,7 +713,9 @@ select.form-control { cursor: pointer; }
 .modal-overlay.active { display: flex; }
 
 .modal {
-    background: white;
+    background: var(--bg-card);
+    color: var(--text);
+    border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 28px;
     width: 90%;
@@ -718,6 +724,9 @@ select.form-control { cursor: pointer; }
     overflow-y: auto;
     box-shadow: var(--shadow-lg);
 }
+.modal .modal-title { color: var(--text); }
+.modal label { color: var(--text); }
+.modal .form-control { background: var(--bg-input); color: var(--text); border-color: var(--border); }
 
 .modal-title {
     font-size: 17px;
@@ -1333,13 +1342,29 @@ select.form-control { cursor: pointer; }
 
 /* --- Document view preview --- */
 .doc-view-preview {
+    /* Self-contained color palette so the printable invoice preview stays
+       readable regardless of app theme (always white-bg, dark text). */
+    --text: #0F172A;
+    --text-light: #475569;
+    --text-lighter: #94A3B8;
+    --border: #E5E7EB;
+    --border-light: #F1F2F4;
+    --bg: #FFFFFF;
+    --bg-card: #FFFFFF;
+    color: var(--text);
     padding: 48px 56px;
     font-size: 13px;
     line-height: 1.5;
-    background: white;
+    background: #ffffff;
     min-height: 200px;
     font-family: 'DM Sans', sans-serif;
 }
+.doc-view-preview h1,
+.doc-view-preview h2,
+.doc-view-preview h3,
+.doc-view-preview h4,
+.doc-view-preview strong,
+.doc-view-preview b { color: #0F172A; }
 
 .doc-view-preview.doc-view-modern {
     padding: 0;
@@ -1353,13 +1378,7 @@ select.form-control { cursor: pointer; }
     padding: 56px;
 }
 
-[data-theme="dark"] .doc-view-preview {
-    background: #1a1f2e;
-}
-
-[data-theme="dark"] .doc-view-preview .doc-view-modern div:first-child {
-    background: #0f1219;
-}
+/* doc-view-preview always renders as if on paper — see .doc-view-preview rule for color scope */
 
 /* --- Logo upload --- */
 .logo-preview {
@@ -1392,16 +1411,29 @@ select.form-control { cursor: pointer; }
 .doc-editor-preview { min-width: 0; }
 
 .doc-editor-preview .invoice-preview-wrapper {
+    /* Self-contained palette — preview always looks like printable paper */
+    --text: #0F172A;
+    --text-light: #475569;
+    --text-lighter: #94A3B8;
+    --border: #E5E7EB;
+    --border-light: #F1F2F4;
+    --bg: #FFFFFF;
+    --bg-card: #FFFFFF;
+    color: var(--text);
     max-height: 80vh;
     overflow-y: auto;
     padding: 20px;
     font-size: 11px;
     line-height: 1.45;
-    background: white;
-    border: 1px solid var(--border);
+    background: #ffffff;
+    border: 1px solid #E5E7EB;
     border-radius: 0 0 var(--radius-lg) var(--radius-lg);
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
 }
+.doc-editor-preview .invoice-preview-wrapper h1,
+.doc-editor-preview .invoice-preview-wrapper h2,
+.doc-editor-preview .invoice-preview-wrapper h3,
+.doc-editor-preview .invoice-preview-wrapper strong { color: #0F172A; }
 
 .doc-editor-preview .preview-modern {
     padding: 0 0 20px 0;
@@ -1409,11 +1441,6 @@ select.form-control { cursor: pointer; }
 
 .doc-editor-preview .preview-minimal {
     padding: 28px 24px;
-}
-
-[data-theme="dark"] .doc-editor-preview .invoice-preview-wrapper {
-    background: #1a1f2e;
-    border-color: var(--border);
 }
 
 @media (max-width: 1100px) {
@@ -1981,7 +2008,7 @@ select.form-control { cursor: pointer; }
 }
 
 /* Floating action button (centered in bottom-nav) */
-.fab {
+.bottom-nav a.fab, .fab {
     width: 56px;
     height: 56px;
     border-radius: 50%;
@@ -2000,6 +2027,7 @@ select.form-control { cursor: pointer; }
     position: relative;
     z-index: 1;
 }
+.bottom-nav a.fab svg, .fab svg { color: #fff; opacity: 1 !important; }
 .fab::before {
     content: '';
     position: absolute;
