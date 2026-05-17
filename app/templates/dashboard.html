@@ -34,9 +34,20 @@
 @media (max-width: 768px) {
     .dash-stats-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
     .dash-stats-grid > :first-child { grid-column: 1 / -1; }
+    .dash-date-bar { flex-direction: column; align-items: stretch !important; }
+    .dash-date-inputs { width: 100%; }
+    .dash-date-inputs input { flex: 1; }
+    .dash-presets { width: 100%; justify-content: stretch; }
+    .dash-presets .btn { flex: 1; }
+    .dash-desktop-header { display: none !important; }
+}
+@media (min-width: 769px) {
+    .dash-quick-actions { display: none !important; }
 }
 </style>
-<div class="page-header">
+
+<!-- Desktop header -->
+<div class="page-header dash-desktop-header">
     <h2>Pārskats</h2>
     <div class="btn-group">
         {% if stock_enabled %}
@@ -46,21 +57,36 @@
     </div>
 </div>
 
-<div class="page-body">
+<div class="page-body dash-has-quick-actions">
     {% if not settings.get('company_name') %}
     <div class="alert alert-info">
         Sveicināti! Lai sāktu, lūdzu aizpildiet <a href="/settings">uzņēmuma iestatījumus</a>.
     </div>
     {% endif %}
 
+    <!-- Greeting -->
+    {% set display = current_user.display_name or current_user.username %}
+    {% set first_name = display.split(' ')[0] if display else 'Lietotāj' %}
+    {% set hour = None %}
+    <div class="dash-greeting">
+        <h1>Sveiks, {{ first_name }}.</h1>
+        <p>{% if settings.get('company_name') %}{{ settings.get('company_name') }}{% else %}Tava biznesa pārvaldība{% endif %}</p>
+    </div>
+
+    <!-- Mobile quick actions -->
+    <div class="dash-quick-actions">
+        <a href="/documents/new?doc_type=sell" class="btn btn-primary">+ Jauns dokuments</a>
+        <a href="/documents" class="btn btn-outline">Visi dokumenti</a>
+    </div>
+
     <!-- Date Range Bar -->
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px">
-        <div style="display:flex;align-items:center;gap:6px">
+    <div class="dash-date-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+        <div class="dash-date-inputs" style="display:flex;align-items:center;gap:6px">
             <input type="date" id="dashDateFrom" class="form-control" style="width:auto;padding:6px 10px;font-size:13px" value="{{ date_from }}">
             <span style="color:var(--text-lighter);font-size:13px">—</span>
             <input type="date" id="dashDateTo" class="form-control" style="width:auto;padding:6px 10px;font-size:13px" value="{{ date_to }}">
         </div>
-        <div style="display:flex;gap:4px">
+        <div class="dash-presets" style="display:flex;gap:4px">
             <button type="button" class="btn btn-outline btn-sm" id="btnThisMonth">Šomēnes</button>
             <button type="button" class="btn btn-outline btn-sm" id="btnLastMonth">Iepr. mēnesis</button>
             <button type="button" class="btn btn-outline btn-sm" id="btnThisYear">Šogad</button>
@@ -72,6 +98,16 @@
         <div class="stat-card">
             <div class="stat-label">Apgrozījums</div>
             <div class="stat-value" id="statRevenue">{{ "%.2f" | format(range_stats.total_revenue) }} <small style="font-size:13px;font-weight:400;color:var(--text-light)">EUR</small></div>
+            <div id="statRevenueChange">
+                {% if range_stats.revenue_change > 0 %}
+                <span class="stat-change up">+{{ range_stats.revenue_change }}%</span>
+                {% elif range_stats.revenue_change < 0 %}
+                <span class="stat-change down">{{ range_stats.revenue_change }}%</span>
+                {% else %}
+                <span class="stat-change neutral">0%</span>
+                {% endif %}
+                <div class="stat-change-label">vs iepriekšējais periods</div>
+            </div>
         </div>
         <a href="/documents?status=issued" class="stat-card" style="text-decoration:none;color:inherit">
             <div class="stat-label">Neapmaksāti</div>
@@ -80,6 +116,15 @@
         <div class="stat-card">
             <div class="stat-label">Dokumenti</div>
             <div class="stat-value" id="statDocs">{{ range_stats.doc_count }}</div>
+            <div id="statDocsChange">
+                {% if range_stats.doc_count_change > 0 %}
+                <span class="stat-change up">+{{ range_stats.doc_count_change }}%</span>
+                {% elif range_stats.doc_count_change < 0 %}
+                <span class="stat-change down">{{ range_stats.doc_count_change }}%</span>
+                {% else %}
+                <span class="stat-change neutral">0%</span>
+                {% endif %}
+            </div>
         </div>
         <div class="stat-card">
             <div class="stat-label">Vid. rēķins</div>
@@ -168,7 +213,7 @@
     </div>
     {% endif %}
 
-    <div class="card">
+    <div class="card dash-recent-mobile">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px">
             <span style="font-size:14px;font-weight:600">Pēdējie dokumenti</span>
             <a href="/documents" class="btn btn-outline btn-sm">Visi →</a>
@@ -525,6 +570,12 @@ function switchChartType(type) {
 
     function fmt(n) { return Number(n).toFixed(2); }
 
+    function changeHtml(pct) {
+        if (pct > 0) return '<span class="stat-change up">+' + pct + '%</span>';
+        if (pct < 0) return '<span class="stat-change down">' + pct + '%</span>';
+        return '<span class="stat-change neutral">0%</span>';
+    }
+
     function loadStats() {
         var df = fromEl.value, dt = toEl.value;
         if (!df || !dt) return;
@@ -538,6 +589,16 @@ function switchChartType(type) {
                 document.getElementById('statUnpaid').innerHTML = fmt(s.unpaid_total) + sm;
                 document.getElementById('statDocs').textContent = s.doc_count;
                 document.getElementById('statAvg').innerHTML = fmt(s.avg_invoice) + sm;
+
+                // Update change indicators
+                var rcEl = document.getElementById('statRevenueChange');
+                if (rcEl) {
+                    rcEl.innerHTML = changeHtml(s.revenue_change) + '<div class="stat-change-label">vs iepriekšējais periods</div>';
+                }
+                var dcEl = document.getElementById('statDocsChange');
+                if (dcEl) {
+                    dcEl.innerHTML = changeHtml(s.doc_count_change);
+                }
 
                 // Revenue vs Expenses
                 if (document.getElementById('statRevGreen')) {

@@ -869,10 +869,10 @@ select.form-control { cursor: pointer; }
 
     /* Stats grid — 2 columns, override inline styles */
     .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-    .stat-card { padding: 12px 8px; }
-    .stat-value { font-size: 17px !important; }
+    .stat-card { padding: 14px 16px; }
+    .stat-value { font-size: 20px !important; }
     .stat-value small { font-size: 11px !important; }
-    .stat-label { font-size: 9px; letter-spacing: 0.3px; }
+    .stat-label { font-size: 11px; }
 
     /* Filters — stack vertically, override inline nowrap */
     .filters-bar { flex-direction: column !important; align-items: stretch !important; flex-wrap: wrap !important; gap: 8px !important; }
@@ -887,30 +887,26 @@ select.form-control { cursor: pointer; }
     .table-wrapper { overflow-x: visible; }
     .mobile-cards thead { display: none; }
     .mobile-cards tbody tr {
-        display: block;
-        padding: 12px 0;
-        border-bottom: 1px solid var(--border-light);
-    }
-    .mobile-cards tbody td {
         display: flex;
-        justify-content: space-between;
+        flex-wrap: wrap;
         align-items: center;
-        padding: 3px 0;
+        gap: 4px 12px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border-light);
+        position: relative;
+    }
+    .mobile-cards tbody tr:last-child { border-bottom: none; }
+    .mobile-cards tbody td {
+        display: inline;
+        padding: 0;
         border-bottom: none;
         font-size: 14px;
     }
-    .mobile-cards tbody td::before {
-        content: attr(data-label);
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--text-light);
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
-        flex-shrink: 0;
-        margin-right: 12px;
-    }
-    .mobile-cards tbody td:last-child { justify-content: flex-end; }
-    .mobile-cards tbody td:last-child::before { display: none; }
+    .mobile-cards tbody td::before { display: none; }
+    .mobile-cards tbody td:last-child { margin-left: auto; }
+    .mobile-cards tbody td[data-label] { display: inline; }
+    .mobile-cards .btn-group { gap: 4px; }
+    .mobile-cards .btn-group .btn { padding: 4px 10px; font-size: 11px; }
 
     /* Document form items — full-width stacked layout on mobile */
     .doc-items-table { font-size: 13px; }
@@ -1469,4 +1465,169 @@ select.form-control { cursor: pointer; }
 [data-theme="dark"] .registry-item:hover,
 [data-theme="dark"] .registry-item.selected {
     background: var(--accent-soft);
+}
+
+/* ============================================================
+   Dashboard Greeting & Stat Enhancements
+   ============================================================ */
+.dash-greeting {
+    margin-bottom: 20px;
+}
+.dash-greeting h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    line-height: 1.15;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+.dash-greeting p {
+    font-size: 14px;
+    color: var(--text-light);
+    font-weight: 400;
+}
+
+.stat-change {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 6px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1.4;
+}
+.stat-change.up {
+    color: #15803d;
+    background: rgba(21, 128, 61, 0.08);
+}
+.stat-change.down {
+    color: #b91c1c;
+    background: rgba(185, 28, 28, 0.06);
+}
+.stat-change.neutral {
+    color: var(--text-light);
+    background: var(--accent-soft);
+}
+[data-theme="dark"] .stat-change.up { color: #4ade80; background: rgba(74,222,128,0.1); }
+[data-theme="dark"] .stat-change.down { color: #f87171; background: rgba(248,113,113,0.1); }
+
+.stat-change-label {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-lighter);
+    margin-top: 2px;
+}
+
+/* Quick action bar for mobile */
+.dash-quick-actions {
+    display: none;
+}
+
+/* Mobile list items — cleaner card pattern */
+.mobile-list-card {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .dash-greeting h1 { font-size: 24px; }
+    .dash-greeting p { font-size: 13px; }
+
+    .dash-quick-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    .dash-quick-actions .btn {
+        justify-content: center;
+        padding: 12px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: var(--radius-lg);
+    }
+
+    /* Hide desktop page-header buttons on mobile when quick actions exist */
+    .dash-has-quick-actions .page-header .btn-group { display: none; }
+
+    .stat-change { font-size: 10px; }
+
+    /* Mobile-specific table card improvements */
+    .mobile-cards tbody tr {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 14px 16px;
+        margin-bottom: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+    }
+    .mobile-cards tbody tr:last-child { border-bottom: 1px solid var(--border); }
+
+    /* Client mobile cards */
+    .mobile-cards .mobile-card-title {
+        font-weight: 600;
+        font-size: 15px;
+        flex: 1 1 100%;
+        margin-bottom: 4px;
+    }
+    .mobile-cards .mobile-card-meta {
+        font-size: 12px;
+        color: var(--text-light);
+    }
+
+    /* Recent docs on dashboard — compact mobile list */
+    .dash-recent-mobile .table-wrapper,
+    .dash-recent-mobile table,
+    .dash-recent-mobile thead,
+    .dash-recent-mobile tbody { display: block; }
+    .dash-recent-mobile thead { display: none; }
+    .dash-recent-mobile tbody tr {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border-light);
+        border: none;
+        border-radius: 0;
+        margin-bottom: 0;
+        background: transparent;
+    }
+    .dash-recent-mobile tbody tr:last-child { border-bottom: none; }
+    .dash-recent-mobile tbody td { padding: 0; border: none; font-size: 14px; }
+    .dash-recent-mobile tbody td::before { display: none; }
+    .dash-recent-mobile td[data-label="Nr."] {
+        font-weight: 600;
+        flex-shrink: 0;
+        order: 1;
+    }
+    .dash-recent-mobile td[data-label="Klients"] {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        order: 2;
+    }
+    .dash-recent-mobile td[data-label="Summa"] {
+        font-weight: 600;
+        flex-shrink: 0;
+        order: 3;
+        font-variant-numeric: tabular-nums;
+    }
+    .dash-recent-mobile td[data-label="Tips"],
+    .dash-recent-mobile .text-muted {
+        display: none !important;
+    }
+    .dash-recent-mobile td:last-child {
+        order: 4;
+        margin-left: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .dash-greeting h1 { font-size: 22px; }
+    .page-body { padding: 8px 12px 12px; }
 }

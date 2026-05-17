@@ -41,9 +41,9 @@
                     <tbody>
                         {% for c in clients %}
                         <tr>
-                            <td data-label="Nosaukums">{{ c.name }}</td>
-                            <td data-label="Reģ. Nr.">{{ c.reg_number or '—' }}</td>
-                            <td data-label="PVN Nr.">{{ c.vat_number or '—' }}</td>
+                            <td data-label="Nosaukums" class="mobile-card-title">{{ c.name }}</td>
+                            <td data-label="Reģ. Nr." class="mobile-card-meta">{{ c.reg_number or '—' }}</td>
+                            <td data-label="PVN Nr." class="mobile-card-meta">{{ c.vat_number or '—' }}</td>
                             <td data-label="Kontaktpersona">{{ c.contact_person or '—' }}</td>
                             <td data-label="Tālrunis">{{ c.phone or '—' }}</td>
                             <td>

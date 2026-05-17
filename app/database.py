@@ -1120,6 +1120,15 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
     conn = get_connection()
     today_str = datetime.date.today().isoformat()
 
+    # Calculate previous period of equal length for comparison
+    d_from = datetime.date.fromisoformat(date_from)
+    d_to = datetime.date.fromisoformat(date_to)
+    period_days = (d_to - d_from).days + 1
+    prev_to = d_from - datetime.timedelta(days=1)
+    prev_from = prev_to - datetime.timedelta(days=period_days - 1)
+    prev_from_str = prev_from.isoformat()
+    prev_to_str = prev_to.isoformat()
+
     # Revenue, expenses, doc count, and average in one pass
     row = conn.execute("""
         SELECT
@@ -1133,6 +1142,18 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
     total_revenue = row["revenue"] if row else 0
     total_expenses = row["expenses"] if row else 0
     doc_count = row["doc_count"] if row else 0
+
+    # Previous period revenue + doc count for comparison
+    prev_row = conn.execute("""
+        SELECT
+            COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
+            COUNT(DISTINCT d.id) as doc_count
+        FROM documents d
+        JOIN document_items di ON di.document_id = d.id
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_date >= ? AND d.doc_date <= ?
+    """, (user_id, prev_from_str, prev_to_str)).fetchone()
+    prev_revenue = prev_row["revenue"] if prev_row else 0
+    prev_doc_count = prev_row["doc_count"] if prev_row else 0
 
     # Average sell invoice value
     row = conn.execute("""
@@ -1161,9 +1182,9 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
             GROUP BY d.id
         )
     """, (today_str, today_str, user_id)).fetchone()
-    unpaid_total = row["unpaid_total"] if row else 0
-    overdue_count = row["overdue_count"] if row else 0
-    overdue_total = row["overdue_total"] if row else 0
+    unpaid_total = row["unpaid_total"] if row and row["unpaid_total"] else 0
+    overdue_count = row["overdue_count"] if row and row["overdue_count"] else 0
+    overdue_total = row["overdue_total"] if row and row["overdue_total"] else 0
 
     # Top client
     row = conn.execute("""
@@ -1191,6 +1212,21 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
     """, (user_id, date_from, date_to)).fetchall()
     daily_revenue = [{"date": r["doc_date"], "total": round(r["daily_total"], 2)} for r in rows]
 
+    # Revenue change percentage vs previous period
+    if prev_revenue > 0:
+        revenue_change = round(((total_revenue - prev_revenue) / prev_revenue) * 100, 1)
+    elif total_revenue > 0:
+        revenue_change = 100.0
+    else:
+        revenue_change = 0.0
+
+    if prev_doc_count > 0:
+        doc_count_change = round(((doc_count - prev_doc_count) / prev_doc_count) * 100, 1)
+    elif doc_count > 0:
+        doc_count_change = 100.0
+    else:
+        doc_count_change = 0.0
+
     conn.close()
     return {
         "total_revenue": total_revenue,
@@ -1202,6 +1238,10 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
         "overdue_count": overdue_count,
         "overdue_total": overdue_total,
         "daily_revenue": daily_revenue,
+        "revenue_change": revenue_change,
+        "prev_revenue": prev_revenue,
+        "doc_count_change": doc_count_change,
+        "prev_doc_count": prev_doc_count,
     }
 
 
