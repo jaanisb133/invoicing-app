@@ -199,12 +199,12 @@
         <div class="modal-title">Ātrā klienta pievienošana</div>
         <div class="form-group">
             <div class="client-type-toggle" style="display:flex;gap:0;border:1px solid var(--border-color, #d1d5db);border-radius:8px;overflow:hidden;margin-bottom:4px">
-                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #111827);color:#fff;transition:all 0.2s" id="qc_type_business_label">
+                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #1e3a5f);color:#fff;transition:all 0.2s" id="qc_type_business_label">
                     <input type="radio" name="qc_client_type" value="business" checked
                            onchange="qcToggleClientType('business')" style="display:none">
                     Juridiska persona
                 </label>
-                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #111827);transition:all 0.2s" id="qc_type_individual_label">
+                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #1e293b);transition:all 0.2s" id="qc_type_individual_label">
                     <input type="radio" name="qc_client_type" value="individual"
                            onchange="qcToggleClientType('individual')" style="display:none">
                     Fiziska persona
@@ -718,7 +718,7 @@ function renderClassicPreview(d) {
 }
 
 function renderModernPreview(d) {
-    var ac = (companySettings && companySettings.accent_color) || '#111827';
+    var ac = (companySettings && companySettings.accent_color) || '#1e3a5f';
     return `
         <div style="background:${ac};color:white;padding:14px 16px;border-radius:4px;margin:-1px -1px 12px -1px;display:flex;justify-content:space-between;align-items:center">
             <div style="font-size:16px;font-weight:700">${d.docTypeName}</div>
@@ -834,18 +834,18 @@ function qcToggleClientType(type) {
     const indGroup = document.getElementById('qc_individual_name_group');
     const regLabel = document.getElementById('qc_reg_label');
     if (type === 'business') {
-        bizLabel.style.background = 'var(--bg-primary, #111827)';
+        bizLabel.style.background = 'var(--bg-primary, #1e3a5f)';
         bizLabel.style.color = '#fff';
         indLabel.style.background = 'transparent';
-        indLabel.style.color = 'var(--text-primary, #111827)';
+        indLabel.style.color = 'var(--text-primary, #1e293b)';
         bizGroup.style.display = '';
         indGroup.style.display = 'none';
         regLabel.textContent = 'Reģ. Nr.';
     } else {
-        indLabel.style.background = 'var(--bg-primary, #111827)';
+        indLabel.style.background = 'var(--bg-primary, #1e3a5f)';
         indLabel.style.color = '#fff';
         bizLabel.style.background = 'transparent';
-        bizLabel.style.color = 'var(--text-primary, #111827)';
+        bizLabel.style.color = 'var(--text-primary, #1e293b)';
         bizGroup.style.display = 'none';
         indGroup.style.display = '';
         regLabel.textContent = 'Personas kods';

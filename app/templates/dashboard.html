@@ -7,7 +7,7 @@
     background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
     padding: 4px 6px; color: #6b7280; display: flex; align-items: center; transition: all 0.15s;
 }
-.dash-menu-trigger:hover { background: var(--bg-secondary, #f3f4f6); color: #111827; border-color: var(--border-color, #e5e7eb); }
+.dash-menu-trigger:hover { background: var(--bg-secondary, #f3f4f6); color: #1e293b; border-color: var(--border-color, #e2e8f0); }
 .dash-menu-dropdown {
     display: none; position: fixed;
     background: var(--bg-primary, #fff); border: 1px solid var(--border-color, #e5e7eb);
@@ -17,7 +17,7 @@
 .dash-menu-wrapper.open .dash-menu-dropdown { display: block; }
 .dash-menu-item {
     display: flex; align-items: center; gap: 10px; padding: 8px 14px;
-    font-size: 14px; color: var(--text-primary, #111827); text-decoration: none;
+    font-size: 14px; color: var(--text-primary, #1e293b); text-decoration: none;
     cursor: pointer; transition: background 0.1s; border: none; background: none;
     width: 100%; text-align: left; font-family: inherit;
 }
@@ -75,7 +75,7 @@
             <div class="stat-label">Apgrozījums</div>
         </div>
         <a href="/documents?status=issued" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.15s" onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow=''">
-            <div class="stat-value" id="statUnpaid" style="color:#e67e22">{{ "%.2f" | format(range_stats.unpaid_total) }} <small style="font-size:14px;font-weight:500">EUR</small></div>
+            <div class="stat-value" id="statUnpaid" style="color:#d97706">{{ "%.2f" | format(range_stats.unpaid_total) }} <small style="font-size:14px;font-weight:500">EUR</small></div>
             <div class="stat-label">Neapmaksāti rēķini <span style="font-size:11px;opacity:0.7">→</span></div>
         </a>
         <div class="stat-card">
@@ -96,16 +96,16 @@
             <div class="card-body" style="padding:10px 16px 14px" id="cardRevenueExpenses">
                 <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
                     <span style="font-size:13px;color:var(--text-light)">Ieņēmumi</span>
-                    <span style="font-size:16px;font-weight:700;color:#27ae60" id="statRevGreen">{{ "%.2f" | format(range_stats.total_revenue) }}</span>
+                    <span style="font-size:16px;font-weight:700;color:#059669" id="statRevGreen">{{ "%.2f" | format(range_stats.total_revenue) }}</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
                     <span style="font-size:13px;color:var(--text-light)">Izdevumi</span>
-                    <span style="font-size:16px;font-weight:700;color:#e74c3c" id="statExpRed">{{ "%.2f" | format(range_stats.total_expenses) }}</span>
+                    <span style="font-size:16px;font-weight:700;color:#dc2626" id="statExpRed">{{ "%.2f" | format(range_stats.total_expenses) }}</span>
                 </div>
                 {% set net = range_stats.total_revenue - range_stats.total_expenses %}
                 <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;justify-content:space-between;align-items:baseline">
                     <span style="font-size:13px;font-weight:600">Neto</span>
-                    <span style="font-size:16px;font-weight:700;color:{% if net >= 0 %}#27ae60{% else %}#e74c3c{% endif %}" id="statNet">{{ "%.2f" | format(net) }}</span>
+                    <span style="font-size:16px;font-weight:700;color:{% if net >= 0 %}#059669{% else %}#dc2626{% endif %}" id="statNet">{{ "%.2f" | format(net) }}</span>
                 </div>
             </div>
         </div>
@@ -125,10 +125,10 @@
             <div class="card-header" style="font-size:12px;padding:10px 16px">Kavētie rēķini</div>
             <div class="card-body" style="padding:10px 16px 14px" id="cardOverdue">
                 {% if range_stats.overdue_count > 0 %}
-                <div style="font-size:17px;font-weight:700;color:#e74c3c">{{ range_stats.overdue_count }}</div>
+                <div style="font-size:17px;font-weight:700;color:#dc2626">{{ range_stats.overdue_count }}</div>
                 <div style="font-size:13px;color:var(--text-light);margin-top:4px">Summa: {{ "%.2f" | format(range_stats.overdue_total) }} EUR</div>
                 {% else %}
-                <div style="font-size:17px;font-weight:700;color:#27ae60">0</div>
+                <div style="font-size:17px;font-weight:700;color:#059669">0</div>
                 <div style="font-size:13px;color:var(--text-light);margin-top:4px">Nav kavētu rēķinu</div>
                 {% endif %}
             </div>
@@ -140,7 +140,7 @@
         <div class="card-header" style="font-size:12px;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
             Apgrozījums pa dienām
             <div style="display:flex;gap:4px">
-                <button type="button" id="chartTypeBar" onclick="switchChartType('bar')" style="padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:var(--primary);color:#fff" title="Stabiņu grafiks">
+                <button type="button" id="chartTypeBar" onclick="switchChartType('bar')" style="padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:#0ea5e9;color:#fff" title="Stabiņu grafiks">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
                 </button>
                 <button type="button" id="chartTypeLine" onclick="switchChartType('line')" style="padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:transparent;color:var(--text)" title="Līniju grafiks">
@@ -413,16 +413,16 @@ var _chartType = localStorage.getItem('dashChartType') || 'bar';
             data: data.map(function(d) { return d.total; }),
         };
         if (type === 'line') {
-            ds.borderColor = 'rgba(52,152,219,1)';
-            ds.backgroundColor = isDark ? 'rgba(52,152,219,0.15)' : 'rgba(52,152,219,0.1)';
+            ds.borderColor = '#0ea5e9';
+            ds.backgroundColor = isDark ? 'rgba(14,165,233,0.12)' : 'rgba(14,165,233,0.08)';
             ds.fill = true;
-            ds.tension = 0.3;
+            ds.tension = 0.35;
             ds.pointRadius = 3;
-            ds.pointBackgroundColor = 'rgba(52,152,219,1)';
-            ds.borderWidth = 2;
+            ds.pointBackgroundColor = '#0ea5e9';
+            ds.borderWidth = 2.5;
         } else {
-            ds.backgroundColor = isDark ? 'rgba(52,152,219,0.6)' : 'rgba(52,152,219,0.7)';
-            ds.borderRadius = 4;
+            ds.backgroundColor = isDark ? 'rgba(14,165,233,0.6)' : 'rgba(14,165,233,0.75)';
+            ds.borderRadius = 6;
             ds.borderSkipped = false;
             ds.maxBarThickness = 40;
         }
@@ -480,10 +480,10 @@ function _updateChartButtons(type) {
     var lineBtn = document.getElementById('chartTypeLine');
     if (!barBtn || !lineBtn) return;
     if (type === 'line') {
-        lineBtn.style.background = 'var(--primary)'; lineBtn.style.color = '#fff';
+        lineBtn.style.background = '#0ea5e9'; lineBtn.style.color = '#fff';
         barBtn.style.background = 'transparent'; barBtn.style.color = 'var(--text)';
     } else {
-        barBtn.style.background = 'var(--primary)'; barBtn.style.color = '#fff';
+        barBtn.style.background = '#0ea5e9'; barBtn.style.color = '#fff';
         lineBtn.style.background = 'transparent'; lineBtn.style.color = 'var(--text)';
     }
 }
@@ -544,7 +544,7 @@ function switchChartType(type) {
                     var net = s.total_revenue - s.total_expenses;
                     var netEl = document.getElementById('statNet');
                     netEl.textContent = fmt(net);
-                    netEl.style.color = net >= 0 ? '#27ae60' : '#e74c3c';
+                    netEl.style.color = net >= 0 ? '#059669' : '#dc2626';
                 }
 
                 // Top client
@@ -559,10 +559,10 @@ function switchChartType(type) {
                 // Overdue
                 var odEl = document.getElementById('cardOverdue');
                 if (s.overdue_count > 0) {
-                    odEl.innerHTML = '<div style="font-size:17px;font-weight:700;color:#e74c3c">' + s.overdue_count + '</div>'
+                    odEl.innerHTML = '<div style="font-size:17px;font-weight:700;color:#dc2626">' + s.overdue_count + '</div>'
                         + '<div style="font-size:13px;color:var(--text-light);margin-top:4px">Summa: ' + fmt(s.overdue_total) + ' EUR</div>';
                 } else {
-                    odEl.innerHTML = '<div style="font-size:17px;font-weight:700;color:#27ae60">0</div>'
+                    odEl.innerHTML = '<div style="font-size:17px;font-weight:700;color:#059669">0</div>'
                         + '<div style="font-size:13px;color:var(--text-light);margin-top:4px">Nav kavētu rēķinu</div>';
                 }
 

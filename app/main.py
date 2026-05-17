@@ -1500,7 +1500,7 @@ async def save_settings(
     status_tracking: str = Form("0"),
     logo_width: str = Form("100"),
     default_template: str = Form("minimal"),
-    accent_color: str = Form("#111827"),
+    accent_color: str = Form("#1e3a5f"),
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form(""),
     invoice_number_digits: str = Form("3"),
@@ -1528,7 +1528,7 @@ async def save_settings(
         "status_tracking": status_tracking,
         "logo_width": logo_width,
         "default_template": default_template,
-        "accent_color": accent_color if accent_color and accent_color.startswith("#") else "#111827",
+        "accent_color": accent_color if accent_color and accent_color.startswith("#") else "#1e3a5f",
     }
 
     # When stock is first enabled, record the date so stock counts from 0

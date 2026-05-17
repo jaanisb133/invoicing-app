@@ -201,14 +201,14 @@
                     <div class="form-group" style="max-width:280px">
                         <label>Akcenta krāsa (Modernā šablona galvene)</label>
                         <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
-                            <input type="color" name="accent_color" value="{{ settings.get('accent_color', '#111827') }}"
+                            <input type="color" name="accent_color" value="{{ settings.get('accent_color', '#1e3a5f') }}"
                                    style="width:40px;height:34px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--bg-card)"
                                    oninput="document.getElementById('accentHex').value=this.value">
                             <input type="text" id="accentHex" class="form-control" style="width:90px;font-family:monospace;font-size:13px"
-                                   value="{{ settings.get('accent_color', '#111827') }}"
+                                   value="{{ settings.get('accent_color', '#1e3a5f') }}"
                                    oninput="var v=this.value;if(/^#[0-9a-fA-F]{6}$/.test(v))this.form.accent_color.value=v"
-                                   maxlength="7" placeholder="#111827">
-                            <button type="button" class="btn btn-outline btn-sm" onclick="this.form.accent_color.value='#111827';document.getElementById('accentHex').value='#111827';this.form.accent_color.dispatchEvent(new Event('input'))">Noklusējums</button>
+                                   maxlength="7" placeholder="#1e3a5f">
+                            <button type="button" class="btn btn-outline btn-sm" onclick="this.form.accent_color.value='#1e3a5f';document.getElementById('accentHex').value='#1e3a5f';this.form.accent_color.dispatchEvent(new Event('input'))">Noklusējums</button>
                         </div>
                         <span style="font-size:12px;color:var(--text-light)">Modernā šablona tumšās joslas krāsa</span>
                     </div>
