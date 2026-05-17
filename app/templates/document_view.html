@@ -279,6 +279,7 @@ const docData = {
     displayDueDate: {% if doc.payment_due_date %}"{{ doc.payment_due_date.split('-')[2] }}.{{ doc.payment_due_date.split('-')[1] }}.{{ doc.payment_due_date.split('-')[0] }}"{% else %}""{% endif %},
     notes: {{ (doc.notes or '') | tojson }},
     hasLogo: {{ 'true' if has_logo else 'false' }},
+    accentColor: {{ settings.get('accent_color', '#111827') | tojson }},
     electronicDoc: {{ 'true' if settings.get('electronic_doc', '0') == '1' else 'false' }},
     logoWidth: {{ settings.get('logo_width', '100') }},
     entityType: {{ settings.get('entity_type', 'business') | tojson }},
@@ -434,8 +435,9 @@ function renderClassic(d) {
 }
 
 function renderModern(d) {
+    var ac = docData.accentColor || '#111827';
     return `
-        <div class="preview-modern-header" style="background:#111827;color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
+        <div class="preview-modern-header" style="background:${ac};color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
             <div>
                 ${docData.hasLogo ? logoHtml(true).replace('display:block;', 'display:block;margin-bottom:8px;') : ''}
                 <div style="font-size:22px;font-weight:700">${d.docTypeName}</div>
@@ -459,7 +461,7 @@ function renderModern(d) {
             <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
                 <colgroup><col style="width:6%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
                 <thead>
-                    <tr style="background:#1f2937">
+                    <tr style="background:${ac}">
                         <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Nr.</th>
                         <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Nosaukums</th>
                         <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Mērv.</th>
