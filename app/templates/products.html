@@ -2,7 +2,10 @@
 
 {% block content %}
 <div class="page-header">
-    <h2>Produkti</h2>
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Produkti / Pakalpojumi</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Jūsu produktu un pakalpojumu katalogs.</p>
+    </div>
     <button class="btn btn-primary" onclick="document.getElementById('addProductModal').classList.add('active')">
         + Pievienot produktu
     </button>
@@ -12,17 +15,17 @@
     {% if request.query_params.get('error') == 'limit' %}
     <div class="alert alert-danger">Produktu limits sasniegts ({{ tier_limits.max_products }}). <a href="/pricing">Uzlabojiet plānu</a>, lai pievienotu vairāk.</div>
     {% endif %}
-    <div class="usage-section" style="margin-bottom:16px">
-        <div class="usage-item">
-            <div class="usage-label">Produkti</div>
-            <div class="usage-bar">
-                <div class="usage-fill" style="width: {{ [(usage.products / limits.max_products * 100) | int, 100] | min }}%"></div>
+    <div class="usage-section" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 18px">
+        <div class="usage-item" style="margin:0">
+            <div class="usage-label" style="font-size:12px;color:var(--text-light);font-weight:500;letter-spacing:0;text-transform:none;margin-bottom:8px">Produkti</div>
+            <div class="usage-bar" style="background:var(--bg-input)">
+                <div class="usage-fill" style="background:var(--brand);width: {{ [(usage.products / limits.max_products * 100) | int, 100] | min }}%"></div>
             </div>
-            <div class="usage-count">{{ usage.products }} / {{ limits.max_products }}</div>
+            <div class="usage-count" style="font-size:12px;color:var(--text-light);margin-top:6px">{{ usage.products }} / {{ limits.max_products }}</div>
         </div>
     </div>
     <div class="card">
-        <div class="card-body">
+        <div class="card-body" style="padding:8px">
             {% if products %}
             <div class="table-wrapper">
                 <table class="mobile-cards">
@@ -36,8 +39,13 @@
                     <tbody>
                         {% for p in products %}
                         <tr>
-                            <td data-label="Nosaukums" class="mobile-card-title">{{ p.name }}</td>
-                            <td data-label="Mērvienība" class="mobile-card-meta">{{ p.unit }}</td>
+                            <td data-label="Nosaukums" class="mobile-card-title">
+                                <span class="doc-client-cell">
+                                    <span class="icon-square sm tint-emerald"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span>
+                                    <span>{{ p.name }}</span>
+                                </span>
+                            </td>
+                            <td data-label="Mērvienība" class="mobile-card-meta"><span class="pill pill-neutral">{{ p.unit }}</span></td>
                             <td>
                                 <div class="btn-group">
                                     <button class="btn btn-outline btn-sm"
@@ -56,7 +64,7 @@
                 </table>
             </div>
             {% else %}
-            <div class="empty-state">Nav produktu. Pievienojiet pirmo produktu!</div>
+            <div class="empty-state" style="text-align:center;padding:48px 16px;color:var(--text-light)">Nav produktu. Pievienojiet pirmo produktu!</div>
             {% endif %}
         </div>
     </div>

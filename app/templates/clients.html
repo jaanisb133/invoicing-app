@@ -2,7 +2,10 @@
 
 {% block content %}
 <div class="page-header">
-    <h2>Klienti</h2>
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Klienti</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Pārvaldiet savu klientu sarakstu.</p>
+    </div>
     <button class="btn btn-primary" onclick="document.getElementById('addClientModal').classList.add('active')">
         + Pievienot klientu
     </button>
@@ -14,23 +17,23 @@
     {% elif request.query_params.get('error') == 'duplicate' %}
     <div class="alert alert-danger">Klients ar šo reģistrācijas numuru jau eksistē ({{ request.query_params.get('name', '') }}).</div>
     {% endif %}
-    <div class="usage-section" style="margin-bottom:16px">
-        <div class="usage-item">
-            <div class="usage-label">Klienti</div>
-            <div class="usage-bar">
-                <div class="usage-fill" style="width: {{ [(usage.clients / limits.max_clients * 100) | int, 100] | min }}%"></div>
+    <div class="usage-section" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 18px">
+        <div class="usage-item" style="margin:0">
+            <div class="usage-label" style="font-size:12px;color:var(--text-light);font-weight:500;letter-spacing:0;text-transform:none;margin-bottom:8px">Klienti šomēnes</div>
+            <div class="usage-bar" style="background:var(--bg-input)">
+                <div class="usage-fill" style="background:var(--brand);width: {{ [(usage.clients / limits.max_clients * 100) | int, 100] | min }}%"></div>
             </div>
-            <div class="usage-count">{{ usage.clients }} / {{ limits.max_clients }}</div>
+            <div class="usage-count" style="font-size:12px;color:var(--text-light);margin-top:6px">{{ usage.clients }} / {{ limits.max_clients }}</div>
         </div>
     </div>
     <div class="card">
-        <div class="card-body">
+        <div class="card-body" style="padding:8px">
             {% if clients %}
             <div class="table-wrapper">
-                <table class="mobile-cards">
+                <table class="mobile-cards client-table">
                     <thead>
                         <tr>
-                            <th>Nosaukums</th>
+                            <th>Klients</th>
                             <th>Reģ. Nr.</th>
                             <th>PVN Nr.</th>
                             <th>Kontaktpersona</th>
@@ -41,7 +44,12 @@
                     <tbody>
                         {% for c in clients %}
                         <tr>
-                            <td data-label="Nosaukums" class="mobile-card-title">{{ c.name }}</td>
+                            <td data-label="Nosaukums" class="mobile-card-title">
+                                <span class="doc-client-cell">
+                                    <span class="brand-avatar sm bg-{{ (c.id or 0) % 10 }}">{{ (c.name or '?')[:2] | upper }}</span>
+                                    <span>{{ c.name }}</span>
+                                </span>
+                            </td>
                             <td data-label="Reģ. Nr." class="mobile-card-meta">{{ c.reg_number or '—' }}</td>
                             <td data-label="PVN Nr." class="mobile-card-meta">{{ c.vat_number or '—' }}</td>
                             <td data-label="Kontaktpersona">{{ c.contact_person or '—' }}</td>
@@ -64,11 +72,20 @@
                 </table>
             </div>
             {% else %}
-            <div class="empty-state">Nav klientu. Pievienojiet pirmo klientu!</div>
+            <div class="empty-state" style="text-align:center;padding:48px 16px;color:var(--text-light)">Nav klientu. Pievienojiet pirmo klientu!</div>
             {% endif %}
         </div>
     </div>
 </div>
+<style>
+.client-table .doc-client-cell { gap: 12px; }
+.client-table thead th { padding: 12px 18px; }
+.client-table tbody td { padding: 14px 18px; }
+@media (max-width: 768px) {
+    .client-table .mobile-card-title .doc-client-cell { gap: 10px; }
+    .client-table tbody tr { padding: 14px 16px; }
+}
+</style>
 
 <!-- Add Client Modal -->
 <div class="modal-overlay" id="addClientModal">

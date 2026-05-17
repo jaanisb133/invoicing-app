@@ -4,55 +4,70 @@
 <style>
 .row-menu-wrapper { position: relative; display: inline-block; }
 .row-menu-trigger {
-    background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
-    padding: 4px 6px; color: #6b7280; display: flex; align-items: center; transition: all 0.15s;
+    background: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer;
+    padding: 6px; color: var(--text-light); display: flex; align-items: center; transition: all 0.15s;
 }
-.row-menu-trigger:hover { background: var(--bg-secondary, #f3f4f6); color: #1e293b; border-color: var(--border-color, #e2e8f0); }
+.row-menu-trigger:hover { background: var(--bg-card-hover); color: var(--text); }
 .row-menu-dropdown {
     display: none; position: fixed;
-    background: var(--bg-primary, #fff); border: 1px solid var(--border-color, #e5e7eb);
-    border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 220px;
-    z-index: 9999; padding: 4px 0; white-space: nowrap;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-lg); min-width: 220px;
+    z-index: 9999; padding: 6px; white-space: nowrap;
 }
 .row-menu-wrapper.open .row-menu-dropdown { display: block; }
 .row-menu-item {
-    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
-    font-size: 14px; color: var(--text-primary, #1e293b); text-decoration: none;
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    font-size: 13.5px; color: var(--text); text-decoration: none;
     cursor: pointer; transition: background 0.1s; border: none; background: none;
-    width: 100%; text-align: left; font-family: inherit;
+    width: 100%; text-align: left; font-family: inherit; border-radius: 8px;
 }
-.row-menu-item:hover { background: var(--bg-secondary, #f3f4f6); }
-.row-menu-item svg { flex-shrink: 0; opacity: 0.6; }
-.row-menu-danger { color: #dc2626 !important; }
-.row-menu-danger:hover { background: #fef2f2 !important; }
+.row-menu-item:hover { background: var(--bg-card-hover); }
+.row-menu-item svg { flex-shrink: 0; color: var(--text-light); }
+.row-menu-danger { color: var(--danger) !important; }
+.row-menu-danger:hover { background: var(--danger-soft) !important; }
+.row-menu-danger svg { color: var(--danger) !important; }
 tr.clickable-row { cursor: pointer; }
-tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
+tr.clickable-row:hover td { background: var(--bg-card-hover); }
 .search-dropdown {
     position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
-    background: var(--bg-card, #fff); border: 1px solid var(--border, #e5e7eb);
-    border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 240px;
-    overflow-y: auto; margin-top: 2px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow-md); max-height: 240px;
+    overflow-y: auto; margin-top: 4px;
 }
 .search-dropdown-item {
-    padding: 8px 12px; cursor: pointer; font-size: 14px;
-    color: var(--text, #1e293b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 9px 12px; cursor: pointer; font-size: 14px;
+    color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.search-dropdown-item:hover, .search-dropdown-item.active { background: var(--bg-secondary, #f3f4f6); }
-.search-dropdown-item[style*="display:none"] + .search-dropdown-item { border-top: none; }
-.row-menu-divider { height: 1px; background: var(--border-color, #e5e7eb); margin: 4px 0; }
-.row-menu-disabled { opacity: 0.5; }
+.search-dropdown-item:hover, .search-dropdown-item.active { background: var(--bg-card-hover); }
+.row-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.row-menu-disabled { opacity: 0.55; }
 .badge-pro-menu {
-    display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 4px;
-    border-radius: 3px; background: #f59e0b; color: #fff; vertical-align: middle; line-height: 1.3;
+    display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 5px;
+    border-radius: 4px; background: var(--brand); color: #fff; vertical-align: middle; line-height: 1.3; letter-spacing: 0.4px;
+}
+.doc-client-cell {
+    display: inline-flex; align-items: center; gap: 10px;
+}
+.doc-filters-card { padding: 14px 16px; margin-bottom: 16px; }
+.doc-filters-card .filters-bar { margin-bottom: 0; align-items: end; }
+.doc-filters-card .form-group label { font-size: 11.5px; color: var(--text-light); font-weight: 500; }
+.usage-section .usage-bar { background: var(--bg-input); }
+.usage-section .usage-fill { background: var(--brand); }
+@media (max-width: 768px) {
+    .doc-filters-card { padding: 12px; }
+    .doc-filters-card .filters-bar { gap: 8px; }
 }
 </style>
 <div class="page-header">
-    <h2>Dokumenti</h2>
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Dokumenti</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Visi izrakstītie un saņemtie rēķini.</p>
+    </div>
     <div class="btn-group">
         {% if stock_enabled %}
-        <a href="/documents/new?doc_type=buy" class="btn btn-success"><span class="btn-label-full">+ Jauns iegādes dokuments</span><span class="btn-label-short">+ Iegāde</span></a>
+        <a href="/documents/new?doc_type=buy" class="btn btn-outline"><span class="btn-label-full">+ Iegādes dokuments</span><span class="btn-label-short">+ Iegāde</span></a>
         {% endif %}
-        <a href="/documents/new?doc_type=sell" class="btn btn-primary"><span class="btn-label-full">+ Jauns pārdošanas dokuments</span><span class="btn-label-short">+ Pārdošana</span></a>
+        <a href="/documents/new?doc_type=sell" class="btn btn-primary"><span class="btn-label-full">+ Jauns rēķins</span><span class="btn-label-short">+ Rēķins</span></a>
     </div>
 </div>
 
@@ -142,23 +157,29 @@ tr.clickable-row:hover td { background: var(--bg-secondary, #f9fafb); }
                     {% if documents %}
                         {% for doc in documents %}
                         <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
-                            <td data-label="Nr." class="mobile-card-title">{{ doc.doc_number }}</td>
+                            <td data-label="Nr." class="mobile-card-title" style="font-weight:600">{{ doc.doc_number }}</td>
                             <td data-label="Tips">
                                 {% if doc.doc_type == 'buy' %}
-                                <span class="badge badge-buy">Iegāde</span>
+                                <span class="pill pill-warning">Iegāde</span>
                                 {% else %}
-                                <span class="badge badge-sell">Pārdošana</span>
+                                <span class="pill pill-brand">Pārdošana</span>
                                 {% endif %}
                             </td>
-                            <td data-label="Klients" class="mobile-card-meta">{{ doc.client_name }}</td>
+                            <td data-label="Klients" class="mobile-card-meta">
+                                <span class="doc-client-cell">
+                                    <span class="brand-avatar sm bg-{{ (doc.client_id or 0) % 10 }}">{{ (doc.client_name or '?')[:2] | upper }}</span>
+                                    <span>{{ doc.client_name }}</span>
+                                </span>
+                            </td>
                             <td data-label="Datums" class="mobile-card-meta">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
-                            <td data-label="Summa" style="font-weight:600">{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
+                            <td data-label="Summa" style="font-weight:700">{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <td>
-                                <span class="badge badge-status {% if doc.status == 'paid' %}badge-paid{% else %}badge-issued{% endif %}"
+                                <span class="pill pill-status {% if doc.status == 'paid' %}pill-success{% else %}pill-brand{% endif %}"
                                       data-doc-id="{{ doc.id }}"
                                       data-status="{{ doc.status or 'issued' }}"
                                       onclick="toggleStatus(this)"
+                                      style="cursor:pointer"
                                       title="Noklikšķiniet, lai mainītu statusu">
                                     {% if doc.status == 'paid' %}Apmaksāts{% else %}Izrakstīts{% endif %}
                                 </span>
@@ -311,10 +332,10 @@ async function toggleStatus(el) {
         el.dataset.status = data.status;
         if (data.status === 'paid') {
             el.textContent = 'Apmaksāts';
-            el.className = 'badge badge-status badge-paid';
+            el.className = 'pill pill-status pill-success';
         } else {
             el.textContent = 'Izrakstīts';
-            el.className = 'badge badge-status badge-issued';
+            el.className = 'pill pill-status pill-brand';
         }
     } catch(e) {
         alert('Kļūda mainot statusu');
@@ -389,29 +410,43 @@ function fmtDate(iso) {
     return p[2] + '/' + p[1] + '/' + p[0];
 }
 
+function avatarColor(d) {
+    if (d && d.client_id != null) return d.client_id % 10;
+    var s = (d && d.client_name || '?').charCodeAt(0) || 0;
+    return s % 10;
+}
+function escapeHtml(s) {
+    return (s || '').replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+}
 function renderDocs(docs) {
     var tbody = document.getElementById('docsBody');
     if (!tbody) return;
     if (!docs.length) {
-        tbody.innerHTML = '<tr><td colspan="' + (statusTracking ? 7 : 6) + '" style="text-align:center;padding:32px;color:var(--text-light)">Nav dokumentu ar izvēlētajiem filtriem.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + (statusTracking ? 7 : 6) + '" style="text-align:center;padding:48px 16px;color:var(--text-light)">Nav dokumentu ar izvēlētajiem filtriem.</td></tr>';
         return;
     }
     var html = '';
     docs.forEach(function(d) {
-        var badge = d.doc_type === 'buy'
-            ? '<span class="badge badge-buy">Iegāde</span>'
-            : '<span class="badge badge-sell">Pārdošana</span>';
+        var typePill = d.doc_type === 'buy'
+            ? '<span class="pill pill-warning">Iegāde</span>'
+            : '<span class="pill pill-brand">Pārdošana</span>';
         var statusHtml = '';
         if (statusTracking) {
             var isPaid = d.status === 'paid';
-            statusHtml = '<td><span class="badge badge-status ' + (isPaid ? 'badge-paid' : 'badge-issued') + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" title="Noklikšķiniet, lai mainītu statusu">' + (isPaid ? 'Apmaksāts' : 'Izrakstīts') + '</span></td>';
+            statusHtml = '<td><span class="pill pill-status ' + (isPaid ? 'pill-success' : 'pill-brand') + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" style="cursor:pointer" title="Noklikšķiniet, lai mainītu statusu">' + (isPaid ? 'Apmaksāts' : 'Izrakstīts') + '</span></td>';
         }
+        var clientName = d.client_name || '';
+        var initials = (clientName || '?').slice(0, 2).toUpperCase();
+        var clientHtml = '<span class="doc-client-cell">'
+            + '<span class="brand-avatar sm bg-' + avatarColor(d) + '">' + escapeHtml(initials) + '</span>'
+            + '<span>' + escapeHtml(clientName) + '</span>'
+            + '</span>';
         html += '<tr data-href="/documents/' + d.id + '" class="clickable-row">'
-            + '<td data-label="Nr." class="mobile-card-title">' + d.doc_number + '</td>'
-            + '<td data-label="Tips">' + badge + '</td>'
-            + '<td data-label="Klients" class="mobile-card-meta">' + (d.client_name || '') + '</td>'
+            + '<td data-label="Nr." class="mobile-card-title" style="font-weight:600">' + d.doc_number + '</td>'
+            + '<td data-label="Tips">' + typePill + '</td>'
+            + '<td data-label="Klients" class="mobile-card-meta">' + clientHtml + '</td>'
             + '<td data-label="Datums" class="mobile-card-meta">' + fmtDate(d.doc_date) + '</td>'
-            + '<td data-label="Summa" style="font-weight:600">' + d.total_with_vat.toFixed(2) + ' €</td>'
+            + '<td data-label="Summa" style="font-weight:700">' + d.total_with_vat.toFixed(2) + ' €</td>'
             + statusHtml
             + '<td>' + menuHtml(d) + '</td>'
             + '</tr>';
