@@ -1755,6 +1755,60 @@ select.form-control { cursor: pointer; }
         color: var(--text-light);
     }
 
+    /* Documents page mobile cards — explicit 3-row layout
+       Row 1: Nr (left) | Tips + Status pills (right)
+       Row 2: Client (avatar + name) — full width
+       Row 3: Date + Sum (left) | 3-dot menu (right) */
+    .docs-table tbody tr {
+        gap: 8px 10px;
+        padding: 14px 16px;
+        align-items: center;
+    }
+    .docs-table td { padding: 0; border: 0; }
+    .docs-table td[data-label="Nr."] {
+        order: 1;
+        flex: 1 1 50%;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text);
+        letter-spacing: -0.3px;
+        margin-bottom: 6px;
+    }
+    .docs-table td[data-label="Tips"] {
+        order: 2;
+        margin-left: auto;
+        margin-bottom: 6px;
+        display: inline-flex;
+    }
+    .docs-table td.doc-cell-status {
+        order: 3;
+        margin-bottom: 6px;
+        display: inline-flex;
+    }
+    .docs-table td[data-label="Klients"] {
+        order: 4;
+        flex: 1 1 100%;
+        font-size: 13.5px;
+        color: var(--text);
+        margin-bottom: 4px;
+    }
+    .docs-table td[data-label="Klients"] .doc-client-cell { gap: 10px; }
+    .docs-table td[data-label="Datums"] {
+        order: 5;
+        font-size: 12.5px;
+        color: var(--text-light);
+    }
+    .docs-table td[data-label="Summa"] {
+        order: 6;
+        font-size: 14.5px !important;
+        font-weight: 700;
+        color: var(--text);
+    }
+    .docs-table td.doc-cell-actions {
+        order: 7;
+        margin-left: auto;
+    }
+
     /* Recent docs on dashboard — compact mobile list */
     .dash-recent-mobile .table-wrapper,
     .dash-recent-mobile table,

@@ -139,7 +139,7 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
             </div>
 
             <div class="table-wrapper">
-                <table class="mobile-cards">
+                <table class="mobile-cards docs-table">
                     <thead>
                         <tr>
                             <th>Nr.</th>
@@ -174,7 +174,7 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                             <td data-label="Datums" class="mobile-card-meta">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
                             <td data-label="Summa" style="font-weight:700">{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
-                            <td>
+                            <td class="doc-cell-status">
                                 <span class="pill pill-status {% if doc.status == 'paid' %}pill-success{% else %}pill-brand{% endif %}"
                                       data-doc-id="{{ doc.id }}"
                                       data-status="{{ doc.status or 'issued' }}"
@@ -185,7 +185,7 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                                 </span>
                             </td>
                             {% endif %}
-                            <td>
+                            <td class="doc-cell-actions">
                                 <div class="row-menu-wrapper">
                                     <button type="button" class="row-menu-trigger" aria-label="Darbības">
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
@@ -433,7 +433,7 @@ function renderDocs(docs) {
         var statusHtml = '';
         if (statusTracking) {
             var isPaid = d.status === 'paid';
-            statusHtml = '<td><span class="pill pill-status ' + (isPaid ? 'pill-success' : 'pill-brand') + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" style="cursor:pointer" title="Noklikšķiniet, lai mainītu statusu">' + (isPaid ? 'Apmaksāts' : 'Izrakstīts') + '</span></td>';
+            statusHtml = '<td class="doc-cell-status"><span class="pill pill-status ' + (isPaid ? 'pill-success' : 'pill-brand') + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" style="cursor:pointer" title="Noklikšķiniet, lai mainītu statusu">' + (isPaid ? 'Apmaksāts' : 'Izrakstīts') + '</span></td>';
         }
         var clientName = d.client_name || '';
         var initials = (clientName || '?').slice(0, 2).toUpperCase();
@@ -448,7 +448,7 @@ function renderDocs(docs) {
             + '<td data-label="Datums" class="mobile-card-meta">' + fmtDate(d.doc_date) + '</td>'
             + '<td data-label="Summa" style="font-weight:700">' + d.total_with_vat.toFixed(2) + ' €</td>'
             + statusHtml
-            + '<td>' + menuHtml(d) + '</td>'
+            + '<td class="doc-cell-actions">' + menuHtml(d) + '</td>'
             + '</tr>';
     });
     tbody.innerHTML = html;
