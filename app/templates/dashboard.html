@@ -65,12 +65,9 @@
     {% endif %}
 
     <!-- Greeting -->
-    {% set display = current_user.display_name or current_user.username %}
-    {% set first_name = display.split(' ')[0] if display else 'Lietotāj' %}
-    {% set hour = None %}
+    {% set greet_name = (current_user.display_name or current_user.username) if (current_user.display_name and current_user.display_name.strip()) else (settings.get('company_name') or current_user.username) %}
     <div class="dash-greeting">
-        <h1>Sveiks, {{ first_name }}.</h1>
-        <p>{% if settings.get('company_name') %}{{ settings.get('company_name') }}{% else %}Tava biznesa pārvaldība{% endif %}</p>
+        <h1>Sveiki, {{ greet_name }}.</h1>
     </div>
 
     <!-- Mobile quick actions -->
