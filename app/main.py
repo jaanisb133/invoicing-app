@@ -1441,7 +1441,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
     stock = db.get_stock(uid) if stock_on else []
     stats = db.get_dashboard_stats(uid)
     range_stats = db.get_dashboard_stats_range(uid, date_from, date_to, compare_mode)
-    recent_events = db.get_recent_events(uid, limit=8)
+    recent_events = db.get_recent_events(uid, limit=5)
 
     ctx.update({
         "recent_docs": recent_docs,

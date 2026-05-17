@@ -64,8 +64,8 @@
 
     /* Text */
     --text: #FAFAFA;
-    --text-light: #9CA3AF;
-    --text-lighter: #6B7280;
+    --text-light: #C2C7D0;
+    --text-lighter: #9CA3AF;
     --text-on-brand: #FFFFFF;
 
     /* Border */
@@ -156,9 +156,9 @@ html, body {
 }
 body { display: flex; min-height: 100vh; }
 
-a { color: inherit; text-decoration: none; }
-a:hover { text-decoration: none; }
-.alert a, .login-footer a, .registry-hint a { text-decoration: underline; }
+a, a:link, a:visited, a:hover, a:active { color: inherit; text-decoration: none !important; }
+a u, a *, a:hover * { text-decoration: none !important; }
+.alert a, .login-footer a, .registry-hint a { text-decoration: underline !important; }
 
 /* Flatpickr dark calendar */
 .flatpickr-input.form-control[readonly] { background: var(--bg-input); cursor: pointer; }
