@@ -179,6 +179,19 @@ def init_db():
             sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            document_id INTEGER,
+            client_id INTEGER,
+            meta TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_events_user_created ON events(user_id, created_at DESC);
     """)
 
     conn.commit()
@@ -1549,6 +1562,60 @@ def get_email_log(user_id: int, source: str = None) -> list:
         ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def log_event(user_id: int, event_type: str, document_id: int = None,
+              client_id: int = None, meta: dict = None):
+    """Record an activity event for the user's feed.
+
+    event_type: 'document_created' | 'document_sent'
+    meta: optional dict (serialized as JSON). Use 'send_type' = 'manual'|'recurring'
+          for document_sent events, 'recipient' for the recipient email.
+    """
+    import json as _json
+    meta_json = _json.dumps(meta) if meta else None
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO events (user_id, event_type, document_id, client_id, meta)
+           VALUES (?, ?, ?, ?, ?)""",
+        (user_id, event_type, document_id, client_id, meta_json)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_recent_events(user_id: int, limit: int = 10) -> list:
+    """Get recent activity events joined with document + client info."""
+    import json as _json
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT e.id, e.event_type, e.document_id, e.client_id, e.meta, e.created_at,
+                  d.doc_number, d.doc_type,
+                  COALESCE(c.name, dc.name) as client_name,
+                  (SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0)
+                   FROM document_items di WHERE di.document_id = d.id) as amount
+           FROM events e
+           LEFT JOIN documents d ON e.document_id = d.id
+           LEFT JOIN clients c ON e.client_id = c.id
+           LEFT JOIN clients dc ON d.client_id = dc.id
+           WHERE e.user_id = ?
+           ORDER BY e.created_at DESC
+           LIMIT ?""",
+        (user_id, limit)
+    ).fetchall()
+    conn.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        if d.get('meta'):
+            try:
+                d['meta'] = _json.loads(d['meta'])
+            except Exception:
+                d['meta'] = {}
+        else:
+            d['meta'] = {}
+        out.append(d)
+    return out
 
 
 # --- Recurring Invoices ---

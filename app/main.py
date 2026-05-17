@@ -467,6 +467,15 @@ async def _process_recurring_invoices():
                         today, items, rec["vat_rate"], rec["notes"]
                     )
 
+                    # Log document_created event (recurring source)
+                    try:
+                        db.log_event(rec["user_id"], "document_created",
+                                     document_id=doc_id, client_id=rec["client_id"],
+                                     meta={"doc_number": doc_number, "doc_type": rec["doc_type"],
+                                           "source": "recurring", "recurring_id": rec["id"]})
+                    except Exception:
+                        logger.exception("Failed to log document_created event (recurring)")
+
                     template = rec.get("template", "minimal")
                     filepath = generate_invoice_pdf(doc_id, template=template)
 
@@ -505,6 +514,13 @@ async def _process_recurring_invoices():
                                 sender_name=company_name,
                             )
                             db.log_email_sent(rec["user_id"], doc_id, client["email"], source="recurring")
+                            try:
+                                db.log_event(rec["user_id"], "document_sent",
+                                             document_id=doc_id, client_id=rec["client_id"],
+                                             meta={"recipient": client["email"], "send_type": "recurring",
+                                                   "doc_number": doc_number, "recurring_id": rec["id"]})
+                            except Exception:
+                                logger.exception("Failed to log document_sent event (recurring)")
 
                     # Calculate next run
                     next_run = _calc_next_run(rec["next_run"], rec["frequency"])
@@ -1425,6 +1441,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
     stock = db.get_stock(uid) if stock_on else []
     stats = db.get_dashboard_stats(uid)
     range_stats = db.get_dashboard_stats_range(uid, date_from, date_to, compare_mode)
+    recent_events = db.get_recent_events(uid, limit=8)
 
     ctx.update({
         "recent_docs": recent_docs,
@@ -1433,6 +1450,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
         "settings": settings,
         "stats": stats,
         "range_stats": range_stats,
+        "recent_events": recent_events,
         "date_from": date_from,
         "date_to": date_to,
         "range_stats_json": _json.dumps(range_stats, default=str),
@@ -1851,6 +1869,13 @@ async def create_document(request: Request):
     except Exception as e:
         logger.exception("PDF generation failed for doc %s", doc_id)
 
+    try:
+        db.log_event(user["id"], "document_created",
+                     document_id=doc_id, client_id=client_id,
+                     meta={"doc_number": doc_number, "doc_type": doc_type})
+    except Exception:
+        logger.exception("Failed to log document_created event")
+
     return RedirectResponse(f"/documents/{doc_id}?created=1&template={template}", status_code=303)
 
 
@@ -2098,6 +2123,15 @@ async def send_document_email(request: Request, doc_id: int):
 
     # Log the email send
     db.log_email_sent(user["id"], doc_id, recipient_email)
+
+    # Log activity event
+    try:
+        db.log_event(user["id"], "document_sent",
+                     document_id=doc_id, client_id=doc.get("client_id"),
+                     meta={"recipient": recipient_email, "send_type": "manual",
+                           "doc_number": doc["doc_number"]})
+    except Exception:
+        logger.exception("Failed to log document_sent event")
 
     # Save the email as client's email if not already set
     if client and not client.get("email"):

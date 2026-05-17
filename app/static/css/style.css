@@ -1270,62 +1270,65 @@ select.form-control { cursor: pointer; }
 .doc-actions-bar {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
-    margin-bottom: 20px;
+    margin-bottom: 22px;
 }
 
 .doc-actions-bar .template-tabs {
     display: flex;
     gap: 4px;
-    background: var(--bg);
-    border-radius: var(--radius);
-    padding: 3px;
+    background: var(--bg-card);
+    border-radius: 10px;
+    padding: 4px;
     border: 1px solid var(--border);
 }
 
 .doc-actions-bar .template-tab {
-    padding: 6px 14px;
-    font-size: 12px;
+    padding: 7px 14px;
+    font-size: 12.5px;
     font-weight: 600;
     border: none;
     background: transparent;
-    border-radius: 6px;
+    border-radius: 7px;
     cursor: pointer;
     color: var(--text-light);
     transition: all var(--transition);
+    font-family: inherit;
+    letter-spacing: -0.1px;
 }
 
 .doc-actions-bar .template-tab.active {
-    background: var(--bg-card);
-    color: var(--text);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    background: var(--brand);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(59,130,246,0.3);
 }
 
 .doc-actions-bar .template-tab:hover:not(.active) {
-    background: var(--border-light);
+    background: var(--bg-card-hover);
     color: var(--text);
 }
 
 .btn-download {
-    background: var(--text);
-    color: var(--bg-card);
-    padding: 9px 20px;
-    font-size: 13px;
-    font-weight: 500;
-    border: 1px solid var(--text);
-    border-radius: var(--radius);
+    background: var(--brand);
+    color: #fff;
+    padding: 9px 18px;
+    font-size: 13.5px;
+    font-weight: 600;
+    border: 1px solid var(--brand);
+    border-radius: 10px;
     cursor: pointer;
     text-decoration: none;
     display: inline-flex;
     align-items: center;
     gap: 8px;
     transition: all var(--transition);
+    box-shadow: 0 4px 12px rgba(59,130,246,0.28);
 }
 
 .btn-download:hover {
-    background: #27272a;
-    border-color: #27272a;
+    background: var(--brand-hover);
+    border-color: var(--brand-hover);
 }
 
 /* --- Document view preview --- */

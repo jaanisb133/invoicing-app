@@ -259,6 +259,8 @@
         </div>
     </div>
 
+    <!-- Chart + Activity row -->
+    <div class="dash-main-grid">
     <!-- Revenue Chart -->
     <div class="card dash-chart-card">
         <div class="dash-chart-header">
@@ -276,6 +278,59 @@
             <div style="position:relative;height:280px"><canvas id="revenueChart"></canvas></div>
         </div>
     </div>
+
+    <!-- Activity feed -->
+    <div class="card dash-activity-card">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:14px;font-weight:600">Pēdējā aktivitāte</span>
+        </div>
+        <div class="card-body" style="padding:8px 16px 16px">
+            {% if recent_events %}
+            <div class="activity-list">
+                {% for ev in recent_events %}
+                <a href="{% if ev.document_id %}/documents/{{ ev.document_id }}{% else %}#{% endif %}" class="activity-item">
+                    {% if ev.event_type == 'document_sent' %}
+                        <span class="icon-square sm tint-blue">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </span>
+                        <div class="activity-body">
+                            <div class="activity-title">{% if ev.meta.send_type == 'recurring' %}Automātiski nosūtīts{% else %}Rēķins nosūtīts{% endif %}</div>
+                            <div class="activity-sub">{{ ev.client_name or ev.doc_number or '—' }}</div>
+                        </div>
+                    {% else %}
+                        <span class="icon-square sm tint-violet">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                        </span>
+                        <div class="activity-body">
+                            <div class="activity-title">{% if ev.meta.source == 'recurring' %}Periodiskais rēķins izveidots{% else %}Rēķins izveidots{% endif %}</div>
+                            <div class="activity-sub">{{ ev.client_name or ev.doc_number or '—' }}</div>
+                        </div>
+                    {% endif %}
+                    <div class="activity-meta">
+                        {% if ev.amount and ev.amount > 0 %}<div class="activity-amount">{{ "%.2f" | format(ev.amount) }} €</div>{% endif %}
+                        <div data-event-time="{{ ev.created_at }}">—</div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="text-align:center;padding:24px 12px;color:var(--text-lighter);font-size:13px">
+                <div style="font-size:32px;margin-bottom:8px">📋</div>
+                Vēl nav aktivitātes.<br>Izveidojiet pirmo dokumentu.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    </div>
+
+    <style>
+    .dash-main-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 22px; }
+    .dash-main-grid .dash-chart-card { margin-bottom: 0; }
+    .dash-main-grid .dash-activity-card { margin-bottom: 0; }
+    @media (min-width: 1100px) {
+        .dash-main-grid { grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
+    }
+    </style>
 
     <!-- Insights Row -->
     <div class="dash-insights-grid">
@@ -571,6 +626,25 @@
 
 {% block scripts %}
 <script>
+// Relative-time formatter for activity feed (Latvian)
+(function() {
+    function relTime(iso) {
+        if (!iso) return '';
+        // SQLite returns "YYYY-MM-DD HH:MM:SS" in UTC. Make it parseable.
+        var d = new Date(iso.replace(' ', 'T') + (iso.indexOf('Z') >= 0 ? '' : 'Z'));
+        var diff = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (diff < 60) return 'tikko';
+        if (diff < 3600) return 'pirms ' + Math.floor(diff / 60) + ' min';
+        if (diff < 86400) return 'pirms ' + Math.floor(diff / 3600) + ' h';
+        if (diff < 172800) return 'vakar';
+        if (diff < 604800) return 'pirms ' + Math.floor(diff / 86400) + ' d';
+        return d.getDate() + '/' + (d.getMonth() + 1);
+    }
+    document.querySelectorAll('[data-event-time]').forEach(function(el) {
+        el.textContent = relTime(el.getAttribute('data-event-time'));
+    });
+})();
+
 var dashRangeStats = {{ range_stats_json | safe }};
 
 // --- Revenue Chart ---

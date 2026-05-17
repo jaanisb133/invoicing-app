@@ -18,6 +18,17 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
     {% endif %}
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#07080B" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#3B82F6" media="(prefers-color-scheme: light)">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="V-Rēķini">
+    <meta name="mobile-web-app-capable" content="yes">
     <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})()</script>
 </head>
 <body class="has-bottom-nav">
@@ -335,6 +346,14 @@
             initDatePicker(el);
         });
     });
+    </script>
+    <script>
+    // Register service worker for PWA support
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).catch(function() {});
+        });
+    }
     </script>
 </body>
 </html>

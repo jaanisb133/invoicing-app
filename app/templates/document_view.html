@@ -4,67 +4,71 @@
 <style>
 .badge-pro-sm {
     display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 5px;
-    border-radius: 4px; background: #f59e0b; color: #fff; vertical-align: middle; line-height: 1.4;
+    border-radius: 4px; background: var(--brand); color: #fff; vertical-align: middle; line-height: 1.4; letter-spacing: 0.4px;
 }
 .btn-download-disabled { opacity: 0.5; }
 .view-menu-wrapper { position: relative; display: inline-block; }
 .view-menu-dropdown {
     display: none; position: fixed;
-    background: var(--bg-primary, #fff); border: 1px solid var(--border-color, #e5e7eb);
-    border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 240px;
-    z-index: 9999; padding: 4px 0; white-space: nowrap;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-lg); min-width: 240px;
+    z-index: 9999; padding: 6px; white-space: nowrap;
 }
 .view-menu-wrapper.open .view-menu-dropdown { display: block; }
 .view-menu-item {
-    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
-    font-size: 14px; color: var(--text-primary, #1e293b); text-decoration: none;
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    font-size: 13.5px; color: var(--text); text-decoration: none;
     cursor: pointer; transition: background 0.1s; border: none; background: none;
-    width: 100%; text-align: left; font-family: inherit;
+    width: 100%; text-align: left; font-family: inherit; border-radius: 8px;
 }
-.view-menu-item:hover { background: var(--bg-secondary, #f3f4f6); }
-.view-menu-item svg { flex-shrink: 0; opacity: 0.6; }
-.view-menu-divider { height: 1px; background: var(--border-color, #e2e8f0); margin: 4px 0; }
-.view-menu-disabled { opacity: 0.5; }
-.view-menu-status { color: #059669 !important; }
-.view-menu-status:hover { background: #ecfdf5 !important; }
+.view-menu-item:hover { background: var(--bg-card-hover); }
+.view-menu-item svg { flex-shrink: 0; color: var(--text-light); }
+.view-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.view-menu-disabled { opacity: 0.55; }
+.view-menu-status { color: var(--success) !important; }
+.view-menu-status:hover { background: var(--success-soft) !important; }
+.view-menu-status svg { color: var(--success) !important; }
 .view-dots-trigger {
-    background: none; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; cursor: pointer;
-    padding: 10px 12px; color: #64748b; display: flex; align-items: center; transition: all 0.15s;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+    padding: 10px 12px; color: var(--text-light); display: flex; align-items: center; transition: all 0.15s;
 }
-.view-dots-trigger:hover { background: var(--bg-secondary, #f3f4f6); color: #1e293b; }
-.btn-download-split { display: inline-flex; align-items: stretch; border-radius: 8px; overflow: hidden; }
+.view-dots-trigger:hover { background: var(--bg-card-hover); color: var(--text); border-color: var(--border-strong); }
+.btn-download-split { display: inline-flex; align-items: stretch; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 12px rgba(59,130,246,0.28); }
 .btn-download-split .btn-download-main {
-    display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px;
-    font-size: 14px; font-weight: 700; color: #fff; background: #09090b;
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px;
+    font-size: 13.5px; font-weight: 600; color: #fff; background: var(--brand);
     text-decoration: none; border: none; cursor: pointer; transition: background 0.15s;
 }
-.btn-download-split .btn-download-main:hover { background: #27272a; }
+.btn-download-split .btn-download-main:hover { background: var(--brand-hover); }
 .btn-download-split .btn-download-toggle {
     display: inline-flex; align-items: center; padding: 0 10px;
-    background: #09090b; border: none; border-left: 1px solid rgba(255,255,255,0.2);
+    background: var(--brand); border: none; border-left: 1px solid rgba(255,255,255,0.22);
     color: #fff; cursor: pointer; transition: background 0.15s;
 }
-.btn-download-split .btn-download-toggle:hover { background: #27272a; }
+.btn-download-split .btn-download-toggle:hover { background: var(--brand-hover); }
 .btn-download-split.btn-download-disabled .btn-download-main,
 .btn-download-split.btn-download-disabled .btn-download-toggle { opacity: 0.5; }
+.doc-view-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.doc-view-title h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.6px; margin: 0; color: var(--text); }
+.doc-view-title .pill { font-size: 12px; padding: 4px 12px; }
 </style>
 <div class="page-header">
-    <h2>
+    <div class="doc-view-title">
         {% if doc.doc_type == 'buy' %}
-        <span class="badge badge-buy">Iegāde</span>
+        <span class="pill pill-warning">Iegāde</span>
         {% else %}
-        <span class="badge badge-sell">Pārdošana</span>
+        <span class="pill pill-brand">Pārdošana</span>
         {% endif %}
-        {{ doc.doc_number }}
+        <h2>{{ doc.doc_number }}</h2>
         {% if settings.get('status_tracking', '0') == '1' %}
             {% if doc.status == 'paid' %}
-            <span class="badge badge-paid" style="margin-left:8px;font-size:12px">Apmaksāts</span>
+            <span class="pill pill-success">Apmaksāts</span>
             {% else %}
-            <span class="badge badge-issued" style="margin-left:8px;font-size:12px">Izrakstīts</span>
+            <span class="pill pill-brand">Izrakstīts</span>
             {% endif %}
         {% endif %}
-    </h2>
-    <a href="/documents" class="btn btn-outline">Atpakaļ</a>
+    </div>
+    <a href="/documents" class="btn btn-outline">← Atpakaļ</a>
 </div>
 
 <div class="page-body">
@@ -161,7 +165,7 @@
                 <div class="view-menu-divider"></div>
                 <form method="post" action="/documents/{{ doc.id }}/status" style="margin:0">
                     {% if doc.status == 'paid' %}
-                    <button type="submit" class="view-menu-item" style="color:#a16207">
+                    <button type="submit" class="view-menu-item" style="color:var(--warning)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                         Atzīmēt kā izrakstītu
                     </button>
