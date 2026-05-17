@@ -261,8 +261,10 @@ def _run_migrations():
         )
     """)
 
-    # Indexes for common queries (monthly document counting, etc.)
+    # Indexes for common queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_monthly ON documents(user_id, deleted_at, created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_dashboard ON documents(user_id, deleted_at, doc_type, doc_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_document_items_doc ON document_items(document_id)")
 
     conn.commit()
     conn.close()
@@ -1118,62 +1120,57 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
     conn = get_connection()
     today_str = datetime.date.today().isoformat()
 
-    # Total revenue (sell documents in range)
+    # Revenue, expenses, doc count, and average in one pass
     row = conn.execute("""
-        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
+        SELECT
+            COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
+            COALESCE(SUM(CASE WHEN d.doc_type='buy'  THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as expenses,
+            COUNT(DISTINCT d.id) as doc_count
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, date_from, date_to)).fetchone()
-    total_revenue = row["total"] if row else 0
+    total_revenue = row["revenue"] if row else 0
+    total_expenses = row["expenses"] if row else 0
+    doc_count = row["doc_count"] if row else 0
 
-    # Total expenses (buy documents in range)
-    row = conn.execute("""
-        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
-        FROM documents d
-        JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'buy' AND d.doc_date >= ? AND d.doc_date <= ?
-    """, (user_id, date_from, date_to)).fetchone()
-    total_expenses = row["total"] if row else 0
-
-    # Unpaid invoices total (status = 'issued', sell docs, all time — not filtered by range)
-    row = conn.execute("""
-        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
-        FROM documents d
-        JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.status = 'issued'
-    """, (user_id,)).fetchone()
-    unpaid_total = row["total"] if row else 0
-
-    # Document count in range
-    row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_date >= ? AND doc_date <= ?",
-        (user_id, date_from, date_to)
-    ).fetchone()
-    doc_count = row["cnt"] if row else 0
-
-    # Average invoice value in range (sell docs only)
+    # Average sell invoice value
     row = conn.execute("""
         SELECT AVG(inv_total) as avg_val FROM (
-            SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as inv_total
+            SELECT SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) as inv_total
             FROM documents d
-            LEFT JOIN document_items di ON di.document_id = d.id
+            JOIN document_items di ON di.document_id = d.id
             WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
             GROUP BY d.id
         )
     """, (user_id, date_from, date_to)).fetchone()
     avg_invoice = row["avg_val"] if row and row["avg_val"] else 0
 
-    # Top client in range
+    # Unpaid + overdue in one query
     row = conn.execute("""
-        SELECT c.name, COUNT(*) as cnt,
-               COALESCE(SUM(
-                   (SELECT SUM(di.quantity * di.price_per_unit * (1 + d2.vat_rate / 100))
-                    FROM document_items di
-                    JOIN documents d2 ON di.document_id = d2.id
-                    WHERE d2.id = d.id)
-               ), 0) as revenue
+        SELECT
+            COALESCE(SUM(inv_total), 0) as unpaid_total,
+            SUM(CASE WHEN payment_due_date IS NOT NULL AND payment_due_date != '' AND payment_due_date < ? THEN 1 ELSE 0 END) as overdue_count,
+            COALESCE(SUM(CASE WHEN payment_due_date IS NOT NULL AND payment_due_date != '' AND payment_due_date < ? THEN inv_total ELSE 0 END), 0) as overdue_total
+        FROM (
+            SELECT d.id, d.payment_due_date,
+                   SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) as inv_total
+            FROM documents d
+            JOIN document_items di ON di.document_id = d.id
+            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.status = 'issued'
+            GROUP BY d.id
+        )
+    """, (today_str, today_str, user_id)).fetchone()
+    unpaid_total = row["unpaid_total"] if row else 0
+    overdue_count = row["overdue_count"] if row else 0
+    overdue_total = row["overdue_total"] if row else 0
+
+    # Top client
+    row = conn.execute("""
+        SELECT c.name, COUNT(DISTINCT d.id) as cnt,
+               COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as revenue
         FROM documents d
+        JOIN document_items di ON di.document_id = d.id
         JOIN clients c ON d.client_id = c.id
         WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
         GROUP BY d.client_id
@@ -1182,21 +1179,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
     """, (user_id, date_from, date_to)).fetchone()
     top_client = {"name": row["name"], "count": row["cnt"], "revenue": row["revenue"]} if row else None
 
-    # Overdue invoices (past payment_due_date, still issued)
-    row = conn.execute("""
-        SELECT COUNT(*) as cnt,
-               COALESCE(SUM(
-                   (SELECT SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100))
-                    FROM document_items di WHERE di.document_id = d.id)
-               ), 0) as total
-        FROM documents d
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.status = 'issued'
-              AND d.payment_due_date IS NOT NULL AND d.payment_due_date != '' AND d.payment_due_date < ?
-    """, (user_id, today_str)).fetchone()
-    overdue_count = row["cnt"] if row else 0
-    overdue_total = row["total"] if row else 0
-
-    # Daily revenue breakdown for chart (sell docs in range)
+    # Daily revenue for chart
     rows = conn.execute("""
         SELECT d.doc_date,
                COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as daily_total

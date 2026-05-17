@@ -441,9 +441,15 @@ var _chartType = localStorage.getItem('dashChartType') || 'bar';
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
             plugins: {
                 legend: { display: false },
                 tooltip: {
+                    mode: 'index',
+                    intersect: false,
                     callbacks: {
                         label: function(c) { return c.parsed.y.toFixed(2) + ' EUR'; }
                     }
