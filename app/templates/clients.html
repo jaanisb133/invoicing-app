@@ -93,13 +93,13 @@
         <div class="modal-title">Pievienot klientu</div>
         <form method="post" action="/clients/add">
             <div class="form-group">
-                <div class="client-type-toggle" style="display:flex;gap:0;border:1px solid var(--border-color, #d1d5db);border-radius:8px;overflow:hidden;margin-bottom:4px">
-                    <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #111827);color:#fff;transition:all 0.2s" id="ac_type_business_label">
+                <div class="client-type-toggle" style="display:flex;gap:6px;background:var(--bg-input);padding:4px;border-radius:12px;border:1px solid var(--border);margin-bottom:4px">
+                    <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:var(--brand);color:#fff;border-radius:9px;transition:all 0.15s;box-shadow:0 2px 6px rgba(59,130,246,0.32)" id="ac_type_business_label">
                         <input type="radio" name="client_type" value="business" checked
                                onchange="acToggleClientType('business')" style="display:none">
                         Juridiska persona
                     </label>
-                    <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #111827);transition:all 0.2s" id="ac_type_individual_label">
+                    <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:transparent;color:var(--text-light);border-radius:9px;transition:all 0.15s" id="ac_type_individual_label">
                         <input type="radio" name="client_type" value="individual"
                                onchange="acToggleClientType('individual')" style="display:none">
                         Fiziska persona
@@ -289,11 +289,15 @@ function acToggleClientType(type) {
     const indGroup = document.getElementById('ac_individual_name_group');
     const regLabel = document.getElementById('ac_reg_label');
     const nameInput = document.getElementById('ac_name');
+    const activeStyle = 'var(--brand)';
+    const activeShadow = '0 2px 6px rgba(59,130,246,0.32)';
     if (type === 'business') {
-        bizLabel.style.background = 'var(--bg-primary, #111827)';
+        bizLabel.style.background = activeStyle;
         bizLabel.style.color = '#fff';
+        bizLabel.style.boxShadow = activeShadow;
         indLabel.style.background = 'transparent';
-        indLabel.style.color = 'var(--text-primary, #111827)';
+        indLabel.style.color = 'var(--text-light)';
+        indLabel.style.boxShadow = 'none';
         bizGroup.style.display = '';
         indGroup.style.display = 'none';
         nameInput.required = true;
@@ -301,10 +305,12 @@ function acToggleClientType(type) {
         document.getElementById('ac_last_name').required = false;
         regLabel.textContent = 'Reģistrācijas Nr.';
     } else {
-        indLabel.style.background = 'var(--bg-primary, #111827)';
+        indLabel.style.background = activeStyle;
         indLabel.style.color = '#fff';
+        indLabel.style.boxShadow = activeShadow;
         bizLabel.style.background = 'transparent';
-        bizLabel.style.color = 'var(--text-primary, #111827)';
+        bizLabel.style.color = 'var(--text-light)';
+        bizLabel.style.boxShadow = 'none';
         bizGroup.style.display = 'none';
         indGroup.style.display = '';
         nameInput.required = false;

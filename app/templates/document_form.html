@@ -5,36 +5,45 @@
 .search-dropdown {
     position: absolute; top: 100%; left: 0; z-index: 100;
     min-width: 100%; width: max-content; max-width: 500px;
-    background: var(--bg-card, #fff); border: 1px solid var(--border, #e5e7eb);
-    border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 240px;
-    overflow-y: auto; margin-top: 2px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow-md); max-height: 240px;
+    overflow-y: auto; margin-top: 4px;
 }
 .search-dropdown-item {
-    padding: 8px 12px; cursor: pointer; font-size: 14px;
-    color: var(--text, #111827);
+    padding: 9px 12px; cursor: pointer; font-size: 14px;
+    color: var(--text);
 }
-.search-dropdown-item:hover { background: var(--bg-secondary, #f3f4f6); }
+.search-dropdown-item:hover { background: var(--bg-card-hover); }
+.docform-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.docform-title h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.6px; margin: 0; color: var(--text); }
+.docform-title .pill { font-size: 12px; padding: 4px 12px; }
 </style>
 <div class="page-header">
-    <h2>
+    <div class="docform-title">
         {% if edit_mode %}
             {% if doc_type == 'buy' %}
-            <span class="badge badge-buy">Iegāde</span>
+            <span class="pill pill-warning">Iegāde</span>
             {% else %}
-            <span class="badge badge-sell">Pārdošana</span>
+            <span class="pill pill-brand">Pārdošana</span>
             {% endif %}
-            Rediģēt {{ doc.doc_number }}
+            <h2>Rediģēt {{ doc.doc_number }}</h2>
         {% else %}
-            {% if doc_type == 'buy' %}Jauns iegādes dokuments{% else %}Jauns pārdošanas dokuments{% endif %}
+            {% if doc_type == 'buy' %}
+            <span class="pill pill-warning">Iegāde</span>
+            <h2>Jauns iegādes dokuments</h2>
+            {% else %}
+            <span class="pill pill-brand">Pārdošana</span>
+            <h2>Jauns rēķins</h2>
+            {% endif %}
         {% endif %}
-    </h2>
+    </div>
     <div class="btn-group">
         {% if edit_mode %}
         <a href="/documents/{{ doc.id }}" class="btn btn-outline">Atcelt</a>
         {% else %}
             {% if stock_enabled %}
             <a href="/documents/new?doc_type=buy"
-               class="btn {% if doc_type == 'buy' %}btn-success{% else %}btn-outline{% endif %}">Iegāde</a>
+               class="btn {% if doc_type == 'buy' %}btn-primary{% else %}btn-outline{% endif %}">Iegāde</a>
             {% endif %}
             <a href="/documents/new?doc_type=sell"
                class="btn {% if doc_type == 'sell' %}btn-primary{% else %}btn-outline{% endif %}">Pārdošana</a>
@@ -198,13 +207,13 @@
     <div class="modal">
         <div class="modal-title">Ātrā klienta pievienošana</div>
         <div class="form-group">
-            <div class="client-type-toggle" style="display:flex;gap:0;border:1px solid var(--border-color, #d1d5db);border-radius:8px;overflow:hidden;margin-bottom:4px">
-                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #09090b);color:#fff;transition:all 0.2s" id="qc_type_business_label">
+            <div class="client-type-toggle" style="display:flex;gap:6px;background:var(--bg-input);padding:4px;border-radius:12px;border:1px solid var(--border);margin-bottom:4px">
+                <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:var(--brand);color:#fff;border-radius:9px;transition:all 0.15s;box-shadow:0 2px 6px rgba(59,130,246,0.32)" id="qc_type_business_label">
                     <input type="radio" name="qc_client_type" value="business" checked
                            onchange="qcToggleClientType('business')" style="display:none">
                     Juridiska persona
                 </label>
-                <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #1e293b);transition:all 0.2s" id="qc_type_individual_label">
+                <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:transparent;color:var(--text-light);border-radius:9px;transition:all 0.15s" id="qc_type_individual_label">
                     <input type="radio" name="qc_client_type" value="individual"
                            onchange="qcToggleClientType('individual')" style="display:none">
                     Fiziska persona
@@ -833,19 +842,25 @@ function qcToggleClientType(type) {
     const bizGroup = document.getElementById('qc_business_name_group');
     const indGroup = document.getElementById('qc_individual_name_group');
     const regLabel = document.getElementById('qc_reg_label');
+    const activeStyle = 'var(--brand)';
+    const activeShadow = '0 2px 6px rgba(59,130,246,0.32)';
     if (type === 'business') {
-        bizLabel.style.background = 'var(--bg-primary, #09090b)';
+        bizLabel.style.background = activeStyle;
         bizLabel.style.color = '#fff';
+        bizLabel.style.boxShadow = activeShadow;
         indLabel.style.background = 'transparent';
-        indLabel.style.color = 'var(--text-primary, #1e293b)';
+        indLabel.style.color = 'var(--text-light)';
+        indLabel.style.boxShadow = 'none';
         bizGroup.style.display = '';
         indGroup.style.display = 'none';
         regLabel.textContent = 'Reģ. Nr.';
     } else {
-        indLabel.style.background = 'var(--bg-primary, #09090b)';
+        indLabel.style.background = activeStyle;
         indLabel.style.color = '#fff';
+        indLabel.style.boxShadow = activeShadow;
         bizLabel.style.background = 'transparent';
-        bizLabel.style.color = 'var(--text-primary, #1e293b)';
+        bizLabel.style.color = 'var(--text-light)';
+        bizLabel.style.boxShadow = 'none';
         bizGroup.style.display = 'none';
         indGroup.style.display = '';
         regLabel.textContent = 'Personas kods';
