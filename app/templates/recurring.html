@@ -4,33 +4,37 @@
 <style>
 .row-menu-wrapper { position: relative; display: inline-block; }
 .row-menu-trigger {
-    background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
-    padding: 4px 6px; color: #6b7280; display: flex; align-items: center; transition: all 0.15s;
+    background: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer;
+    padding: 6px; color: var(--text-light); display: flex; align-items: center; transition: all 0.15s;
 }
-.row-menu-trigger:hover { background: var(--bg-secondary, #f3f4f6); color: #1e293b; border-color: var(--border-color, #e2e8f0); }
+.row-menu-trigger:hover { background: var(--bg-card-hover); color: var(--text); }
 .row-menu-dropdown {
     display: none; position: fixed;
-    background: var(--bg-primary, #fff); border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 180px;
-    z-index: 9999; padding: 4px 0; white-space: nowrap;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-lg); min-width: 200px;
+    z-index: 9999; padding: 6px; white-space: nowrap;
 }
 .row-menu-wrapper.open .row-menu-dropdown { display: block; }
 .row-menu-item {
-    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
-    font-size: 14px; color: var(--text-primary, #1e293b); text-decoration: none;
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    font-size: 13.5px; color: var(--text); text-decoration: none;
     cursor: pointer; transition: background 0.1s; border: none; background: none;
-    width: 100%; text-align: left; font-family: inherit;
+    width: 100%; text-align: left; font-family: inherit; border-radius: 8px;
 }
-.row-menu-item:hover { background: var(--bg-secondary, #f3f4f6); }
-.row-menu-item svg { flex-shrink: 0; opacity: 0.6; }
-.row-menu-danger { color: #dc2626 !important; }
-.row-menu-danger:hover { background: #fef2f2 !important; }
-.row-menu-divider { height: 1px; background: var(--border-color, #e5e7eb); margin: 4px 0; }
+.row-menu-item:hover { background: var(--bg-card-hover); }
+.row-menu-item svg { flex-shrink: 0; color: var(--text-light); }
+.row-menu-danger { color: var(--danger) !important; }
+.row-menu-danger:hover { background: var(--danger-soft) !important; }
+.row-menu-danger svg { color: var(--danger) !important; }
+.row-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
 </style>
 <div class="page-header">
-    <h2>Periodiskie rēķini</h2>
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Periodiskie rēķini</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Automātiski ģenerējiet un nosūtiet rēķinus pēc grafika.</p>
+    </div>
     {% if tier_limits.recurring %}
-    <a href="/recurring/new" class="btn btn-primary">+ Jauns periodiskais rēķins</a>
+    <a href="/recurring/new" class="btn btn-primary">+ Jauns periodiskais</a>
     {% endif %}
 </div>
 
@@ -75,29 +79,34 @@
                         {% for rec in recurring %}
                         <tr style="{% if not rec.active %}opacity:0.5{% endif %}">
                             <td data-label="#" style="color:var(--text-light)">{{ loop.index }}</td>
-                            <td data-label="Klients">{{ rec.client_name }}</td>
+                            <td data-label="Klients" class="mobile-card-title">
+                                <span class="doc-client-cell">
+                                    <span class="brand-avatar sm bg-{{ (rec.client_id or 0) % 10 }}">{{ (rec.client_name or '?')[:2] | upper }}</span>
+                                    <span>{{ rec.client_name }}</span>
+                                </span>
+                            </td>
                             <td data-label="Tips">
                                 {% if rec.doc_type == 'buy' %}
-                                <span class="badge badge-buy">Iegāde</span>
+                                <span class="pill pill-warning">Iegāde</span>
                                 {% else %}
-                                <span class="badge badge-sell">Pārdošana</span>
+                                <span class="pill pill-brand">Pārdošana</span>
                                 {% endif %}
                             </td>
-                            <td data-label="Summa">{{ "%.2f"|format(rec.total) }} &euro;</td>
+                            <td data-label="Summa" style="font-weight:700">{{ "%.2f"|format(rec.total) }} &euro;</td>
                             <td data-label="Biežums">{{ frequency_labels.get(rec.frequency, rec.frequency) }}</td>
                             <td data-label="Nākamā izpilde">{{ rec.next_run }}</td>
                             <td data-label="E-pasts">
                                 {% if rec.send_email %}
-                                <span style="color:var(--success)">Jā</span>
+                                <span class="pill pill-success">Jā</span>
                                 {% else %}
-                                <span style="color:var(--text-light)">Nē</span>
+                                <span class="pill pill-neutral">Nē</span>
                                 {% endif %}
                             </td>
                             <td data-label="Statuss">
                                 {% if rec.active %}
-                                <span class="badge badge-sell">Aktīvs</span>
+                                <span class="pill pill-success">Aktīvs</span>
                                 {% else %}
-                                <span style="color:var(--text-light)">Apturēts</span>
+                                <span class="pill pill-neutral">Apturēts</span>
                                 {% endif %}
                             </td>
                             <td>

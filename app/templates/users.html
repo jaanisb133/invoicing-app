@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-header">
-    <h2>Lietotāji</h2>
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Lietotāji</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Pārvaldiet kontu piekļuvi un abonementu plānus.</p>
+    </div>
 </div>
 <div class="page-body">
     {% if not current_user.is_admin %}
@@ -64,14 +67,19 @@
                     <tbody>
                         {% for user in users %}
                         <tr>
-                            <td><strong>{{ user.username }}</strong></td>
+                            <td>
+                                <span class="doc-client-cell">
+                                    <span class="brand-avatar sm bg-{{ (user.id or 0) % 10 }}">{{ (user.display_name or user.username)[:2] | upper }}</span>
+                                    <strong>{{ user.username }}</strong>
+                                </span>
+                            </td>
                             <td>{{ user.display_name }}</td>
                             <td class="text-muted">{{ user.email or '—' }}</td>
                             <td>
                                 {% if user.is_admin %}
-                                <span class="badge badge-sell">Admin</span>
+                                <span class="pill pill-brand">Admin</span>
                                 {% else %}
-                                <span class="badge badge-buy">Lietotājs</span>
+                                <span class="pill pill-neutral">Lietotājs</span>
                                 {% endif %}
                             </td>
                             <td>

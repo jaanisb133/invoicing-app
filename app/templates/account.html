@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-header">
-    <h2>Konts</h2>
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Mans konts</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Profila informācija un abonementa pārvaldība.</p>
+    </div>
 </div>
 <div class="page-body">
     {% if request.query_params.get('saved') == 'profile' %}
@@ -79,14 +82,14 @@
             <div class="card">
                 <div class="card-header">Abonements</div>
                 <div class="card-body">
-                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
                         <span class="tier-badge tier-{{ current_user.tier }}">{{ tier_label }}</span>
                         {% if current_user.subscription_status == 'active' %}
-                        <span class="badge badge-paid">Aktīvs</span>
+                        <span class="pill pill-success">Aktīvs</span>
                         {% elif current_user.subscription_status == 'past_due' %}
-                        <span class="badge badge-issued">Kavēts maksājums</span>
+                        <span class="pill pill-warning">Kavēts maksājums</span>
                         {% elif current_user.subscription_status == 'cancelled' %}
-                        <span class="badge" style="background:var(--danger-soft);color:var(--danger)">Atcelts</span>
+                        <span class="pill pill-danger">Atcelts</span>
                         {% endif %}
                         {% if current_user.billing_cycle %}
                         <span style="font-size:12px;color:var(--text-light)">
@@ -97,25 +100,25 @@
 
                     <div class="usage-section">
                         <div class="usage-item">
-                            <div class="usage-label">Dokumenti (šomēnes)</div>
-                            <div class="usage-bar">
-                                <div class="usage-fill" style="width: {{ [(usage.documents / limits.max_documents * 100) | int, 100] | min }}%"></div>
+                            <div class="usage-label" style="font-size:12px;color:var(--text-light);font-weight:500;letter-spacing:0;text-transform:none">Dokumenti (šomēnes)</div>
+                            <div class="usage-bar" style="background:var(--bg-input)">
+                                <div class="usage-fill" style="background:var(--brand);width: {{ [(usage.documents / limits.max_documents * 100) | int, 100] | min }}%"></div>
                             </div>
-                            <div class="usage-count">{{ usage.documents }} / {{ limits.max_documents }}</div>
+                            <div class="usage-count" style="font-size:12px;color:var(--text-light)">{{ usage.documents }} / {{ limits.max_documents }}</div>
                         </div>
                         <div class="usage-item">
-                            <div class="usage-label">Klienti</div>
-                            <div class="usage-bar">
-                                <div class="usage-fill" style="width: {{ [(usage.clients / limits.max_clients * 100) | int, 100] | min }}%"></div>
+                            <div class="usage-label" style="font-size:12px;color:var(--text-light);font-weight:500;letter-spacing:0;text-transform:none">Klienti</div>
+                            <div class="usage-bar" style="background:var(--bg-input)">
+                                <div class="usage-fill" style="background:var(--brand);width: {{ [(usage.clients / limits.max_clients * 100) | int, 100] | min }}%"></div>
                             </div>
-                            <div class="usage-count">{{ usage.clients }} / {{ limits.max_clients }}</div>
+                            <div class="usage-count" style="font-size:12px;color:var(--text-light)">{{ usage.clients }} / {{ limits.max_clients }}</div>
                         </div>
                         <div class="usage-item">
-                            <div class="usage-label">Produkti</div>
-                            <div class="usage-bar">
-                                <div class="usage-fill" style="width: {{ [(usage.products / limits.max_products * 100) | int, 100] | min }}%"></div>
+                            <div class="usage-label" style="font-size:12px;color:var(--text-light);font-weight:500;letter-spacing:0;text-transform:none">Produkti</div>
+                            <div class="usage-bar" style="background:var(--bg-input)">
+                                <div class="usage-fill" style="background:var(--brand);width: {{ [(usage.products / limits.max_products * 100) | int, 100] | min }}%"></div>
                             </div>
-                            <div class="usage-count">{{ usage.products }} / {{ limits.max_products }}</div>
+                            <div class="usage-count" style="font-size:12px;color:var(--text-light)">{{ usage.products }} / {{ limits.max_products }}</div>
                         </div>
                     </div>
 
@@ -137,11 +140,11 @@
                         {% endif %}
                     </div>
 
-                    <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:var(--radius);font-size:13px;color:var(--text-light)">
+                    <div style="margin-top:16px;padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--text-light)">
                         {% if current_user.subscription_end and current_user.tier != 'free' %}
-                        <div style="margin-bottom:6px">Nākamais apmaksas datums: <strong>{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong></div>
+                        <div style="margin-bottom:6px">Nākamais apmaksas datums: <strong style="color:var(--text)">{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong></div>
                         {% endif %}
-                        Konts izveidots: {{ current_user.created_at[:10] if current_user.created_at else 'N/A' }}
+                        Konts izveidots: <strong style="color:var(--text)">{{ current_user.created_at[:10] if current_user.created_at else 'N/A' }}</strong>
                     </div>
                 </div>
             </div>

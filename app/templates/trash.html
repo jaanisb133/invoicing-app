@@ -3,15 +3,17 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h2>Papīrgrozs</h2>
-        <p style="color:var(--text-light);font-size:13px;margin-top:4px">Dzēstie dokumenti tiek automātiski izdzēsti pēc 7 dienām.</p>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Papīrgrozs</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Dzēstie dokumenti tiek automātiski izdzēsti pēc 7 dienām.</p>
     </div>
 </div>
 
+<div class="page-body">
 {% if documents %}
 <div class="card">
-    <div class="table-responsive">
-        <table class="table">
+    <div class="card-body" style="padding:8px">
+    <div class="table-wrapper">
+        <table class="mobile-cards">
             <thead>
                 <tr>
                     <th>Nr.</th>
@@ -20,26 +22,26 @@
                     <th>Datums</th>
                     <th style="text-align:right">Summa</th>
                     <th>Dzēsts</th>
-                    <th style="text-align:right">Darbības</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for doc in documents %}
                 <tr>
-                    <td><strong>{{ doc.doc_number }}</strong></td>
-                    <td>
+                    <td data-label="Nr." class="mobile-card-title"><strong>{{ doc.doc_number }}</strong></td>
+                    <td data-label="Tips">
                         {% if doc.doc_type == 'sell' %}
-                        <span class="badge" style="background:#dcfce7;color:#166534">Pārdošana</span>
+                        <span class="pill pill-brand">Pārdošana</span>
                         {% else %}
-                        <span class="badge" style="background:#dbeafe;color:#1e40af">Pirkums</span>
+                        <span class="pill pill-warning">Iegāde</span>
                         {% endif %}
                     </td>
-                    <td>{{ doc.client_name }}</td>
-                    <td>{{ doc.doc_date }}</td>
-                    <td style="text-align:right">{{ "%.2f"|format(doc.total_with_vat) }} &euro;</td>
-                    <td style="color:var(--text-light);font-size:13px">{{ doc.deleted_at[:10] if doc.deleted_at else '' }}</td>
-                    <td style="text-align:right">
-                        <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <td data-label="Klients" class="mobile-card-meta">{{ doc.client_name }}</td>
+                    <td data-label="Datums" class="mobile-card-meta">{{ doc.doc_date }}</td>
+                    <td data-label="Summa" style="text-align:right;font-weight:700">{{ "%.2f"|format(doc.total_with_vat) }} &euro;</td>
+                    <td data-label="Dzēsts" class="mobile-card-meta">{{ doc.deleted_at[:10] if doc.deleted_at else '' }}</td>
+                    <td>
+                        <div class="btn-group" style="justify-content:flex-end">
                             <form method="post" action="/trash/{{ doc.id }}/restore">
                                 <button type="submit" class="btn btn-outline btn-sm">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
@@ -48,9 +50,9 @@
                             </form>
                             <form method="post" action="/trash/{{ doc.id }}/delete"
                                   onsubmit="return confirm('Vai tiešām neatgriezeniski dzēst dokumentu {{ doc.doc_number }}?')">
-                                <button type="submit" class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#dc2626">
+                                <button type="submit" class="btn btn-danger btn-sm">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                    Dzēst pavisam
+                                    Dzēst
                                 </button>
                             </form>
                         </div>
@@ -60,14 +62,18 @@
             </tbody>
         </table>
     </div>
+    </div>
 </div>
 {% else %}
 <div class="card">
-    <div class="card-body" style="text-align:center;padding:48px 24px;color:var(--text-light)">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:16px;opacity:0.4"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        <p style="font-size:15px;font-weight:600;margin-bottom:4px">Papīrgrozs ir tukšs</p>
+    <div class="card-body" style="text-align:center;padding:56px 24px;color:var(--text-light)">
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:14px;background:var(--bg-input);border:1px solid var(--border);margin-bottom:16px">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </div>
+        <p style="font-size:15px;font-weight:600;margin-bottom:4px;color:var(--text)">Papīrgrozs ir tukšs</p>
         <p style="font-size:13px">Dzēstie dokumenti parādīsies šeit 7 dienas pirms galīgas dzēšanas.</p>
     </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}
