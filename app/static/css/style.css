@@ -190,13 +190,14 @@ body {
     align-items: center;
     gap: 10px;
     padding: 9px 12px;
-    color: rgba(255,255,255,0.6);
+    color: rgba(255,255,255,0.65);
     text-decoration: none;
     font-size: 13px;
     font-weight: 500;
     transition: all var(--transition);
     border-radius: 8px;
     margin-bottom: 2px;
+    border-left: 3px solid transparent;
 }
 
 .sidebar-nav a svg {
@@ -224,9 +225,9 @@ body {
 .sidebar-lock {
     font-size: 9px;
     font-weight: 700;
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.5);
-    padding: 1px 6px;
+    background: rgba(14, 165, 233, 0.2);
+    color: rgba(56, 189, 248, 0.8);
+    padding: 2px 6px;
     border-radius: 4px;
     margin-left: auto;
     letter-spacing: 0.5px;
@@ -254,7 +255,7 @@ body {
 .account-avatar {
     width: 32px;
     height: 32px;
-    background: rgba(255,255,255,0.15);
+    background: rgba(14, 165, 233, 0.2);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -262,6 +263,7 @@ body {
     font-weight: 700;
     font-size: 13px;
     flex-shrink: 0;
+    color: rgba(255,255,255,0.9);
 }
 
 .account-info { flex: 1; min-width: 0; }
@@ -998,9 +1000,24 @@ select.form-control { cursor: pointer; }
 .mb-4 { margin-bottom: 16px; }
 .empty-state {
     text-align: center;
-    padding: 48px 20px;
+    padding: 56px 20px;
     color: var(--text-light);
     font-size: 14px;
+    line-height: 1.6;
+}
+
+.empty-state::before {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 16px;
+    background: var(--accent-soft);
+    border-radius: 50%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230ea5e9' stroke-width='2'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 24px;
 }
 
 /* --- Setup overlay --- */
