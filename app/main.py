@@ -1405,7 +1405,7 @@ async def change_user_tier(request: Request, user_id: int, tier: str = Form(...)
 # =============================================================================
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, date_from: str = "", date_to: str = ""):
+async def dashboard(request: Request, date_from: str = "", date_to: str = "", compare_mode: str = "auto"):
     import json as _json
     ctx = _base_context(request)
     user = request.state.user
@@ -1424,7 +1424,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = ""):
     clients = db.get_all_clients(uid)
     stock = db.get_stock(uid) if stock_on else []
     stats = db.get_dashboard_stats(uid)
-    range_stats = db.get_dashboard_stats_range(uid, date_from, date_to)
+    range_stats = db.get_dashboard_stats_range(uid, date_from, date_to, compare_mode)
 
     ctx.update({
         "recent_docs": recent_docs,
@@ -1445,7 +1445,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = ""):
 
 
 @app.get("/api/dashboard-stats")
-async def api_dashboard_stats(request: Request, date_from: str = "", date_to: str = ""):
+async def api_dashboard_stats(request: Request, date_from: str = "", date_to: str = "", compare_mode: str = "auto"):
     import json as _json
     user = request.state.user
     if not user:
@@ -1456,7 +1456,7 @@ async def api_dashboard_stats(request: Request, date_from: str = "", date_to: st
         date_from = today.replace(day=1).isoformat()
     if not date_to:
         date_to = today.isoformat()
-    range_stats = db.get_dashboard_stats_range(uid, date_from, date_to)
+    range_stats = db.get_dashboard_stats_range(uid, date_from, date_to, compare_mode)
     return JSONResponse(range_stats)
 
 

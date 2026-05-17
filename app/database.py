@@ -1115,17 +1115,84 @@ def get_dashboard_stats(user_id: int) -> dict:
     }
 
 
-def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dict:
-    """Get dashboard statistics for a user within a date range."""
+def _shift_date_back(d: datetime.date, months: int = 0, years: int = 0) -> datetime.date:
+    """Shift a date back by n months and/or years. Clamps day to last day of target month
+    when the source day doesn't exist (e.g. May 31 → April 30, Feb 29 → Feb 28)."""
+    import calendar
+    year = d.year - years
+    month = d.month - months
+    while month <= 0:
+        month += 12
+        year -= 1
+    max_day = calendar.monthrange(year, month)[1]
+    return datetime.date(year, month, min(d.day, max_day))
+
+
+def _is_full_month(d_from: datetime.date, d_to: datetime.date) -> bool:
+    import calendar
+    return (
+        d_from.day == 1
+        and d_from.year == d_to.year
+        and d_from.month == d_to.month
+        and d_to.day == calendar.monthrange(d_to.year, d_to.month)[1]
+    )
+
+
+def _is_full_year(d_from: datetime.date, d_to: datetime.date) -> bool:
+    return (
+        d_from.year == d_to.year
+        and d_from.month == 1 and d_from.day == 1
+        and d_to.month == 12 and d_to.day == 31
+    )
+
+
+def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compare_mode: str = "auto") -> dict:
+    """Get dashboard statistics for a user within a date range.
+
+    compare_mode: 'auto' | 'month' | 'year'
+      - 'month': previous period = same date range shifted back 1 calendar month
+                 (May 1–17 → April 1–17, May 12–28 → April 12–28).
+                 If the period is a *full* calendar month, snaps to the full prior
+                 calendar month (April 1–30 → March 1–31, not March 1–30).
+      - 'year':  previous period = same date range shifted back 1 calendar year.
+                 Full-year periods snap to the full prior calendar year.
+      - 'auto':  full-year → year; full-month or span ≤ 31 days → month; else year.
+    """
+    import calendar
     conn = get_connection()
     today_str = datetime.date.today().isoformat()
 
-    # Calculate previous period of equal length for comparison
     d_from = datetime.date.fromisoformat(date_from)
     d_to = datetime.date.fromisoformat(date_to)
     period_days = (d_to - d_from).days + 1
-    prev_to = d_from - datetime.timedelta(days=1)
-    prev_from = prev_to - datetime.timedelta(days=period_days - 1)
+
+    if compare_mode == "auto":
+        if _is_full_year(d_from, d_to):
+            compare_mode = "year"
+        elif _is_full_month(d_from, d_to) or period_days <= 31:
+            compare_mode = "month"
+        else:
+            compare_mode = "year"
+
+    if compare_mode == "year":
+        if _is_full_year(d_from, d_to):
+            prev_from = datetime.date(d_from.year - 1, 1, 1)
+            prev_to = datetime.date(d_to.year - 1, 12, 31)
+        else:
+            prev_from = _shift_date_back(d_from, years=1)
+            prev_to = _shift_date_back(d_to, years=1)
+    else:
+        compare_mode = "month"
+        if _is_full_month(d_from, d_to):
+            prev_from = _shift_date_back(d_from, months=1)
+            prev_to = datetime.date(
+                prev_from.year, prev_from.month,
+                calendar.monthrange(prev_from.year, prev_from.month)[1],
+            )
+        else:
+            prev_from = _shift_date_back(d_from, months=1)
+            prev_to = _shift_date_back(d_to, months=1)
+
     prev_from_str = prev_from.isoformat()
     prev_to_str = prev_to.isoformat()
 
@@ -1242,6 +1309,9 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str) -> dic
         "prev_revenue": prev_revenue,
         "doc_count_change": doc_count_change,
         "prev_doc_count": prev_doc_count,
+        "compare_mode": compare_mode,
+        "prev_from": prev_from_str,
+        "prev_to": prev_to_str,
     }
 
 

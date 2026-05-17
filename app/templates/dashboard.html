@@ -103,7 +103,7 @@
                 {% else %}
                 <span class="stat-change neutral">0%</span>
                 {% endif %}
-                <div class="stat-change-label">vs iepriekšējais periods</div>
+                <div class="stat-change-label">vs iepr. {{ 'gads' if range_stats.compare_mode == 'year' else 'mēnesis' }}</div>
             </div>
         </div>
         <a href="/documents?status=issued" class="stat-card" style="text-decoration:none;color:inherit">
@@ -588,9 +588,10 @@ function switchChartType(type) {
                 document.getElementById('statAvg').innerHTML = fmt(s.avg_invoice) + sm;
 
                 // Update change indicators
+                var cmpLabel = s.compare_mode === 'year' ? 'gads' : 'mēnesis';
                 var rcEl = document.getElementById('statRevenueChange');
                 if (rcEl) {
-                    rcEl.innerHTML = changeHtml(s.revenue_change) + '<div class="stat-change-label">vs iepriekšējais periods</div>';
+                    rcEl.innerHTML = changeHtml(s.revenue_change) + '<div class="stat-change-label">vs iepr. ' + cmpLabel + '</div>';
                 }
                 var dcEl = document.getElementById('statDocsChange');
                 if (dcEl) {
