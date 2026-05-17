@@ -31,6 +31,10 @@
     display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 4px;
     border-radius: 3px; background: #f59e0b; color: #fff; vertical-align: middle; line-height: 1.3;
 }
+@media (max-width: 768px) {
+    .dash-stats-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+    .dash-stats-grid > :first-child { grid-column: 1 / -1; }
+}
 </style>
 <div class="page-header">
     <h2>Pārskats</h2>
@@ -49,51 +53,64 @@
     </div>
     {% endif %}
 
-    <!-- Date Range Selector -->
-    <div class="card" style="margin-bottom:20px">
-        <div class="card-body" style="padding:12px 16px">
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <label style="font-size:13px;font-weight:600;margin:0;white-space:nowrap">Periods:</label>
-                    <input type="date" id="dashDateFrom" class="form-control" style="width:auto;padding:6px 10px;font-size:13px" value="{{ date_from }}">
-                    <span style="color:var(--text-light);font-size:13px">—</span>
-                    <input type="date" id="dashDateTo" class="form-control" style="width:auto;padding:6px 10px;font-size:13px" value="{{ date_to }}">
-                </div>
-                <div style="display:flex;gap:6px">
-                    <button type="button" class="btn btn-outline btn-sm" id="btnThisMonth">Šomēnes</button>
-                    <button type="button" class="btn btn-outline btn-sm" id="btnLastMonth">Iepr. mēnesis</button>
-                    <button type="button" class="btn btn-outline btn-sm" id="btnThisYear">Šogad</button>
-                </div>
-            </div>
+    <!-- Date Range Bar -->
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:8px">
+            <input type="date" id="dashDateFrom" class="form-control" style="width:auto;padding:6px 10px;font-size:13px;border-radius:6px" value="{{ date_from }}">
+            <span style="color:var(--text-light);font-size:13px">—</span>
+            <input type="date" id="dashDateTo" class="form-control" style="width:auto;padding:6px 10px;font-size:13px;border-radius:6px" value="{{ date_to }}">
+        </div>
+        <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-outline btn-sm" id="btnThisMonth">Šomēnes</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btnLastMonth">Iepr. mēnesis</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btnThisYear">Šogad</button>
         </div>
     </div>
 
-    <!-- Main Stats Cards -->
-    <div class="stats-grid" id="dashStatsGrid" style="grid-template-columns:repeat(4, 1fr)">
-        <div class="stat-card">
-            <div class="stat-value" id="statRevenue">{{ "%.2f" | format(range_stats.total_revenue) }} <small style="font-size:14px;font-weight:500">EUR</small></div>
-            <div class="stat-label">Apgrozījums</div>
+    <!-- Stats Grid — Hero revenue + 3 secondary -->
+    <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:16px;margin-bottom:20px" class="dash-stats-grid" id="dashStatsGrid">
+        <div class="stat-card" style="border-left:4px solid #0ea5e9;text-align:left;padding:20px 24px">
+            <div class="stat-label" style="margin-top:0;margin-bottom:4px">Apgrozījums</div>
+            <div class="stat-value" id="statRevenue" style="font-size:32px">{{ "%.2f" | format(range_stats.total_revenue) }} <small style="font-size:14px;font-weight:500;color:var(--text-light)">EUR</small></div>
         </div>
-        <a href="/documents?status=issued" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.15s" onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow=''">
-            <div class="stat-value" id="statUnpaid" style="color:#d97706">{{ "%.2f" | format(range_stats.unpaid_total) }} <small style="font-size:14px;font-weight:500">EUR</small></div>
-            <div class="stat-label">Neapmaksāti rēķini <span style="font-size:11px;opacity:0.7">→</span></div>
+        <a href="/documents?status=issued" class="stat-card" style="text-decoration:none;color:inherit;border-left:4px solid #d97706">
+            <div class="stat-value" id="statUnpaid" style="color:#d97706;font-size:22px">{{ "%.2f" | format(range_stats.unpaid_total) }} <small style="font-size:12px;font-weight:500">EUR</small></div>
+            <div class="stat-label">Neapmaksāti</div>
         </a>
         <div class="stat-card">
-            <div class="stat-value" id="statDocs">{{ range_stats.doc_count }}</div>
-            <div class="stat-label">Dokumenti periodā</div>
+            <div class="stat-value" id="statDocs" style="font-size:22px">{{ range_stats.doc_count }}</div>
+            <div class="stat-label">Dokumenti</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value" id="statAvg">{{ "%.2f" | format(range_stats.avg_invoice) }} <small style="font-size:14px;font-weight:500">EUR</small></div>
-            <div class="stat-label">Vid. rēķina summa</div>
+            <div class="stat-value" id="statAvg" style="font-size:22px">{{ "%.2f" | format(range_stats.avg_invoice) }} <small style="font-size:12px;font-weight:500">EUR</small></div>
+            <div class="stat-label">Vid. rēķins</div>
         </div>
     </div>
 
-    <!-- Secondary Stats Row -->
+    <!-- Revenue Chart -->
+    <div class="card" style="margin-bottom:20px">
+        <div class="card-header" style="padding:12px 20px;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:13px;font-weight:600">Apgrozījums pa dienām</span>
+            <div style="display:flex;gap:4px">
+                <button type="button" id="chartTypeBar" onclick="switchChartType('bar')" style="padding:4px 10px;font-size:11px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:#0ea5e9;color:#fff;display:flex;align-items:center" title="Stabiņu grafiks">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
+                </button>
+                <button type="button" id="chartTypeLine" onclick="switchChartType('line')" style="padding:4px 10px;font-size:11px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:transparent;color:var(--text);display:flex;align-items:center" title="Līniju grafiks">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 8 13 13 8 8 2 14"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="card-body" style="padding:12px 20px 16px">
+            <div style="position:relative;height:280px"><canvas id="revenueChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Insights Row -->
     <div class="mobile-stack" style="display:grid;grid-template-columns:{% if stock_enabled %}1fr 1fr 1fr{% else %}1fr 1fr{% endif %};gap:16px;margin-bottom:20px">
         {% if stock_enabled %}
-        <div class="card" style="margin-bottom:0">
-            <div class="card-header" style="font-size:12px;padding:10px 16px">Ieņēmumi vs Izdevumi</div>
-            <div class="card-body" style="padding:10px 16px 14px" id="cardRevenueExpenses">
+        <div class="card" style="margin-bottom:0;border-left:4px solid #059669">
+            <div class="card-body" style="padding:16px 20px" id="cardRevenueExpenses">
+                <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-light);margin-bottom:10px">Ieņēmumi vs Izdevumi</div>
                 <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
                     <span style="font-size:13px;color:var(--text-light)">Ieņēmumi</span>
                     <span style="font-size:16px;font-weight:700;color:#059669" id="statRevGreen">{{ "%.2f" | format(range_stats.total_revenue) }}</span>
@@ -111,8 +128,8 @@
         </div>
         {% endif %}
         <div class="card" style="margin-bottom:0">
-            <div class="card-header" style="font-size:12px;padding:10px 16px">Top klients periodā</div>
-            <div class="card-body" style="padding:10px 16px 14px" id="cardTopClient">
+            <div class="card-body" style="padding:16px 20px" id="cardTopClient">
+                <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-light);margin-bottom:10px">Top klients</div>
                 {% if range_stats.top_client %}
                 <div style="font-size:17px;font-weight:700;letter-spacing:-0.3px">{{ range_stats.top_client.name }}</div>
                 <div style="font-size:13px;color:var(--text-light);margin-top:4px">{{ range_stats.top_client.count }} dok. · {{ "%.2f" | format(range_stats.top_client.revenue) }} EUR</div>
@@ -121,35 +138,17 @@
                 {% endif %}
             </div>
         </div>
-        <div class="card" style="margin-bottom:0">
-            <div class="card-header" style="font-size:12px;padding:10px 16px">Kavētie rēķini</div>
-            <div class="card-body" style="padding:10px 16px 14px" id="cardOverdue">
+        <div class="card" style="margin-bottom:0;border-left:4px solid {% if range_stats.overdue_count > 0 %}#dc2626{% else %}#059669{% endif %}">
+            <div class="card-body" style="padding:16px 20px" id="cardOverdue">
+                <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-light);margin-bottom:10px">Kavētie rēķini</div>
                 {% if range_stats.overdue_count > 0 %}
-                <div style="font-size:17px;font-weight:700;color:#dc2626">{{ range_stats.overdue_count }}</div>
+                <div style="font-size:22px;font-weight:700;color:#dc2626">{{ range_stats.overdue_count }}</div>
                 <div style="font-size:13px;color:var(--text-light);margin-top:4px">Summa: {{ "%.2f" | format(range_stats.overdue_total) }} EUR</div>
                 {% else %}
-                <div style="font-size:17px;font-weight:700;color:#059669">0</div>
+                <div style="font-size:22px;font-weight:700;color:#059669">0</div>
                 <div style="font-size:13px;color:var(--text-light);margin-top:4px">Nav kavētu rēķinu</div>
                 {% endif %}
             </div>
-        </div>
-    </div>
-
-    <!-- Revenue Chart -->
-    <div class="card" style="margin-bottom:20px">
-        <div class="card-header" style="font-size:12px;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
-            Apgrozījums pa dienām
-            <div style="display:flex;gap:4px">
-                <button type="button" id="chartTypeBar" onclick="switchChartType('bar')" style="padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:#0ea5e9;color:#fff" title="Stabiņu grafiks">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
-                </button>
-                <button type="button" id="chartTypeLine" onclick="switchChartType('line')" style="padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:transparent;color:var(--text)" title="Līniju grafiks">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 8 13 13 8 8 2 14"/></svg>
-                </button>
-            </div>
-        </div>
-        <div class="card-body" style="padding:10px 16px 14px">
-            <div style="position:relative;height:240px"><canvas id="revenueChart"></canvas></div>
         </div>
     </div>
 
@@ -170,9 +169,9 @@
     {% endif %}
 
     <div class="card">
-        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-            <span>Pēdējie dokumenti</span>
-            <a href="/documents" class="btn btn-outline btn-sm">Visi dokumenti</a>
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px">
+            <span style="font-size:14px;font-weight:600">Pēdējie dokumenti</span>
+            <a href="/documents" class="btn btn-outline btn-sm">Visi →</a>
         </div>
         <div class="card-body">
             {% if recent_docs %}
@@ -204,7 +203,7 @@
                             </td>
                             <td data-label="Klients">{{ doc.client_name }}</td>
                             <td class="text-muted">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
-                            <td class="text-right" data-label="Summa" style="font-weight:600;white-space:nowrap">{{ "%.2f" | format(doc.total_with_vat) }} €</td>
+                            <td class="text-right" data-label="Summa" style="font-weight:600;white-space:nowrap;color:{% if doc.status == 'paid' %}#059669{% else %}var(--text){% endif %}">{{ "%.2f" | format(doc.total_with_vat) }} €</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <td>
                                 <span class="badge badge-status {% if doc.status == 'paid' %}badge-paid{% else %}badge-issued{% endif %}"
@@ -304,9 +303,9 @@
 
     {% if stock_enabled and stock %}
     <div class="card">
-        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-            <span>Noliktavas atlikumi</span>
-            <a href="/stock" class="btn btn-outline btn-sm">Pilna noliktava</a>
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px">
+            <span style="font-size:14px;font-weight:600">Noliktavas atlikumi</span>
+            <a href="/stock" class="btn btn-outline btn-sm">Skatīt →</a>
         </div>
         <div class="card-body">
             <div class="table-wrapper">
@@ -532,10 +531,10 @@ function switchChartType(type) {
             .then(function(s) {
                 dashRangeStats = s;
                 // Update stat cards
-                document.getElementById('statRevenue').innerHTML = fmt(s.total_revenue) + ' <small style="font-size:14px;font-weight:500">EUR</small>';
-                document.getElementById('statUnpaid').innerHTML = fmt(s.unpaid_total) + ' <small style="font-size:14px;font-weight:500">EUR</small>';
+                document.getElementById('statRevenue').innerHTML = fmt(s.total_revenue) + ' <small style="font-size:14px;font-weight:500;color:var(--text-light)">EUR</small>';
+                document.getElementById('statUnpaid').innerHTML = fmt(s.unpaid_total) + ' <small style="font-size:12px;font-weight:500">EUR</small>';
                 document.getElementById('statDocs').textContent = s.doc_count;
-                document.getElementById('statAvg').innerHTML = fmt(s.avg_invoice) + ' <small style="font-size:14px;font-weight:500">EUR</small>';
+                document.getElementById('statAvg').innerHTML = fmt(s.avg_invoice) + ' <small style="font-size:12px;font-weight:500">EUR</small>';
 
                 // Revenue vs Expenses (only if stock/buy docs enabled)
                 if (document.getElementById('statRevGreen')) {
@@ -549,21 +548,25 @@ function switchChartType(type) {
 
                 // Top client
                 var tcEl = document.getElementById('cardTopClient');
+                var lbl = '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-light);margin-bottom:10px">Top klients</div>';
                 if (s.top_client) {
-                    tcEl.innerHTML = '<div style="font-size:17px;font-weight:700;letter-spacing:-0.3px">' + s.top_client.name + '</div>'
+                    tcEl.innerHTML = lbl + '<div style="font-size:17px;font-weight:700;letter-spacing:-0.3px">' + s.top_client.name + '</div>'
                         + '<div style="font-size:13px;color:var(--text-light);margin-top:4px">' + s.top_client.count + ' dok. · ' + fmt(s.top_client.revenue) + ' EUR</div>';
                 } else {
-                    tcEl.innerHTML = '<div class="text-muted" style="font-size:13px">Nav datu</div>';
+                    tcEl.innerHTML = lbl + '<div class="text-muted" style="font-size:13px">Nav datu</div>';
                 }
 
                 // Overdue
                 var odEl = document.getElementById('cardOverdue');
+                var odLbl = '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-light);margin-bottom:10px">Kavētie rēķini</div>';
                 if (s.overdue_count > 0) {
-                    odEl.innerHTML = '<div style="font-size:17px;font-weight:700;color:#dc2626">' + s.overdue_count + '</div>'
+                    odEl.innerHTML = odLbl + '<div style="font-size:22px;font-weight:700;color:#dc2626">' + s.overdue_count + '</div>'
                         + '<div style="font-size:13px;color:var(--text-light);margin-top:4px">Summa: ' + fmt(s.overdue_total) + ' EUR</div>';
+                    odEl.closest('.card').style.borderLeft = '4px solid #dc2626';
                 } else {
-                    odEl.innerHTML = '<div style="font-size:17px;font-weight:700;color:#059669">0</div>'
+                    odEl.innerHTML = odLbl + '<div style="font-size:22px;font-weight:700;color:#059669">0</div>'
                         + '<div style="font-size:13px;color:var(--text-light);margin-top:4px">Nav kavētu rēķinu</div>';
+                    odEl.closest('.card').style.borderLeft = '4px solid #059669';
                 }
 
                 // Update chart
