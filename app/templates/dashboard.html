@@ -137,7 +137,17 @@
 
     <!-- Revenue Chart -->
     <div class="card" style="margin-bottom:20px">
-        <div class="card-header" style="font-size:12px;padding:10px 16px">Apgrozījums pa dienām</div>
+        <div class="card-header" style="font-size:12px;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
+            Apgrozījums pa dienām
+            <div style="display:flex;gap:4px">
+                <button type="button" id="chartTypeBar" onclick="switchChartType('bar')" style="padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:var(--primary);color:#fff" title="Stabiņu grafiks">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
+                </button>
+                <button type="button" id="chartTypeLine" onclick="switchChartType('line')" style="padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:transparent;color:var(--text)" title="Līniju grafiks">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 8 13 13 8 8 2 14"/></svg>
+                </button>
+            </div>
+        </div>
         <div class="card-body" style="padding:10px 16px 14px">
             <div style="position:relative;height:240px"><canvas id="revenueChart"></canvas></div>
         </div>
@@ -384,6 +394,7 @@
 var dashRangeStats = {{ range_stats_json | safe }};
 
 // --- Revenue Chart ---
+var _chartType = localStorage.getItem('dashChartType') || 'bar';
 (function() {
     var ctx = document.getElementById('revenueChart');
     if (!ctx) return;
@@ -392,21 +403,40 @@ var dashRangeStats = {{ range_stats_json | safe }};
     var gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
     var textColor = isDark ? '#aaa' : '#888';
 
+    window._chartColors = { isDark: isDark, gridColor: gridColor, textColor: textColor };
+
+    function makeDataset(type) {
+        var ds = {
+            label: 'Apgrozījums (EUR)',
+            data: data.map(function(d) { return d.total; }),
+        };
+        if (type === 'line') {
+            ds.borderColor = 'rgba(52,152,219,1)';
+            ds.backgroundColor = isDark ? 'rgba(52,152,219,0.15)' : 'rgba(52,152,219,0.1)';
+            ds.fill = true;
+            ds.tension = 0.3;
+            ds.pointRadius = 3;
+            ds.pointBackgroundColor = 'rgba(52,152,219,1)';
+            ds.borderWidth = 2;
+        } else {
+            ds.backgroundColor = isDark ? 'rgba(52,152,219,0.6)' : 'rgba(52,152,219,0.7)';
+            ds.borderRadius = 4;
+            ds.borderSkipped = false;
+            ds.maxBarThickness = 40;
+        }
+        return ds;
+    }
+
+    window._makeChartDataset = makeDataset;
+
     window._revenueChart = new Chart(ctx, {
-        type: 'bar',
+        type: _chartType,
         data: {
             labels: data.map(function(d) {
                 var parts = d.date.split('-');
                 return parts[2] + '/' + parts[1];
             }),
-            datasets: [{
-                label: 'Apgrozījums (EUR)',
-                data: data.map(function(d) { return d.total; }),
-                backgroundColor: isDark ? 'rgba(52,152,219,0.6)' : 'rgba(52,152,219,0.7)',
-                borderRadius: 4,
-                borderSkipped: false,
-                maxBarThickness: 40
-            }]
+            datasets: [makeDataset(_chartType)]
         },
         options: {
             responsive: true,
@@ -432,7 +462,34 @@ var dashRangeStats = {{ range_stats_json | safe }};
             }
         }
     });
+
+    // Set initial button state
+    _updateChartButtons(_chartType);
 })();
+
+function _updateChartButtons(type) {
+    var barBtn = document.getElementById('chartTypeBar');
+    var lineBtn = document.getElementById('chartTypeLine');
+    if (!barBtn || !lineBtn) return;
+    if (type === 'line') {
+        lineBtn.style.background = 'var(--primary)'; lineBtn.style.color = '#fff';
+        barBtn.style.background = 'transparent'; barBtn.style.color = 'var(--text)';
+    } else {
+        barBtn.style.background = 'var(--primary)'; barBtn.style.color = '#fff';
+        lineBtn.style.background = 'transparent'; lineBtn.style.color = 'var(--text)';
+    }
+}
+
+function switchChartType(type) {
+    _chartType = type;
+    localStorage.setItem('dashChartType', type);
+    var chart = window._revenueChart;
+    if (!chart) return;
+    chart.config.type = type;
+    chart.data.datasets = [window._makeChartDataset(type)];
+    chart.update();
+    _updateChartButtons(type);
+}
 
 // --- Date Range Presets & Dynamic Update ---
 (function() {
@@ -503,9 +560,12 @@ var dashRangeStats = {{ range_stats_json | safe }};
 
                 // Update chart
                 var chart = window._revenueChart;
-                var data = s.daily_revenue || [];
-                chart.data.labels = data.map(function(d) { var p = d.date.split('-'); return p[2] + '/' + p[1]; });
-                chart.data.datasets[0].data = data.map(function(d) { return d.total; });
+                var cdata = s.daily_revenue || [];
+                chart.data.labels = cdata.map(function(d) { var p = d.date.split('-'); return p[2] + '/' + p[1]; });
+                var ds = window._makeChartDataset(_chartType);
+                ds.data = cdata.map(function(d) { return d.total; });
+                chart.data.datasets = [ds];
+                chart.config.type = _chartType;
                 chart.update();
             });
     }

@@ -460,10 +460,23 @@ def _generate_classic(doc_id):
 # Template 2: Modern — Bold header band, structured, high contrast
 # =============================================================================
 
+def _hex_to_color(hex_str):
+    """Convert a hex color string like '#1f2937' to a ReportLab Color."""
+    h = hex_str.lstrip('#')
+    if len(h) != 6:
+        return C_BLACK
+    try:
+        r, g, b = int(h[0:2], 16) / 255, int(h[2:4], 16) / 255, int(h[4:6], 16) / 255
+        return colors.Color(r, g, b)
+    except ValueError:
+        return C_BLACK
+
+
 def _generate_modern(doc_id):
     FONT, FONT_BOLD = _register_fonts()
     data = _get_doc_data(doc_id)
     doc = data["doc"]
+    accent = _hex_to_color(data["settings"].get("accent_color", "#111827"))
 
     output_dir = get_output_dir()
     filename = f"{_safe_filename(doc['doc_number'])}.pdf"
@@ -515,7 +528,7 @@ def _generate_modern(doc_id):
     header_data = [[header_left, header_right]]
     header_table = Table(header_data, colWidths=[110 * mm, 64 * mm])
     header_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), C_BLACK),
+        ('BACKGROUND', (0, 0), (-1, -1), accent),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
         ('TOPPADDING', (0, 0), (-1, -1), 10),
@@ -576,7 +589,7 @@ def _generate_modern(doc_id):
     items_table = Table(items_data, colWidths=col_widths)
 
     style_commands = [
-        ('BACKGROUND', (0, 0), (-1, 0), C_DARK),
+        ('BACKGROUND', (0, 0), (-1, 0), accent),
         ('TEXTCOLOR', (0, 0), (-1, 0), C_WHITE),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (0, -1), 'CENTER'),
