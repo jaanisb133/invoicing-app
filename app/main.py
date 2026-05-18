@@ -27,6 +27,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from itsdangerous import URLSafeTimedSerializer
 
 logger = logging.getLogger("vrekini")
+# Surface our INFO/WARNING/EXCEPTION logs to journalctl. Without this the
+# logger has no handler and every logger.info/exception is silently dropped.
+if not logger.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(_h)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 from app import database as db
 from app import registry
