@@ -1,18 +1,42 @@
 <nav class="public-navbar">
-    <a href="/login" class="public-navbar-brand">
+    <a href="/" class="public-navbar-brand">
         <div class="logo">VR</div>
         <span>V-Rēķini</span>
     </a>
-    <div class="public-navbar-center">
-        <a href="/pricing" class="public-navbar-link{% if page == 'pricing' %} active{% endif %}">Cenas</a>
-        <a href="/terms" class="public-navbar-link{% if page == 'terms' %} active{% endif %}">Noteikumi</a>
-        <a href="/contacts" class="public-navbar-link{% if page == 'contacts' %} active{% endif %}">Kontakti</a>
-    </div>
-    <div class="public-navbar-actions">
-        <a href="/login" class="btn btn-outline btn-sm">Pieslēgties</a>
-        <a href="/register" class="btn btn-primary btn-sm">Reģistrēties</a>
-    </div>
+    <button class="public-navbar-toggle" id="publicNavbarToggle" aria-label="Atvērt izvēlni" aria-expanded="false" aria-controls="publicNavbarDrawer">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+    </button>
 </nav>
+
+<div class="public-navbar-backdrop" id="publicNavbarBackdrop" hidden></div>
+
+<aside class="public-navbar-drawer" id="publicNavbarDrawer" aria-hidden="true">
+    <div class="public-navbar-drawer-header">
+        <a href="/" class="public-navbar-brand">
+            <div class="logo">VR</div>
+            <span>V-Rēķini</span>
+        </a>
+        <button class="public-navbar-close" id="publicNavbarClose" aria-label="Aizvērt izvēlni">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
+    </div>
+    <nav class="public-navbar-drawer-links">
+        <a href="/pricing" class="public-navbar-drawer-link{% if page == 'pricing' %} active{% endif %}">Cenas</a>
+        <a href="/terms" class="public-navbar-drawer-link{% if page == 'terms' %} active{% endif %}">Noteikumi</a>
+        <a href="/contacts" class="public-navbar-drawer-link{% if page == 'contacts' %} active{% endif %}">Kontakti</a>
+    </nav>
+    <div class="public-navbar-drawer-actions">
+        <a href="/login" class="btn btn-outline">Pieslēgties</a>
+        <a href="/register" class="btn btn-primary">Reģistrēties</a>
+    </div>
+</aside>
 
 <style>
     .public-navbar {
@@ -33,14 +57,124 @@
         font-weight: 800; font-size: 12px;
     }
     .public-navbar-brand span { font-size: 16px; font-weight: 700; }
-    .public-navbar-center { display: flex; gap: 24px; }
-    .public-navbar-link {
-        font-size: 14px; font-weight: 600; color: var(--text-light);
-        text-decoration: none; padding: 6px 0;
-        border-bottom: 2px solid transparent;
-        transition: color 0.15s, border-color 0.15s;
+
+    .public-navbar-toggle,
+    .public-navbar-close {
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        width: 40px; height: 40px;
+        display: inline-flex; align-items: center; justify-content: center;
+        color: var(--text);
+        cursor: pointer;
+        transition: border-color .15s, background .15s;
     }
-    .public-navbar-link:hover { color: var(--text); }
-    .public-navbar-link.active { color: var(--text); border-bottom-color: var(--accent); }
-    .public-navbar-actions { display: flex; gap: 12px; }
+    .public-navbar-toggle:hover,
+    .public-navbar-close:hover { border-color: var(--border-strong); background: var(--bg); }
+
+    .public-navbar-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 90;
+        opacity: 0;
+        transition: opacity .2s ease;
+    }
+    .public-navbar-backdrop.is-open { opacity: 1; }
+
+    .public-navbar-drawer {
+        position: fixed;
+        top: 0; right: 0;
+        height: 100dvh;
+        width: min(360px, 88vw);
+        background: var(--bg-card);
+        border-left: 1px solid var(--border);
+        box-shadow: -16px 0 48px rgba(0, 0, 0, 0.18);
+        z-index: 100;
+        transform: translateX(100%);
+        transition: transform .25s ease;
+        display: flex;
+        flex-direction: column;
+        padding: 18px 22px 28px;
+        overscroll-behavior: contain;
+    }
+    .public-navbar-drawer.is-open { transform: translateX(0); }
+    .public-navbar-drawer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 28px;
+    }
+    .public-navbar-drawer-links {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .public-navbar-drawer-link {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text);
+        text-decoration: none;
+        padding: 14px 12px;
+        border-radius: 10px;
+        transition: background .15s, color .15s;
+    }
+    .public-navbar-drawer-link:hover { background: var(--bg); }
+    .public-navbar-drawer-link.active { background: var(--bg); color: var(--brand); }
+    .public-navbar-drawer-actions {
+        margin-top: auto;
+        padding-top: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .public-navbar-drawer-actions .btn {
+        width: 100%;
+        padding: 13px 18px;
+        font-size: 15px;
+        justify-content: center;
+        text-align: center;
+    }
+
+    body.public-drawer-open { overflow: hidden; }
+
+    @media (max-width: 640px) {
+        .public-navbar { padding: 14px 18px; }
+    }
 </style>
+
+<script>
+(function(){
+    var toggle = document.getElementById('publicNavbarToggle');
+    var drawer = document.getElementById('publicNavbarDrawer');
+    var backdrop = document.getElementById('publicNavbarBackdrop');
+    var closeBtn = document.getElementById('publicNavbarClose');
+    if (!toggle || !drawer || !backdrop) return;
+
+    function openDrawer(){
+        backdrop.hidden = false;
+        // force reflow so the transition runs
+        backdrop.offsetWidth;
+        backdrop.classList.add('is-open');
+        drawer.classList.add('is-open');
+        drawer.setAttribute('aria-hidden', 'false');
+        toggle.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('public-drawer-open');
+    }
+    function closeDrawer(){
+        backdrop.classList.remove('is-open');
+        drawer.classList.remove('is-open');
+        drawer.setAttribute('aria-hidden', 'true');
+        toggle.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('public-drawer-open');
+        setTimeout(function(){ backdrop.hidden = true; }, 220);
+    }
+
+    toggle.addEventListener('click', openDrawer);
+    backdrop.addEventListener('click', closeDrawer);
+    if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape' && drawer.classList.contains('is-open')) closeDrawer();
+    });
+})();
+</script>
