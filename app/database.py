@@ -220,6 +220,8 @@ def _run_migrations():
         "everypay_token": "ALTER TABLE users ADD COLUMN everypay_token TEXT NOT NULL DEFAULT ''",
         "everypay_payment_ref": "ALTER TABLE users ADD COLUMN everypay_payment_ref TEXT NOT NULL DEFAULT ''",
         "phone": "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
+        "renewal_attempts": "ALTER TABLE users ADD COLUMN renewal_attempts INTEGER NOT NULL DEFAULT 0",
+        "last_renewal_attempt": "ALTER TABLE users ADD COLUMN last_renewal_attempt TIMESTAMP",
     }
     for col, sql in migrations.items():
         if col not in cols:
@@ -1565,14 +1567,62 @@ def get_users_due_for_renewal():
     today = datetime.date.today().isoformat()
     rows = conn.execute(
         """SELECT * FROM users
-           WHERE tier != 'free'
-           AND subscription_status = 'active'
+           WHERE tier != 'free' AND tier != 'lifetime' AND tier != 'admin'
+           AND subscription_status IN ('active', 'past_due')
            AND everypay_token != ''
            AND (subscription_end IS NULL OR subscription_end <= ?)""",
         (today,)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def extend_subscription(user_id: int, days: int, payment_ref: str):
+    """After a successful renewal charge: push subscription_end forward,
+    record the new payment_ref, reset retry counter, mark active."""
+    conn = get_connection()
+    today = datetime.date.today()
+    row = conn.execute("SELECT subscription_end FROM users WHERE id = ?", (user_id,)).fetchone()
+    current_end = None
+    if row and row["subscription_end"]:
+        try:
+            current_end = datetime.date.fromisoformat(row["subscription_end"])
+        except ValueError:
+            current_end = None
+    # Extend from whichever is later: existing end or today (so a late charge
+    # doesn't lose paid time, but an early one doesn't extend by less than days)
+    base = max(current_end, today) if current_end else today
+    new_end = (base + datetime.timedelta(days=days)).isoformat()
+    conn.execute(
+        """UPDATE users
+           SET subscription_end = ?,
+               subscription_status = 'active',
+               renewal_attempts = 0,
+               last_renewal_attempt = CURRENT_TIMESTAMP,
+               everypay_payment_ref = ?
+           WHERE id = ?""",
+        (new_end, payment_ref, user_id)
+    )
+    conn.commit()
+    conn.close()
+    return new_end
+
+
+def record_renewal_failure(user_id: int):
+    """Increment retry counter and mark past_due. Returns the new attempt count."""
+    conn = get_connection()
+    conn.execute(
+        """UPDATE users
+           SET renewal_attempts = renewal_attempts + 1,
+               last_renewal_attempt = CURRENT_TIMESTAMP,
+               subscription_status = 'past_due'
+           WHERE id = ?""",
+        (user_id,)
+    )
+    row = conn.execute("SELECT renewal_attempts FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.commit()
+    conn.close()
+    return (row["renewal_attempts"] if row else 0)
 
 
 def cancel_user_subscription(user_id: int):

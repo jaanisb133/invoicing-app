@@ -574,6 +574,135 @@ async def _process_recurring_invoices():
         await asyncio.sleep(3600)  # Check every hour
 
 
+# --- Subscription renewals ---
+
+MAX_RENEWAL_ATTEMPTS = 3  # After this many failures, downgrade to free
+
+
+def _charge_subscription_renewal(user: dict) -> bool:
+    """Attempt to renew one user's subscription. Returns True on success."""
+    user_id = user["id"]
+    tier = user.get("tier", "")
+    cycle = user.get("billing_cycle", "monthly")
+    token = user.get("everypay_token", "")
+    email = user.get("email", "")
+
+    amount = everypay.get_plan_price(tier, cycle)
+    if not amount or not token:
+        logger.warning("renewal: skip user %s — missing amount(%s) or token", user_id, amount)
+        return False
+
+    order_ref = f"VRR-{user_id}-{datetime.datetime.utcnow().strftime('%y%m%d%H%M%S')}"[:30]
+
+    try:
+        result = everypay.charge_mit(
+            amount=amount,
+            order_reference=order_ref,
+            token=token,
+            email=email,
+        )
+    except Exception:
+        logger.exception("renewal: EveryPay charge failed for user %s", user_id)
+        db.record_renewal_failure(user_id)
+        return False
+
+    payment_state = result.get("payment_state", "")
+    payment_ref = result.get("payment_reference", "")
+    logger.info("renewal: user=%s tier=%s cycle=%s amount=%.2f state=%s ref=%s",
+                user_id, tier, cycle, amount, payment_state, payment_ref)
+
+    if payment_state != "settled":
+        attempts = db.record_renewal_failure(user_id)
+        logger.warning("renewal: user %s charge not settled (state=%s, attempt %s/%s)",
+                       user_id, payment_state, attempts, MAX_RENEWAL_ATTEMPTS)
+        if attempts >= MAX_RENEWAL_ATTEMPTS:
+            logger.warning("renewal: user %s exceeded max attempts, downgrading to free", user_id)
+            try:
+                db.cancel_user_subscription(user_id)
+                _notify_renewal_final_failure(user)
+            except Exception:
+                logger.exception("renewal: downgrade failed for user %s", user_id)
+        else:
+            _notify_renewal_retry(user, attempts)
+        return False
+
+    # Settled — extend subscription, generate invoice + email
+    days = 365 if cycle == "yearly" else 30
+    new_end = db.extend_subscription(user_id, days, payment_ref)
+    logger.info("renewal: user %s extended until %s", user_id, new_end)
+
+    try:
+        _generate_subscription_invoice(user, tier, cycle, amount, order_ref, payment_ref)
+    except Exception:
+        logger.exception("renewal: invoice/email generation failed for user %s", user_id)
+        # Charge succeeded so don't roll back the renewal — admin can resend manually
+    return True
+
+
+def _notify_renewal_retry(user, attempt):
+    """Email the user that we couldn't charge their card; we'll retry tomorrow."""
+    email = user.get("email", "")
+    if not email:
+        return
+    try:
+        _send_email(
+            to_email=email,
+            subject="V-Rēķini — neizdevās atjaunot abonementu",
+            body=(
+                f"Labdien!\n\n"
+                f"Neizdevās noīrēt maksājumu par V-Rēķini abonementa atjaunošanu (mēģinājums {attempt}/{MAX_RENEWAL_ATTEMPTS}).\n"
+                f"Mēģināsim vēlreiz nākamajā dienā. Lūdzu, pārbaudiet maksājumu kartes datus sadaļā Mans konts.\n\n"
+                f"Ja problēma nepāries, jūsu konts pēc {MAX_RENEWAL_ATTEMPTS} neveiksmīgiem mēģinājumiem tiks atjaunots uz bezmaksas plānu.\n\n"
+                f"Ar cieņu,\nV-Rēķini\n"
+            ),
+            sender_name="V-Rēķini",
+        )
+    except Exception:
+        logger.exception("renewal: retry notification email failed for user %s", user.get("id"))
+
+
+def _notify_renewal_final_failure(user):
+    """Email the user that we've given up and downgraded them to free."""
+    email = user.get("email", "")
+    if not email:
+        return
+    try:
+        _send_email(
+            to_email=email,
+            subject="V-Rēķini — abonements atjaunots uz bezmaksas plānu",
+            body=(
+                f"Labdien!\n\n"
+                f"Pēc vairākiem neveiksmīgiem maksājuma mēģinājumiem jūsu V-Rēķini abonements ir atjaunots uz bezmaksas plānu.\n"
+                f"Jūsu dati ir saglabāti — varat jebkurā brīdī izvēlēties jaunu plānu sadaļā Mans abonements.\n\n"
+                f"Ar cieņu,\nV-Rēķini\n"
+            ),
+            sender_name="V-Rēķini",
+        )
+    except Exception:
+        logger.exception("renewal: final-failure notification email failed for user %s", user.get("id"))
+
+
+async def _process_subscription_renewals():
+    """Daily loop that charges saved card tokens for due subscriptions."""
+    # Wait a minute after startup before first run
+    await asyncio.sleep(60)
+    while True:
+        try:
+            due = db.get_users_due_for_renewal()
+            if due:
+                logger.info("renewal: %d user(s) due for renewal", len(due))
+            for user in due:
+                try:
+                    _charge_subscription_renewal(user)
+                except Exception:
+                    logger.exception("renewal: unexpected error for user %s", user.get("id"))
+        except Exception:
+            logger.exception("renewal: loop iteration failed")
+
+        # Daily cadence
+        await asyncio.sleep(24 * 3600)
+
+
 @app.on_event("startup")
 async def startup():
     db_path = db.get_db_path()
@@ -604,6 +733,8 @@ async def startup():
 
     # Start recurring invoice background task
     asyncio.create_task(_process_recurring_invoices())
+    # Start subscription renewal background task
+    asyncio.create_task(_process_subscription_renewals())
 
 
 # =============================================================================
