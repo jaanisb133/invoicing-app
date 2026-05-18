@@ -2369,6 +2369,7 @@ async def api_document_email_defaults(request: Request, doc_id: int):
         "subject": subject,
         "body": body,
         "client_email": (client or {}).get("email", "") or "",
+        "doc_number": doc.get("doc_number", ""),
     })
 
 
