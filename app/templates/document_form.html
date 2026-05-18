@@ -411,19 +411,12 @@ if (!editMode && paymentDueDays) {
 
 const templateLabels = {{ templates | tojson }};
 
-function addItemRow(presetProduct, presetUnit, presetQty, presetPrice) {
+function addItemRow(presetProduct, presetUnit, presetQty, presetPrice, presetName) {
     const idx = itemIndex++;
     const tbody = document.getElementById('itemsBody');
     const tr = document.createElement('tr');
     tr.className = 'item-row';
     tr.id = 'item-' + idx;
-
-    let productOptions = '<option value="">— Produkts —</option>';
-    products.forEach(p => {
-        const stockInfo = (stockEnabled && docType === 'sell') ? ' (atl: ' + (stockMap[p.id] || 0).toFixed(2) + ')' : '';
-        const selected = presetProduct && p.id == presetProduct ? ' selected' : '';
-        productOptions += '<option value="' + p.id + '" data-unit="' + p.unit + '"' + selected + '>' + p.name + stockInfo + '</option>';
-    });
 
     let unitOptions = '';
     units.forEach(u => {
@@ -434,12 +427,23 @@ function addItemRow(presetProduct, presetUnit, presetQty, presetPrice) {
     const qty = presetQty || 1;
     const price = presetPrice || 0;
 
+    // Initial product name comes from preset or by looking up the preset product id
+    let initialName = presetName || '';
+    let initialPid = presetProduct || '';
+    if (presetProduct && !initialName) {
+        const p = products.find(p => p.id == presetProduct);
+        if (p) initialName = p.name;
+    }
+
     tr.innerHTML = `
         <td>
-            <div style="display:flex;gap:4px">
-                <select name="items[${idx}][product_id]" class="form-control" onchange="onProductChange(this, ${idx})" required>
-                    ${productOptions}
-                </select>
+            <div class="product-search-wrapper" style="position:relative;display:flex;gap:4px">
+                <input type="hidden" name="items[${idx}][product_id]" id="product-pid-${idx}" value="${initialPid}">
+                <input type="text" name="items[${idx}][product_name]" id="product-name-${idx}" class="form-control product-search-input"
+                       value="${initialName.replace(/"/g, '&quot;')}" autocomplete="off"
+                       placeholder="Meklēt vai ierakstīt produktu..."
+                       data-idx="${idx}" required>
+                <div class="search-dropdown product-search-dropdown" id="product-dropdown-${idx}" style="display:none"></div>
                 <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddProduct(this)" style="flex-shrink:0;font-size:14px;padding:4px 8px">+</button>
             </div>
             <div class="stock-hint" id="stock-hint-${idx}"></div>
@@ -451,6 +455,73 @@ function addItemRow(presetProduct, presetUnit, presetQty, presetPrice) {
         <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
     `;
     tbody.appendChild(tr);
+    // Wire the product search behavior
+    initProductSearch(idx);
+    recalculate();
+}
+
+function initProductSearch(idx) {
+    const input = document.getElementById('product-name-' + idx);
+    const dropdown = document.getElementById('product-dropdown-' + idx);
+    if (!input || !dropdown) return;
+
+    function renderResults(query) {
+        const q = (query || '').trim().toLowerCase();
+        const matches = q
+            ? products.filter(p => p.name.toLowerCase().includes(q))
+            : products.slice();
+        if (matches.length === 0) {
+            dropdown.innerHTML = '<div class="search-dropdown-item" style="color:var(--text-light);cursor:default">' +
+                'Nav atrasts. Tiks izmantots ierakstītais teksts (netiks saglabāts kā produkts).' +
+                '</div>';
+        } else {
+            dropdown.innerHTML = matches.map(p => {
+                const stockInfo = (stockEnabled && docType === 'sell') ? ' (atl: ' + (stockMap[p.id] || 0).toFixed(2) + ')' : '';
+                return '<div class="search-dropdown-item" data-pid="' + p.id + '" data-unit="' + p.unit + '" data-name="' + p.name.replace(/"/g, '&quot;') + '">' +
+                       '<strong>' + p.name + '</strong>' +
+                       '<span style="color:var(--text-light);font-size:12px">' + stockInfo + '</span>' +
+                       '</div>';
+            }).join('');
+            dropdown.querySelectorAll('.search-dropdown-item').forEach(el => {
+                el.addEventListener('mousedown', function(ev) {
+                    ev.preventDefault();
+                    selectProduct(idx, el.dataset.pid, el.dataset.name, el.dataset.unit);
+                });
+            });
+        }
+        dropdown.style.display = 'block';
+    }
+
+    input.addEventListener('focus', () => renderResults(input.value));
+    input.addEventListener('input', () => {
+        // User is typing — clear the bound product_id (becomes free-text unless they pick one)
+        document.getElementById('product-pid-' + idx).value = '';
+        renderResults(input.value);
+    });
+    input.addEventListener('blur', () => {
+        // Close dropdown shortly after blur so mousedown on item can fire
+        setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+    });
+}
+
+function selectProduct(idx, pid, name, unit) {
+    document.getElementById('product-pid-' + idx).value = pid;
+    document.getElementById('product-name-' + idx).value = name;
+    const unitSel = document.getElementById('unit-' + idx);
+    if (unitSel && unit) {
+        unitSel.value = unit;
+        const hidden = document.getElementById('unit-hidden-' + idx);
+        if (hidden) hidden.value = unit;
+    }
+    document.getElementById('product-dropdown-' + idx).style.display = 'none';
+    if (stockEnabled && docType === 'sell' && pid) {
+        const stock = stockMap[parseInt(pid)] || 0;
+        const hint = document.getElementById('stock-hint-' + idx);
+        if (hint) {
+            hint.textContent = 'Pieejams: ' + stock.toFixed(2);
+            hint.className = stock <= 0 ? 'stock-hint stock-warn' : 'stock-hint';
+        }
+    }
     recalculate();
 }
 
@@ -460,22 +531,6 @@ function removeItemRow(idx) {
     // Ensure at least one row remains
     if (document.querySelectorAll('.item-row').length === 0) {
         addItemRow();
-    }
-    recalculate();
-}
-
-function onProductChange(select, idx) {
-    const option = select.selectedOptions[0];
-    if (option && option.dataset.unit) {
-        document.getElementById('unit-' + idx).value = option.dataset.unit;
-        const hidden = document.getElementById('unit-hidden-' + idx);
-        if (hidden) hidden.value = option.dataset.unit;
-    }
-    if (stockEnabled && docType === 'sell' && select.value) {
-        const stock = stockMap[parseInt(select.value)] || 0;
-        const hint = document.getElementById('stock-hint-' + idx);
-        hint.textContent = 'Pieejams: ' + stock.toFixed(2);
-        hint.className = stock <= 0 ? 'stock-hint stock-warn' : 'stock-hint';
     }
     recalculate();
 }
@@ -518,11 +573,11 @@ function validateStock() {
         return;
     }
 
-    // Aggregate requested quantities per product
+    // Aggregate requested quantities per product (skip free-text rows)
     const requested = {};
     document.querySelectorAll('.item-row').forEach(row => {
-        const productSelect = row.querySelector('select[name*="product_id"]');
-        const productId = parseInt(productSelect.value);
+        const pidInput = row.querySelector('input[name*="product_id"]');
+        const productId = parseInt(pidInput && pidInput.value) || 0;
         if (!productId) return;
         const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
         requested[productId] = (requested[productId] || 0) + qty;
@@ -540,8 +595,8 @@ function validateStock() {
 
     // Update stock hints per row
     document.querySelectorAll('.item-row').forEach(row => {
-        const productSelect = row.querySelector('select[name*="product_id"]');
-        const productId = parseInt(productSelect.value);
+        const pidInput = row.querySelector('input[name*="product_id"]');
+        const productId = parseInt(pidInput && pidInput.value) || 0;
         const idx = row.id.split('-')[1];
         const hint = document.getElementById('stock-hint-' + idx);
         if (!productId || !hint) return;
@@ -616,14 +671,14 @@ function getPreviewData() {
     let items = [];
     let subtotal = 0;
     document.querySelectorAll('.item-row').forEach(row => {
-        const productSelect = row.querySelector('select[name*="product_id"]');
-        const productName = productSelect.selectedOptions[0].text.split(' (atl:')[0];
+        const nameInput = row.querySelector('input[name*="product_name"]');
+        const productName = (nameInput && nameInput.value || '').trim();
         const unit = row.querySelector('select[name*="unit"]').value;
         const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
         const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
         const lineTotal = qty * price;
         subtotal += lineTotal;
-        if (productSelect.value) {
+        if (productName) {
             items.push({ name: productName, unit, qty, price, total: lineTotal });
         }
     });
@@ -1051,19 +1106,13 @@ async function quickAddProduct() {
     products.push(product);
     stockMap[product.id] = 0;
 
-    document.querySelectorAll('.item-row select[name*="product_id"]').forEach(select => {
-        const stockInfo = (stockEnabled && docType === 'sell') ? ' (atl: 0.00)' : '';
-        const opt = new Option(product.name + stockInfo, product.id);
-        opt.dataset.unit = product.unit;
-        select.add(opt);
-    });
+    // Push the new product into the in-memory list so other rows' searches find it
+    products.push({ id: product.id, name: product.name, unit: product.unit });
+    if (stockEnabled) stockMap[product.id] = 0;
 
     if (quickAddProductTargetRow) {
-        const sel = quickAddProductTargetRow.querySelector('select[name*="product_id"]');
-        if (sel) {
-            sel.value = product.id;
-            sel.dispatchEvent(new Event('change'));
-        }
+        const idx = quickAddProductTargetRow.id.split('-')[1];
+        selectProduct(idx, product.id, product.name, product.unit);
     }
 
     document.getElementById('quickAddProductModal').classList.remove('active');
@@ -1074,7 +1123,7 @@ async function quickAddProduct() {
 // Initialize
 if (editMode && editItems.length > 0) {
     editItems.forEach(item => {
-        addItemRow(item.product_id, item.unit, item.quantity, item.price_per_unit);
+        addItemRow(item.product_id, item.unit, item.quantity, item.price_per_unit, item.product_name);
     });
 } else {
     addItemRow();

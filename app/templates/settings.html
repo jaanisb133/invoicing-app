@@ -94,7 +94,7 @@
                                value="{{ settings.get('bank_name', '') }}">
                     </div>
                     <div class="form-group">
-                        <label>Bankas konts</label>
+                        <label>Bankas konta numurs</label>
                         <input type="text" name="bank_account" class="form-control"
                                value="{{ settings.get('bank_account', '') }}">
                     </div>
@@ -333,6 +333,20 @@
                                 <option value="4" {% if settings.get('invoice_number_digits') == '4' %}selected{% endif %}>4 (0001)</option>
                                 <option value="5" {% if settings.get('invoice_number_digits') == '5' %}selected{% endif %}>5 (00001)</option>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Sākt no numura</label>
+                            <input type="number" name="invoice_number_start" id="numStart" class="form-control"
+                                   value="{{ settings.get('invoice_number_start', '1') }}"
+                                   min="{{ (current_max_seq or 0) + 1 }}" step="1" style="max-width:140px"
+                                   oninput="updateNumberPreview()">
+                            <span style="font-size:12px;color:var(--text-light)">
+                                {% if current_max_seq and current_max_seq > 0 %}
+                                Jaunie rēķini sāksies no šī numura. Minimālais: {{ current_max_seq + 1 }} (jau ir izrakstīti dokumenti).
+                                {% else %}
+                                Jaunie rēķini sāksies no šī numura.
+                                {% endif %}
+                            </span>
                         </div>
                     </div>
                 </div>

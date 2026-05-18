@@ -736,6 +736,7 @@ async def register(request: Request,
         "default_vat_rate": "21" if (is_business and is_vat_payer == "1") else "0",
         "is_vat_payer": is_vat_payer if is_business else "0",
         "stock_enabled": "0",
+        "status_tracking": "1",
         "buy_doc_prefix": "",
         "sell_doc_prefix": "",
         "buy_doc_name": "Rēķins",
@@ -1386,6 +1387,7 @@ async def add_user(request: Request,
         "invoice_number_digits": "3",
         "default_vat_rate": "21",
         "stock_enabled": "0",
+        "status_tracking": "1",
     })
 
     return RedirectResponse("/users?success=Lietotājs izveidots", status_code=303)
@@ -1494,6 +1496,7 @@ async def settings_page(request: Request):
         "page": "settings",
         "has_logo": logo_path is not None,
         "logo_v": logo_v,
+        "current_max_seq": db.get_user_max_seq(user["id"]),
     })
     return templates.TemplateResponse("settings.html", ctx)
 
@@ -1525,6 +1528,7 @@ async def save_settings(
     invoice_number_type: str = Form("type1"),
     invoice_number_separator: str = Form(""),
     invoice_number_digits: str = Form("3"),
+    invoice_number_start: str = Form("1"),
     email_template: str = Form(""),
 ):
     user = request.state.user
@@ -1561,10 +1565,20 @@ async def save_settings(
         # If stock is disabled, clear the enabled date so re-enabling resets again
         settings_dict["stock_enabled_date"] = ""
 
+    # Validate start number against highest existing seq for this user
+    try:
+        start_int = max(1, int(invoice_number_start or "1"))
+    except (TypeError, ValueError):
+        start_int = 1
+    current_max = db.get_user_max_seq(user["id"])
+    if start_int <= current_max:
+        start_int = current_max + 1
+
     settings_dict.update({
         "invoice_number_type": invoice_number_type,
         "invoice_number_separator": invoice_number_separator,
         "invoice_number_digits": invoice_number_digits,
+        "invoice_number_start": str(start_int),
         "email_template": email_template,
     })
     db.save_all_user_settings(user["id"], settings_dict)
@@ -1845,13 +1859,20 @@ async def create_document(request: Request):
 
     items = []
     i = 0
-    while f"items[{i}][product_id]" in form:
-        product_id = int(form[f"items[{i}][product_id]"])
+    while f"items[{i}][quantity]" in form:
+        pid_raw = (form.get(f"items[{i}][product_id]") or "").strip()
+        product_id = int(pid_raw) if pid_raw.isdigit() and pid_raw != "0" else None
+        description = (form.get(f"items[{i}][product_name]") or "").strip()
         quantity = float(form[f"items[{i}][quantity]"])
         unit = form[f"items[{i}][unit]"]
         price_per_unit = float(form[f"items[{i}][price_per_unit]"])
+        # Skip blank lines (no product selected and no free-text)
+        if not product_id and not description:
+            i += 1
+            continue
         items.append({
             "product_id": product_id,
+            "description": description,
             "quantity": quantity,
             "unit": unit,
             "price_per_unit": price_per_unit,
@@ -1933,13 +1954,19 @@ async def update_document(request: Request, doc_id: int):
 
     items = []
     i = 0
-    while f"items[{i}][product_id]" in form:
-        product_id = int(form[f"items[{i}][product_id]"])
+    while f"items[{i}][quantity]" in form:
+        pid_raw = (form.get(f"items[{i}][product_id]") or "").strip()
+        product_id = int(pid_raw) if pid_raw.isdigit() and pid_raw != "0" else None
+        description = (form.get(f"items[{i}][product_name]") or "").strip()
         quantity = float(form[f"items[{i}][quantity]"])
         unit = form[f"items[{i}][unit]"]
         price_per_unit = float(form[f"items[{i}][price_per_unit]"])
+        if not product_id and not description:
+            i += 1
+            continue
         items.append({
             "product_id": product_id,
+            "description": description,
             "quantity": quantity,
             "unit": unit,
             "price_per_unit": price_per_unit,

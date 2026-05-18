@@ -132,8 +132,9 @@
     </div>
 
     <!-- ============================================================= -->
-    <!-- Accounting Export                                              -->
+    <!-- Accounting Export — TEMPORARILY HIDDEN                         -->
     <!-- ============================================================= -->
+    {% if False %}
     <div class="card" style="margin-top:24px">
         <div class="card-header">
             <span>Grāmatvedības eksports</span>
@@ -206,11 +207,13 @@
             </form>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <!-- ================================================================= -->
-<!-- Column Builder Modal                                              -->
+<!-- Column Builder Modal — hidden while accounting export is off      -->
 <!-- ================================================================= -->
+{% if False %}
 <div class="modal-overlay" id="columnBuilderModal" style="display:none">
     <div class="modal" style="max-width:900px;width:95%;max-height:90vh;display:flex;flex-direction:column">
         <div class="modal-header">
@@ -273,6 +276,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 {% endblock %}
 
@@ -417,8 +421,9 @@ setEiPreviousMonth();
 
 
 // ===================================================================
-// Accounting Export
+// Accounting Export — hidden, JS guarded
 // ===================================================================
+{% if False %}
 
 // Available fields loaded from server
 let allFields = {};
@@ -784,5 +789,6 @@ function enableDragReorder(container, type) {
         renderColumns(type, cols, true);
     });
 }
+{% endif %}
 </script>
 {% endblock %}

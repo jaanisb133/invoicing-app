@@ -116,7 +116,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS document_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             document_id INTEGER NOT NULL,
-            product_id INTEGER NOT NULL,
+            product_id INTEGER,
+            description TEXT DEFAULT '',
             quantity REAL NOT NULL,
             unit TEXT NOT NULL,
             price_per_unit REAL NOT NULL,
@@ -278,6 +279,33 @@ def _run_migrations():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_monthly ON documents(user_id, deleted_at, created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_dashboard ON documents(user_id, deleted_at, doc_type, doc_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_document_items_doc ON document_items(document_id)")
+
+    # Migration: allow nullable product_id and add description column on document_items
+    item_info = list(cursor.execute("PRAGMA table_info(document_items)").fetchall())
+    item_cols = {row[1] for row in item_info}
+    product_id_notnull = any(row[1] == 'product_id' and row[3] == 1 for row in item_info)
+    if product_id_notnull or "description" not in item_cols:
+        cursor.executescript("""
+            PRAGMA foreign_keys=OFF;
+            CREATE TABLE document_items_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL,
+                product_id INTEGER,
+                description TEXT DEFAULT '',
+                quantity REAL NOT NULL,
+                unit TEXT NOT NULL,
+                price_per_unit REAL NOT NULL,
+                total REAL NOT NULL,
+                FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id) REFERENCES products(id)
+            );
+            INSERT INTO document_items_new (id, document_id, product_id, description, quantity, unit, price_per_unit, total)
+                SELECT id, document_id, product_id, '', quantity, unit, price_per_unit, total FROM document_items;
+            DROP TABLE document_items;
+            ALTER TABLE document_items_new RENAME TO document_items;
+            CREATE INDEX IF NOT EXISTS idx_document_items_doc ON document_items(document_id);
+            PRAGMA foreign_keys=ON;
+        """)
 
     conn.commit()
     conn.close()
@@ -560,6 +588,10 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     number_type = settings.get("invoice_number_type", "type1")
     separator = settings.get("invoice_number_separator", "-")
     min_digits = int(settings.get("invoice_number_digits", "3"))
+    try:
+        start_num = max(1, int(settings.get("invoice_number_start", "1") or "1"))
+    except (TypeError, ValueError):
+        start_num = 1
     if settings.get("use_prefixes", "0") == "1":
         prefix = settings.get("sell_doc_prefix", "") if doc_type == "sell" else settings.get("buy_doc_prefix", "")
     else:
@@ -596,13 +628,14 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
     elif number_type == "type3":
-        # Type 3: Simple sequential from 001
-        # Use MAX(seq_num) from existing documents so deletions naturally reset the counter
+        # Type 3: Simple sequential, starts from invoice_number_start (default 1)
         row = conn.execute(
             "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ?",
             (user_id,)
         ).fetchone()
-        next_num = (row["max_num"] or 0) + 1
+        max_existing = row["max_num"] or 0
+        # next = whichever is higher: next after existing, or the user-chosen start
+        next_num = max(max_existing + 1, start_num)
 
         doc_number = str(next_num).zfill(min_digits)
         if prefix:
@@ -614,13 +647,13 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
     else:
-        # Type 1 (default): YEAR + sequential (e.g., 26-001)
-        # Use MAX(seq_num) from existing documents for this year so deletions naturally reset
+        # Type 1 (default): YEAR + sequential, starts from invoice_number_start each year
         row = conn.execute(
             "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND strftime('%Y', doc_date) = ?",
             (user_id, str(year))
         ).fetchone()
-        next_num = (row["max_num"] or 0) + 1
+        max_existing = row["max_num"] or 0
+        next_num = max(max_existing + 1, start_num)
 
         num_str = str(next_num).zfill(min_digits)
         doc_number = f"{year_short}{separator}{num_str}"
@@ -636,7 +669,8 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
 def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False):
     """
     Create a document with line items.
-    items: list of dicts with keys: product_id, quantity, unit, price_per_unit
+    items: list of dicts with keys: product_id (int or None), description (str, used
+           when product_id is None), quantity, unit, price_per_unit
     Returns (document_id, doc_number) or raises ValueError.
     """
     conn = get_connection()
@@ -644,10 +678,13 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         stock_on = get_user_setting(user_id, "stock_enabled", "0") == "1"
         if stock_on and doc_type == "sell":
             for item in items:
-                available = _get_product_stock(conn, item["product_id"], user_id)
-                product = get_product(item["product_id"])
+                pid = item.get("product_id")
+                if not pid:
+                    continue  # Free-text items don't affect stock
+                available = _get_product_stock(conn, pid, user_id)
+                product = get_product(pid)
                 if item["quantity"] > available:
-                    product_name = product["name"] if product else f"ID:{item['product_id']}"
+                    product_name = product["name"] if product else f"ID:{pid}"
                     raise ValueError(
                         f"Nepietiekams daudzums: {product_name}. "
                         f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
@@ -666,10 +703,12 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
 
         for item in items:
             total = item["quantity"] * item["price_per_unit"]
+            pid = item.get("product_id") or None
+            description = item.get("description", "") or ""
             conn.execute(
-                """INSERT INTO document_items (document_id, product_id, quantity, unit, price_per_unit, total)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (doc_id, item["product_id"], item["quantity"], item["unit"],
+                """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (doc_id, pid, description, item["quantity"], item["unit"],
                  item["price_per_unit"], total)
             )
 
@@ -699,18 +738,20 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
         stock_on = get_user_setting(user_id, "stock_enabled", "0") == "1"
         if stock_on and doc["doc_type"] == "sell":
             for item in items:
+                pid = item.get("product_id")
+                if not pid:
+                    continue
                 # Get current stock, but add back what this document previously sold
-                available = _get_product_stock(conn, item["product_id"], user_id)
-                # Add back quantities from existing document items for this product
+                available = _get_product_stock(conn, pid, user_id)
                 existing = conn.execute(
                     "SELECT COALESCE(SUM(quantity), 0) as qty FROM document_items "
                     "WHERE document_id = ? AND product_id = ?",
-                    (doc_id, item["product_id"])
+                    (doc_id, pid)
                 ).fetchone()
                 available += existing["qty"]
-                product = get_product(item["product_id"])
+                product = get_product(pid)
                 if item["quantity"] > available:
-                    product_name = product["name"] if product else f"ID:{item['product_id']}"
+                    product_name = product["name"] if product else f"ID:{pid}"
                     raise ValueError(
                         f"Nepietiekams daudzums: {product_name}. "
                         f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
@@ -728,10 +769,12 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
         conn.execute("DELETE FROM document_items WHERE document_id = ?", (doc_id,))
         for item in items:
             total = item["quantity"] * item["price_per_unit"]
+            pid = item.get("product_id") or None
+            description = item.get("description", "") or ""
             conn.execute(
-                """INSERT INTO document_items (document_id, product_id, quantity, unit, price_per_unit, total)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (doc_id, item["product_id"], item["quantity"], item["unit"],
+                """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (doc_id, pid, description, item["quantity"], item["unit"],
                  item["price_per_unit"], total)
             )
 
@@ -747,9 +790,10 @@ def get_document(doc_id):
     conn = get_connection()
     doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
     items = conn.execute(
-        """SELECT di.*, p.name as product_name
+        """SELECT di.*,
+                  COALESCE(p.name, di.description, '') as product_name
            FROM document_items di
-           JOIN products p ON di.product_id = p.id
+           LEFT JOIN products p ON di.product_id = p.id
            WHERE di.document_id = ?""",
         (doc_id,)
     ).fetchall()
@@ -1335,6 +1379,28 @@ def get_user_document_count(user_id: int) -> int:
     return row["cnt"]
 
 
+def get_user_max_seq(user_id: int, year: int = None) -> int:
+    """Highest seq_num used so far. Used by the 'start from' setting validation
+    to prevent the user from picking a number that would collide with existing docs.
+
+    If year is given, scopes to that year (matches type1 yearly reset).
+    Otherwise returns the overall maximum (matches type3 sequential).
+    """
+    conn = get_connection()
+    if year is None:
+        row = conn.execute(
+            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND deleted_at IS NULL",
+            (user_id,)
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND deleted_at IS NULL AND strftime('%Y', doc_date) = ?",
+            (user_id, str(year))
+        ).fetchone()
+    conn.close()
+    return (row["max_num"] or 0) if row else 0
+
+
 def ensure_default_admin():
     """Create default admin account if no users exist."""
     if user_count() == 0:
@@ -1363,7 +1429,7 @@ TIER_LIMITS = {
         "price_monthly": 0, "price_yearly": 0,
     },
     "mini": {
-        "max_documents": 25, "max_clients": 15, "max_products": 10,
+        "max_documents": 50, "max_clients": 25, "max_products": 24,
         "max_emails_month": 10, "recurring": False, "max_recurring": 0,
         "all_templates": False,
         "einvoice": False, "accounting_export": False,
@@ -1745,9 +1811,11 @@ def get_documents_for_export(user_id, doc_type=None, date_from=None, date_to=Non
     for doc in docs:
         doc_dict = dict(doc)
         items = conn.execute(
-            """SELECT di.*, p.name as product_name, p.unit as product_unit
+            """SELECT di.*,
+                      COALESCE(p.name, di.description, '') as product_name,
+                      COALESCE(p.unit, di.unit) as product_unit
                FROM document_items di
-               JOIN products p ON di.product_id = p.id
+               LEFT JOIN products p ON di.product_id = p.id
                WHERE di.document_id = ?
                ORDER BY di.id""",
             (doc_dict["id"],)
