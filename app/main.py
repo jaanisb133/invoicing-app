@@ -730,6 +730,11 @@ async def startup():
     registry.init_registry_db()
     reg_count = registry.get_record_count()
     print(f"[STARTUP] Business registry: {reg_count} records")
+    # Log EveryPay config so we can confirm which env is active without
+    # exposing secrets — the URL clearly shows demo vs production.
+    print(f"[STARTUP] EveryPay URL: {everypay.API_URL}")
+    print(f"[STARTUP] EveryPay account: {everypay.ACCOUNT_NAME or '(unset)'}")
+    print(f"[STARTUP] EveryPay configured: {everypay.is_configured()}")
 
     # Start recurring invoice background task
     asyncio.create_task(_process_recurring_invoices())
