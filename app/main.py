@@ -474,6 +474,39 @@ def _fill_email_template(template: str, variables: dict) -> str:
     return out
 
 
+def _build_email_defaults(doc, settings):
+    """Return (subject, body) defaults for a document's outbound email.
+    Uses the user's saved email_template from settings if set, otherwise a
+    built-in fallback. Same logic is used by the doc view, dashboard, list,
+    and the send route — so the user's saved template is the source of truth.
+    """
+    company_name = settings.get("company_name", "") or ""
+    doc_type_name = (
+        settings.get("sell_doc_name", "Rēķins")
+        if doc.get("doc_type") == "sell"
+        else settings.get("buy_doc_name", "Rēķins")
+    )
+    raw_date = doc.get("doc_date", "") or ""
+    if raw_date and "-" in raw_date:
+        dp = raw_date.split("-")
+        display_date = f"{dp[2]}.{dp[1]}.{dp[0]}"
+    else:
+        display_date = raw_date
+
+    subject = f"{company_name} - {doc_type_name} {doc['doc_number']}"
+    tpl = settings.get("email_template", "") or ""
+    if tpl:
+        body = (tpl.replace("{doc_type}", doc_type_name)
+                   .replace("{doc_number}", doc["doc_number"])
+                   .replace("{date}", display_date)
+                   .replace("{company}", company_name))
+    else:
+        body = (f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} "
+                f"Nr. {doc['doc_number']}\nDatums: {display_date}\n\n"
+                f"Ar cieņu,\n{company_name}\n")
+    return subject, body
+
+
 async def _process_recurring_invoices():
     """Background task that checks and processes due recurring invoices."""
     while True:
@@ -2276,20 +2309,10 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
     if template not in TEMPLATES:
         template = "minimal"
 
-    # Build default email body for send modal
-    doc_type_name = settings.get("sell_doc_name", "Rēķins") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "Rēķins")
-    company_name = settings.get("company_name", "")
-    raw_date = doc.get("doc_date", "")
-    if raw_date and "-" in raw_date:
-        dp = raw_date.split("-")
-        display_date = f"{dp[2]}.{dp[1]}.{dp[0]}"
-    else:
-        display_date = raw_date
-    custom_tpl = settings.get("email_template", "")
-    if custom_tpl:
-        default_email_body = custom_tpl.replace("{doc_type}", doc_type_name).replace("{doc_number}", doc["doc_number"]).replace("{date}", display_date).replace("{company}", company_name)
-    else:
-        default_email_body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}\nDatums: {display_date}\n\nAr cieņu,\n{company_name}\n"
+    # Build default email subject + body for send modal — same logic as send
+    # route, dashboard, and documents list, so the user's saved template is the
+    # source of truth everywhere.
+    default_subject, default_email_body = _build_email_defaults(doc, settings)
 
     ctx.update({
         "doc": doc,
@@ -2302,6 +2325,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "templates": TEMPLATES,
         "selected_template": template,
         "has_logo": _get_logo_path(user["id"]) is not None,
+        "default_email_subject": default_subject,
         "default_email_body": default_email_body,
         "all_templates": _check_tier_feature(user, "all_templates"),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
@@ -2328,6 +2352,26 @@ async def download_pdf(request: Request, doc_id: int, template: str = ""):
                         filename=os.path.basename(filepath))
 
 
+@app.get("/api/documents/{doc_id}/email-defaults")
+async def api_document_email_defaults(request: Request, doc_id: int):
+    """Return the saved-template subject/body and client email for a doc.
+    Used by the dashboard and documents-list send modals to pre-fill fields
+    so the user sees exactly what will be sent.
+    """
+    user = request.state.user
+    doc, _ = db.get_document(doc_id)
+    if not doc or doc.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404)
+    settings = _user_settings(user["id"])
+    subject, body = _build_email_defaults(doc, settings)
+    client = db.get_client(doc["client_id"]) if doc.get("client_id") else None
+    return JSONResponse({
+        "subject": subject,
+        "body": body,
+        "client_email": (client or {}).get("email", "") or "",
+    })
+
+
 @app.post("/documents/{doc_id}/send")
 async def send_document_email(request: Request, doc_id: int):
     """Send invoice PDF to client via email."""
@@ -2335,22 +2379,26 @@ async def send_document_email(request: Request, doc_id: int):
     form = await request.form()
     recipient_email = form.get("email", "").strip()
     template = form.get("template", "minimal")
+    return_to = form.get("return_to", "").strip()
+
+    def _redirect_with(qs: str) -> RedirectResponse:
+        """Redirect back to return_to if provided, else to the doc view."""
+        if return_to:
+            sep = "&" if "?" in return_to else "?"
+            return RedirectResponse(f"{return_to}{sep}{qs}", status_code=303)
+        return RedirectResponse(
+            f"/documents/{doc_id}?{qs}&template={template}", status_code=303
+        )
 
     doc, items = db.get_document(doc_id)
     if not doc or doc.get("user_id") != user["id"]:
         raise HTTPException(status_code=404)
 
     if not recipient_email:
-        return RedirectResponse(
-            f"/documents/{doc_id}?error=Nav norādīta e-pasta adrese&template={template}",
-            status_code=303
-        )
+        return _redirect_with("error=Nav norādīta e-pasta adrese")
 
     if not BREVO_API_KEY and not SMTP_PASS:
-        return RedirectResponse(
-            f"/documents/{doc_id}?error=E-pasta serviss nav konfigurēts.&template={template}",
-            status_code=303
-        )
+        return _redirect_with("error=E-pasta serviss nav konfigurēts.")
 
     # Check email tier limit
     limits = db.get_tier_limits(user.get("tier", "free"))
@@ -2358,13 +2406,10 @@ async def send_document_email(request: Request, doc_id: int):
     if max_emails > 0:
         sent_count = db.get_emails_sent_this_month(user["id"])
         if sent_count >= max_emails:
-            return RedirectResponse(
-                f"/documents/{doc_id}?error=Sasniegts e-pastu limits šim mēnesim ({max_emails}).&template={template}",
-                status_code=303
+            return _redirect_with(
+                f"error=Sasniegts e-pastu limits šim mēnesim ({max_emails})."
             )
     elif not _check_tier_feature(user, "recurring"):
-        # max_emails_month == 0 and no recurring means free plan (no emails)
-        # For business/admin, max_emails_month == 0 means unlimited
         if user.get("tier", "free") == "free":
             return RedirectResponse("/pricing", status_code=303)
 
@@ -2375,32 +2420,16 @@ async def send_document_email(request: Request, doc_id: int):
     settings = _user_settings(user["id"])
     client = db.get_client(doc["client_id"])
     company_name = settings.get("company_name", "")
-    doc_type_name = settings.get("sell_doc_name", "Rēķins") if doc["doc_type"] == "sell" else settings.get("buy_doc_name", "Rēķins")
     user_email = user.get("email", "")
 
-    # Format date as dd.mm.yyyy
-    raw_date = doc.get("doc_date", "")
-    if raw_date and "-" in raw_date:
-        dp = raw_date.split("-")
-        display_date = f"{dp[2]}.{dp[1]}.{dp[0]}"
-    else:
-        display_date = raw_date
+    # Saved-template defaults (used when the form didn't override them)
+    default_subject, default_body = _build_email_defaults(doc, settings)
 
-    # Build default subject
-    default_subject = f"{company_name} - {doc_type_name} {doc['doc_number']}"
     custom_subject = form.get("email_subject", "").strip()
     email_subject = custom_subject if custom_subject else default_subject
 
-    # Use custom body if provided, otherwise build default
     custom_body = form.get("email_body", "").strip()
-    if custom_body:
-        email_body = custom_body
-    else:
-        default_tpl = settings.get("email_template", "")
-        if default_tpl:
-            email_body = default_tpl.replace("{doc_type}", doc_type_name).replace("{doc_number}", doc["doc_number"]).replace("{date}", display_date).replace("{company}", company_name)
-        else:
-            email_body = f"Labdien!\n\nPielikumā nosūtām dokumentu: {doc_type_name} Nr. {doc['doc_number']}\nDatums: {display_date}\n\nAr cieņu,\n{company_name}\n"
+    email_body = custom_body if custom_body else default_body
 
     # Append v-rekini.lv footer
     email_body += "\n\n---\nE-pasts sagatavots un nosūtīts no v-rekini.lv"
@@ -2415,10 +2444,7 @@ async def send_document_email(request: Request, doc_id: int):
             sender_name=company_name,
         )
     except Exception as e:
-        return RedirectResponse(
-            f"/documents/{doc_id}?error=E-pasta sūtīšanas kļūda: {str(e)}&template={template}",
-            status_code=303
-        )
+        return _redirect_with(f"error=E-pasta sūtīšanas kļūda: {quote(str(e))}")
 
     # Log the email send
     db.log_email_sent(user["id"], doc_id, recipient_email)
@@ -2436,10 +2462,7 @@ async def send_document_email(request: Request, doc_id: int):
     if client and not client.get("email"):
         db.update_client(user["id"], client["id"], email=recipient_email)
 
-    return RedirectResponse(
-        f"/documents/{doc_id}?sent=1&template={template}",
-        status_code=303
-    )
+    return _redirect_with("sent=1")
 
 
 @app.post("/documents/{doc_id}/delete")

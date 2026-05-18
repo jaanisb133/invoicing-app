@@ -255,6 +255,31 @@
         </div>
     </div>
 
+    <!-- Email-sent toast popup (auto-shown when URL contains ?sent=1) -->
+    <div class="modal-overlay" id="emailSentToast" onclick="if(event.target===this)document.getElementById('emailSentToast').classList.remove('active')">
+        <div class="modal" style="max-width:380px;text-align:center;padding:32px 28px">
+            <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:50%;background:var(--success-soft);color:var(--success);margin-bottom:16px">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+            <div style="font-size:18px;font-weight:700;margin-bottom:20px;letter-spacing:-0.3px">E-pasts nosūtīts klientam!</div>
+            <button type="button" class="btn btn-primary" style="width:100%" onclick="document.getElementById('emailSentToast').classList.remove('active')">Labi</button>
+        </div>
+    </div>
+    <script>
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('sent') === '1') {
+            document.getElementById('emailSentToast').classList.add('active');
+            params.delete('sent');
+            params.delete('template');
+            var qs = params.toString();
+            history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
+        }
+    })();
+    </script>
+
     {% block scripts %}{% endblock %}
     <script>
         // Theme management — dark is default, only 'light' stores attribute

@@ -260,14 +260,33 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
 </div>
 <!-- Send Email Modal (list page) -->
 <div class="modal-overlay" id="listSendModal">
-    <div class="modal" style="max-width:480px">
+    <div class="modal" style="max-width:560px">
         <div class="modal-title">Nosūtīt dokumentu pa e-pastu</div>
         <form method="post" id="listSendForm" action="">
             <input type="hidden" name="template" value="classic">
+            <input type="hidden" name="return_to" id="listSendReturnTo" value="/documents">
             <div class="form-group">
                 <label>Saņēmēja e-pasts</label>
                 <input type="email" name="email" id="listSendEmail" class="form-control"
                        required placeholder="klients@epasts.lv">
+            </div>
+            <div class="form-group">
+                <label>Tēma</label>
+                <input type="text" name="email_subject" id="listSendSubject" class="form-control">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="listCustomEmailToggle" onchange="listToggleCustomEmail()"
+                           style="width:18px;height:18px;cursor:pointer">
+                    Pielāgot e-pasta ziņojumu
+                </label>
+            </div>
+            <div id="listCustomEmailSection" style="display:none">
+                <div class="form-group">
+                    <label>E-pasta teksts</label>
+                    <textarea name="email_body" id="listSendBody" class="form-control" rows="6"
+                              style="font-size:13px;line-height:1.5;resize:vertical"></textarea>
+                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="document.getElementById('listSendModal').classList.remove('active')">Atcelt</button>
@@ -510,12 +529,35 @@ const clientEmailMap = {
     {% for c in clients %}{{ c.id }}: {{ (c.email or '') | tojson }},{% endfor %}
 };
 
+function listToggleCustomEmail() {
+    var section = document.getElementById('listCustomEmailSection');
+    section.style.display = document.getElementById('listCustomEmailToggle').checked ? 'block' : 'none';
+}
+
 function openListSendModal(docId, clientId) {
-    document.getElementById('listSendForm').action = '/documents/' + docId + '/send';
-    document.getElementById('listSendEmail').value = clientEmailMap[clientId] || '';
-    document.getElementById('listSendModal').classList.add('active');
+    var form = document.getElementById('listSendForm');
+    form.action = '/documents/' + docId + '/send';
     var emailInput = document.getElementById('listSendEmail');
+    var subjectInput = document.getElementById('listSendSubject');
+    var bodyInput = document.getElementById('listSendBody');
+    emailInput.value = clientEmailMap[clientId] || '';
+    subjectInput.value = '';
+    bodyInput.value = '';
+    // Preserve current filters in the return URL so the user stays put
+    document.getElementById('listSendReturnTo').value = window.location.pathname + window.location.search;
+    document.getElementById('listCustomEmailToggle').checked = false;
+    document.getElementById('listCustomEmailSection').style.display = 'none';
+    document.getElementById('listSendModal').classList.add('active');
     if (!emailInput.value) setTimeout(function() { emailInput.focus(); }, 50);
+    fetch('/api/documents/' + docId + '/email-defaults', {credentials: 'same-origin'})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+            if (!d) return;
+            subjectInput.value = d.subject || '';
+            bodyInput.value = d.body || '';
+            if (!emailInput.value && d.client_email) emailInput.value = d.client_email;
+        })
+        .catch(function() {});
 }
 
 function openListRecurringModal(docId) {

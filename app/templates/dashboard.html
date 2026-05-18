@@ -581,14 +581,33 @@
 
 <!-- Send Email Modal (dashboard) -->
 <div class="modal-overlay" id="dashSendModal">
-    <div class="modal" style="max-width:480px">
+    <div class="modal" style="max-width:560px">
         <div class="modal-title">Nosūtīt dokumentu pa e-pastu</div>
         <form method="post" id="dashSendForm" action="">
             <input type="hidden" name="template" value="classic">
+            <input type="hidden" name="return_to" value="/">
             <div class="form-group">
                 <label>Saņēmēja e-pasts</label>
                 <input type="email" name="email" id="dashSendEmail" class="form-control"
                        required placeholder="klients@epasts.lv">
+            </div>
+            <div class="form-group">
+                <label>Tēma</label>
+                <input type="text" name="email_subject" id="dashSendSubject" class="form-control">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="dashCustomEmailToggle" onchange="dashToggleCustomEmail()"
+                           style="width:18px;height:18px;cursor:pointer">
+                    Pielāgot e-pasta ziņojumu
+                </label>
+            </div>
+            <div id="dashCustomEmailSection" style="display:none">
+                <div class="form-group">
+                    <label>E-pasta teksts</label>
+                    <textarea name="email_body" id="dashSendBody" class="form-control" rows="6"
+                              style="font-size:13px;line-height:1.5;resize:vertical"></textarea>
+                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="document.getElementById('dashSendModal').classList.remove('active')">Atcelt</button>
@@ -880,6 +899,37 @@ const dashClientEmailMap = {
     {% for c in clients %}{{ c.id }}: {{ (c.email or '') | tojson }},{% endfor %}
 };
 
+function dashToggleCustomEmail() {
+    var section = document.getElementById('dashCustomEmailSection');
+    section.style.display = document.getElementById('dashCustomEmailToggle').checked ? 'block' : 'none';
+}
+
+function dashOpenSendModal(docId, clientId) {
+    var form = document.getElementById('dashSendForm');
+    form.action = '/documents/' + docId + '/send';
+    var emailInput = document.getElementById('dashSendEmail');
+    var subjectInput = document.getElementById('dashSendSubject');
+    var bodyInput = document.getElementById('dashSendBody');
+    emailInput.value = dashClientEmailMap[clientId] || '';
+    subjectInput.value = '';
+    bodyInput.value = '';
+    // Reset custom-email toggle
+    document.getElementById('dashCustomEmailToggle').checked = false;
+    document.getElementById('dashCustomEmailSection').style.display = 'none';
+    document.getElementById('dashSendModal').classList.add('active');
+    if (!emailInput.value) setTimeout(function() { emailInput.focus(); }, 50);
+    // Fetch saved-template defaults so user sees what will be sent
+    fetch('/api/documents/' + docId + '/email-defaults', {credentials: 'same-origin'})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+            if (!d) return;
+            subjectInput.value = d.subject || '';
+            bodyInput.value = d.body || '';
+            if (!emailInput.value && d.client_email) emailInput.value = d.client_email;
+        })
+        .catch(function() {});
+}
+
 async function dashToggleStatus(el) {
     const docId = el.dataset.docId;
     el.style.opacity = '0.5';
@@ -957,12 +1007,7 @@ document.addEventListener('click', function(e) {
         var docId = actionBtn.dataset.docId;
         dashCloseMenus();
         if (action === 'send') {
-            var clientId = actionBtn.dataset.clientId;
-            document.getElementById('dashSendForm').action = '/documents/' + docId + '/send';
-            document.getElementById('dashSendEmail').value = dashClientEmailMap[clientId] || '';
-            document.getElementById('dashSendModal').classList.add('active');
-            var emailInput = document.getElementById('dashSendEmail');
-            if (!emailInput.value) setTimeout(function() { emailInput.focus(); }, 50);
+            dashOpenSendModal(docId, actionBtn.dataset.clientId);
         } else if (action === 'recurring') {
             document.getElementById('dashRecurringForm').action = '/recurring/from-document/' + docId;
             document.getElementById('dashRecurringModal').classList.add('active');
