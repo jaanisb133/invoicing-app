@@ -170,11 +170,13 @@ def _send_email(*, to_email: str, subject: str, body: str,
                 reply_to: str = "", attachment_path: str = "", sender_name: str = ""):
     """Send email via SMTP (preferred) or Brevo API fallback."""
     if SMTP_PASS:
+        logger.info("send_email: provider=SMTP to=%s subject=%r", to_email, subject[:80])
         return _send_via_smtp(
             to_email=to_email, subject=subject, body=body,
             reply_to=reply_to, attachment_path=attachment_path, sender_name=sender_name,
         )
     if BREVO_API_KEY:
+        logger.info("send_email: provider=Brevo to=%s subject=%r", to_email, subject[:80])
         return _send_via_brevo(
             to_email=to_email, subject=subject, body=body,
             reply_to=reply_to, attachment_path=attachment_path, sender_name=sender_name,
@@ -214,6 +216,9 @@ def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="",
         json=payload,
         timeout=30,
     )
+    body_preview = resp.text[:300] if resp.text else ""
+    logger.info("brevo_send: status=%s sender=%s to=%s body=%s",
+                resp.status_code, BREVO_SENDER_EMAIL, to_email, body_preview)
     if resp.status_code not in (200, 201):
         raise RuntimeError(f"Brevo API kļūda ({resp.status_code}): {resp.text}")
 
@@ -242,7 +247,12 @@ def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path="", 
             msg.attach(part)
 
     with _smtp_connect() as server:
-        server.send_message(msg)
+        refused = server.send_message(msg)
+        # send_message returns a dict of refused recipients (empty = all accepted).
+        # An empty dict here means the SMTP server has accepted the message for delivery
+        # but does NOT guarantee inbox delivery — bounces/blocks happen async.
+        logger.info("smtp_send: from=%s to=%s refused=%s",
+                    msg.get("From"), to_email, refused or "none")
 
 
 SESSION_COOKIE = "session"
