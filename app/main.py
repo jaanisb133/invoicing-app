@@ -1295,21 +1295,23 @@ async def billing_return(request: Request, payment_reference: str = ""):
         conn.commit()
         conn.close()
 
-        # Generate subscription invoice and email to user
+        # Generate subscription invoice and email to user (idempotent — runs once)
         pending_order_ref = settings.get("_pending_order_ref", "")
         amount = everypay.get_plan_price(pending_tier, pending_cycle)
-        if amount:
+        already_invoiced = settings.get("_subscription_invoiced_ref", "") == payment_reference
+        if amount and not already_invoiced:
             _generate_subscription_invoice(
                 user, pending_tier, pending_cycle, amount,
                 pending_order_ref, payment_reference,
             )
 
-        # Clean up pending settings
+        # Clean up pending settings and mark invoiced
         db.save_all_user_settings(user["id"], {
             "_pending_payment_ref": "",
             "_pending_order_ref": "",
             "_pending_tier": "",
             "_pending_cycle": "",
+            "_subscription_invoiced_ref": payment_reference,
         })
 
         logger.info("User %s upgraded to %s (%s) via EveryPay",
@@ -1373,6 +1375,8 @@ async def everypay_callback(request: Request,
 
         if cycle == "yearly":
             end_date = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
+        elif cycle == "lifetime":
+            end_date = "2099-12-31"
         else:
             end_date = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
 
@@ -1392,6 +1396,21 @@ async def everypay_callback(request: Request,
 
         logger.info("User %s subscription activated via callback: %s (%s)",
                      user_id, tier, cycle)
+
+        # Generate subscription invoice + email now (idempotent on payment_reference).
+        # /billing/return runs the same guard so we never double-invoice.
+        paying_user = db.get_user(user_id)
+        user_settings = db.get_all_user_settings(user_id)
+        already_invoiced = user_settings.get("_subscription_invoiced_ref", "") == payment_reference
+        amount = everypay.get_plan_price(tier, cycle)
+        if paying_user and amount and not already_invoiced:
+            _generate_subscription_invoice(
+                paying_user, tier, cycle, amount,
+                order_reference, payment_reference,
+            )
+            db.save_all_user_settings(user_id, {
+                "_subscription_invoiced_ref": payment_reference,
+            })
 
     elif event_name in ("abandoned", "status_updated") and payment_state == "failed":
         logger.warning("Payment failed for user %s: ref=%s", user_id, payment_reference)
