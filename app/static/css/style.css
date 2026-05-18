@@ -1381,6 +1381,15 @@ select.form-control { cursor: pointer; }
     padding: 56px;
 }
 
+/* Kill the global tbody tr:hover so rows inside the printable preview don't
+   pick up the dark hover bg in dark mode (which would leave dark text on
+   dark bg). Inline alternating-row backgrounds in the rendered preview
+   still win and are preserved. */
+.doc-view-preview tbody tr:hover,
+.invoice-preview-wrapper tbody tr:hover {
+    background: transparent;
+}
+
 /* doc-view-preview always renders as if on paper — see .doc-view-preview rule for color scope */
 
 /* --- Logo upload --- */

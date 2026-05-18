@@ -513,7 +513,7 @@ def _generate_modern(doc_id):
     logo_path = _get_logo_path(doc.get("user_id", 0))
     header_left = []
     if logo_path:
-        logo_el = _make_logo_element(logo_path, max_width=45*mm, max_height=20*mm, invert=True, settings=data["settings"])
+        logo_el = _make_logo_element(logo_path, max_width=45*mm, max_height=20*mm, settings=data["settings"])
         if logo_el:
             header_left.append(logo_el)
             header_left.append(Spacer(1, 2 * mm))
