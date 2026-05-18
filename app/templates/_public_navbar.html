@@ -3,13 +3,19 @@
         <div class="logo">VR</div>
         <span>V-Rēķini</span>
     </a>
-    <button class="public-navbar-toggle" id="publicNavbarToggle" aria-label="Atvērt izvēlni" aria-expanded="false" aria-controls="publicNavbarDrawer">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="12" x2="21" y2="12"/>
-            <line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-    </button>
+    <div class="public-navbar-right">
+        <div class="public-navbar-actions">
+            <a href="/login" class="btn btn-outline btn-sm">Pieslēgties</a>
+            <a href="/register" class="btn btn-primary btn-sm">Reģistrēties</a>
+        </div>
+        <button class="public-navbar-toggle" id="publicNavbarToggle" aria-label="Atvērt izvēlni" aria-expanded="false" aria-controls="publicNavbarDrawer">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+        </button>
+    </div>
 </nav>
 
 <div class="public-navbar-backdrop" id="publicNavbarBackdrop" hidden></div>
@@ -137,6 +143,13 @@
     }
 
     body.public-drawer-open { overflow: hidden; }
+
+    .public-navbar-right { display: flex; align-items: center; gap: 14px; }
+    .public-navbar-actions { display: flex; gap: 10px; }
+
+    @media (max-width: 768px) {
+        .public-navbar-actions { display: none; }
+    }
 
     @media (max-width: 640px) {
         .public-navbar { padding: 14px 18px; }
