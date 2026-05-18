@@ -606,14 +606,14 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     year_short = year % 100
 
     if number_type == "type2":
-        # Type 2: SEQ/DAY-MONTH, resets daily
+        # Type 2: SEQ/DAY-MONTH, resets daily. Trashed docs (deleted_at IS NOT NULL)
+        # free up their slot so the next invoice can reuse the number.
         day = doc_date_obj.day
         month = doc_date_obj.month
         date_str = doc_date_obj.isoformat()
 
-        # Count documents already created for this date (across all types)
         row = conn.execute(
-            "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date = ?",
+            "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date = ? AND deleted_at IS NULL",
             (user_id, date_str)
         ).fetchone()
         next_num = (row["cnt"] if row else 0) + 1
@@ -628,9 +628,9 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
     elif number_type == "type3":
-        # Type 3: Simple sequential, starts from invoice_number_start (default 1)
+        # Type 3: Simple sequential. Excludes trashed docs so deletion frees the number.
         row = conn.execute(
-            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ?",
+            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND deleted_at IS NULL",
             (user_id,)
         ).fetchone()
         max_existing = row["max_num"] or 0
@@ -647,9 +647,10 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
     else:
-        # Type 1 (default): YEAR + sequential, starts from invoice_number_start each year
+        # Type 1 (default): YEAR + sequential, starts from invoice_number_start each year.
+        # Excludes trashed docs so deletion frees the number.
         row = conn.execute(
-            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND strftime('%Y', doc_date) = ?",
+            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND deleted_at IS NULL AND strftime('%Y', doc_date) = ?",
             (user_id, str(year))
         ).fetchone()
         max_existing = row["max_num"] or 0
@@ -852,14 +853,48 @@ def delete_document(user_id, doc_id):
 
 
 def restore_document(user_id, doc_id):
-    """Restore a soft-deleted document from trash."""
+    """Restore a soft-deleted document from trash.
+
+    If the doc's seq_num was reused while it was trashed, allocate a fresh
+    number (and update the doc_number string) before un-trashing so we never
+    leave two active docs with the same number.
+    """
     conn = get_connection()
-    conn.execute(
-        "UPDATE documents SET deleted_at = NULL WHERE id = ? AND user_id = ?",
-        (doc_id, user_id)
-    )
-    conn.commit()
-    conn.close()
+    try:
+        row = conn.execute(
+            "SELECT id, doc_type, doc_number, seq_num, doc_date FROM documents WHERE id = ? AND user_id = ?",
+            (doc_id, user_id)
+        ).fetchone()
+        if not row:
+            return False
+
+        # Is the seq_num occupied by another active doc in the same scope?
+        year = row["doc_date"][:4] if row["doc_date"] else None
+        collision = conn.execute(
+            """SELECT 1 FROM documents
+               WHERE user_id = ? AND id != ? AND deleted_at IS NULL
+                 AND seq_num = ?
+                 AND (? IS NULL OR strftime('%Y', doc_date) = ?)""",
+            (user_id, doc_id, row["seq_num"], year, year)
+        ).fetchone()
+
+        if collision:
+            new_doc_number, new_seq = get_next_doc_number(
+                user_id, row["doc_type"], row["doc_date"], conn
+            )
+            conn.execute(
+                "UPDATE documents SET deleted_at = NULL, seq_num = ?, doc_number = ? WHERE id = ? AND user_id = ?",
+                (new_seq, new_doc_number, doc_id, user_id)
+            )
+        else:
+            conn.execute(
+                "UPDATE documents SET deleted_at = NULL WHERE id = ? AND user_id = ?",
+                (doc_id, user_id)
+            )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
 def permanently_delete_document(user_id, doc_id):
@@ -1429,7 +1464,7 @@ TIER_LIMITS = {
         "price_monthly": 0, "price_yearly": 0,
     },
     "mini": {
-        "max_documents": 50, "max_clients": 25, "max_products": 24,
+        "max_documents": 50, "max_clients": 25, "max_products": 25,
         "max_emails_month": 10, "recurring": False, "max_recurring": 0,
         "all_templates": False,
         "einvoice": False, "accounting_export": False,
