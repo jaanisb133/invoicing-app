@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>V-Rēķini — Rēķinu izrakstīšana Latvijā | Vienkārši un ātri</title>
+    <meta name="description" content="V-Rēķini ir vienkārša rēķinu izrakstīšanas platforma uzņēmējiem Latvijā. PVN, e-rēķini (PEPPOL XML), klientu un produktu pārvaldība, periodiskie rēķini, PDF lejupielāde un nosūtīšana pa e-pastu. Sāciet bez maksas.">
+    <meta name="keywords" content="rēķinu izrakstīšana, rēķinu programma, e-rēķini, PVN rēķini, Latvija, online rēķini, grāmatvedības programma, PEPPOL, periodiskie rēķini, mazajiem uzņēmumiem">
+    <link rel="canonical" href="https://v-rekini.lv/">
+    <meta name="robots" content="index,follow">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="V-Rēķini">
+    <meta property="og:title" content="V-Rēķini — Rēķinu izrakstīšana Latvijā">
+    <meta property="og:description" content="Vienkārša rēķinu izrakstīšanas platforma uzņēmējiem Latvijā. Sāciet bez maksas.">
+    <meta property="og:url" content="https://v-rekini.lv/">
+    <meta property="og:image" content="https://v-rekini.lv/static/icons/icon-512.png">
+    <meta property="og:locale" content="lv_LV">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="V-Rēķini — Rēķinu izrakstīšana Latvijā">
+    <meta name="twitter:description" content="PVN, e-rēķini, klienti, PDF — vienkārša rēķinu programma latviešu uzņēmējiem.">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#07080B" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#3B82F6" media="(prefers-color-scheme: light)">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&subset=latin-ext&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=18">
+    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})()</script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background: var(--bg);
+            position: relative;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: -25%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 1100px;
+            height: 1100px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, rgba(59, 130, 246, 0) 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .landing-main { position: relative; z-index: 1; flex: 1; }
+        .hero {
+            max-width: 920px;
+            margin: 0 auto;
+            padding: 80px 24px 56px;
+            text-align: center;
+        }
+        .hero-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+        .hero-brand-logo {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, var(--brand) 0%, #2563EB 100%);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 24px;
+            letter-spacing: -0.6px;
+            box-shadow: 0 14px 36px rgba(59, 130, 246, 0.4);
+        }
+        .hero-brand-name { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -0.6px; }
+        .hero h1 {
+            font-size: 52px;
+            font-weight: 700;
+            letter-spacing: -1.4px;
+            line-height: 1.08;
+            margin: 0 0 20px;
+            color: var(--text);
+        }
+        .hero h1 .accent { color: var(--brand); }
+        .hero p.lead {
+            font-size: 18px;
+            color: var(--text-light);
+            line-height: 1.55;
+            max-width: 640px;
+            margin: 0 auto 36px;
+        }
+        .hero-cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .hero-cta .btn-primary {
+            padding: 14px 28px;
+            font-size: 15px;
+            border-radius: 12px;
+        }
+        .hero-cta .btn-outline {
+            padding: 14px 28px;
+            font-size: 15px;
+            border-radius: 12px;
+        }
+        .hero-trust {
+            margin-top: 28px;
+            font-size: 13px;
+            color: var(--text-lighter);
+        }
+
+        .section { max-width: 1080px; margin: 0 auto; padding: 56px 24px; }
+        .section h2 {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.8px;
+            text-align: center;
+            margin: 0 0 12px;
+            color: var(--text);
+        }
+        .section .section-sub {
+            text-align: center;
+            color: var(--text-light);
+            font-size: 16px;
+            margin: 0 auto 48px;
+            max-width: 580px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+        }
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 28px 24px;
+            transition: border-color .15s, transform .15s;
+        }
+        .feature-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+        .feature-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+        .feature-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0 0 8px;
+            color: var(--text);
+            letter-spacing: -0.2px;
+        }
+        .feature-card p {
+            font-size: 14px;
+            color: var(--text-light);
+            line-height: 1.55;
+            margin: 0;
+        }
+
+        .cta-band {
+            margin: 56px auto;
+            max-width: 1080px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(37, 99, 235, 0.06) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.28);
+            border-radius: 20px;
+            padding: 44px 32px;
+            text-align: center;
+        }
+        .cta-band h2 {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.6px;
+            margin: 0 0 10px;
+            color: var(--text);
+        }
+        .cta-band p {
+            font-size: 15px;
+            color: var(--text-light);
+            margin: 0 0 22px;
+        }
+
+        @media (max-width: 768px) {
+            .hero { padding: 56px 20px 40px; }
+            .hero h1 { font-size: 34px; letter-spacing: -0.8px; }
+            .hero p.lead { font-size: 15.5px; }
+            .hero-cta .btn-primary,
+            .hero-cta .btn-outline { padding: 12px 22px; font-size: 14.5px; }
+            .section { padding: 40px 20px; }
+            .section h2 { font-size: 26px; }
+            .features-grid { grid-template-columns: 1fr; }
+            .cta-band { margin: 32px 16px; padding: 32px 22px; }
+            .cta-band h2 { font-size: 22px; }
+        }
+    </style>
+</head>
+<body>
+    {% include "_public_navbar.html" %}
+    <main class="landing-main">
+        <section class="hero">
+            <div class="hero-brand">
+                <div class="hero-brand-logo">VR</div>
+                <div class="hero-brand-name">V-Rēķini</div>
+            </div>
+            <h1>Rēķinu izrakstīšana, kas vienkārši <span class="accent">strādā</span>.</h1>
+            <p class="lead">
+                Latviešu uzņēmējiem domāta tīmekļa platforma rēķinu izrakstīšanai, klientu un produktu pārvaldībai.
+                PVN, e-rēķini (PEPPOL XML), periodiskie rēķini, PDF lejupielāde un nosūtīšana pa e-pastu — viss vienuviet.
+            </p>
+            <div class="hero-cta">
+                <a href="/register" class="btn btn-primary">Sākt bez maksas</a>
+                <a href="/pricing" class="btn btn-outline">Skatīt cenas</a>
+            </div>
+            <p class="hero-trust">Bez kredītkartes • Latviešu valodā • PVN-gatavi rēķini</p>
+        </section>
+
+        <section class="section">
+            <h2>Viss vienā vietā</h2>
+            <p class="section-sub">Aizvietojiet Excel, manuālos rēķinus un sarunas par PVN. V-Rēķini dara to visā vietā.</p>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <span class="feature-icon" style="background:var(--tint-violet-bg);color:var(--tint-violet-fg)">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </span>
+                    <h3>Profesionāli rēķini minūtes laikā</h3>
+                    <p>Izvēlieties klientu, pievienojiet pozīcijas, ģenerējiet PDF. PVN aprēķins, atdalītāji un numerācija — automātiski.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon" style="background:var(--tint-blue-bg);color:var(--tint-blue-fg)">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </span>
+                    <h3>Nosūtiet pa e-pastu vai PEPPOL XML</h3>
+                    <p>Vienkārši nosūtiet rēķinu klientam pa e-pastu vai eksportējiet kā PEPPOL BIS 3.0 e-rēķinu — gatavu valsts iestādēm.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon" style="background:var(--tint-green-bg);color:var(--tint-green-fg)">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                    </span>
+                    <h3>Periodiskie rēķini automātiski</h3>
+                    <p>Iestatiet biežumu vienreiz un V-Rēķini katru mēnesi (vai citā ritmā) izveidos un nosūtīs rēķinu jūsu vietā.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon" style="background:var(--tint-pink-bg);color:var(--tint-pink-fg)">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </span>
+                    <h3>Klientu pārvaldība</h3>
+                    <p>Saglabājiet klientus ar reģistrācijas numuru un PVN datiem. Meklēšana Uzņēmumu reģistrā autoaizpilda rekvizītus.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon" style="background:var(--tint-amber-bg);color:var(--tint-amber-fg)">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 12l4-4 3 3 5-6"/></svg>
+                    </span>
+                    <h3>Pārskats par biznesu</h3>
+                    <p>Pārvaldiet apgrozījumu, neapmaksātos rēķinus un kavējumus. Vienkārša statistika pa periodiem ar salīdzinājumu.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon" style="background:var(--tint-cyan-bg);color:var(--tint-cyan-fg)">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
+                    <h3>Droši Latvijas serveros</h3>
+                    <p>Jūsu dati glabājas šeit, Latvijā. Bezmaksas rezerves kopijas — jūsu rēķini ir aizsargāti.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta-band">
+            <h2>Sāciet bez maksas šodien</h2>
+            <p>Bezmaksas plāns iekļauj 5 dokumentus mēnesī, 5 klientus un 5 produktus. Bez kredītkartes.</p>
+            <div class="hero-cta">
+                <a href="/register" class="btn btn-primary">Izveidot kontu</a>
+                <a href="/pricing" class="btn btn-outline">Salīdzināt plānus</a>
+            </div>
+        </section>
+    </main>
+    {% include "_public_footer.html" %}
+</body>
+</html>

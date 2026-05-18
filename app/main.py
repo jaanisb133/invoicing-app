@@ -20,7 +20,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from fastapi import FastAPI, Request, Form, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -348,7 +348,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms", "/license")
+        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms", "/license",
+                                                    "/robots.txt", "/sitemap.xml")
                 or path == "/everypay/callback" or path == "/api/registry/search"):
             return await call_next(request)
 
@@ -371,6 +372,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         user = _get_current_user(request)
 
         if not user:
+            # "/" serves a public landing page for guests
+            if path == "/":
+                request.state.user = None
+                return await call_next(request)
             if path.startswith("/api/"):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
             return RedirectResponse("/login", status_code=303)
@@ -947,6 +952,65 @@ async def change_password(request: Request,
 # Pricing (public) & Stripe billing
 # =============================================================================
 
+SITE_URL = os.getenv("VREKINI_SITE_URL", "https://v-rekini.lv")
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt():
+    """Allow indexing of public pages, block private/utility routes."""
+    return PlainTextResponse(
+        "User-agent: *\n"
+        "Allow: /$\n"
+        "Allow: /pricing\n"
+        "Allow: /contacts\n"
+        "Allow: /terms\n"
+        "Disallow: /login\n"
+        "Disallow: /register\n"
+        "Disallow: /set-password\n"
+        "Disallow: /setup\n"
+        "Disallow: /account\n"
+        "Disallow: /settings\n"
+        "Disallow: /documents\n"
+        "Disallow: /clients\n"
+        "Disallow: /products\n"
+        "Disallow: /recurring\n"
+        "Disallow: /stock\n"
+        "Disallow: /trash\n"
+        "Disallow: /export\n"
+        "Disallow: /email-log\n"
+        "Disallow: /users\n"
+        "Disallow: /billing/\n"
+        "Disallow: /api/\n"
+        "Disallow: /everypay/\n"
+        "Disallow: /license\n"
+        f"\nSitemap: {SITE_URL}/sitemap.xml\n"
+    )
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    """Sitemap listing public, indexable pages."""
+    today = datetime.date.today().isoformat()
+    urls = [
+        ("/",         "1.0", "weekly"),
+        ("/pricing",  "0.9", "weekly"),
+        ("/contacts", "0.5", "monthly"),
+        ("/terms",    "0.3", "yearly"),
+    ]
+    body = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    for path, prio, freq in urls:
+        body += (
+            "  <url>\n"
+            f"    <loc>{SITE_URL}{path}</loc>\n"
+            f"    <lastmod>{today}</lastmod>\n"
+            f"    <changefreq>{freq}</changefreq>\n"
+            f"    <priority>{prio}</priority>\n"
+            "  </url>\n"
+        )
+    body += "</urlset>\n"
+    return Response(content=body, media_type="application/xml")
+
+
 @app.get("/contacts", response_class=HTMLResponse)
 async def contacts_page(request: Request):
     return templates.TemplateResponse("contacts.html", {
@@ -1054,6 +1118,9 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
     The invoice flows into the admin's normal document numbering and
     includes the EveryPay payment reference in the notes field.
     """
+    doc_id = None
+    doc_number = None
+    paying_email = paying_user.get("email", "")
     try:
         # Find admin user
         all_users = db.get_all_users()
@@ -1083,7 +1150,6 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
         client_reg = paying_settings.get("reg_number", "")
         client_vat = paying_settings.get("vat_number", "")
 
-        # Try to find by reg number first, then by name
         existing_client = None
         if client_reg:
             existing_client = db.get_client_by_reg_number(admin_id, client_reg)
@@ -1107,15 +1173,12 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
                 email=paying_user.get("email", ""),
             )
 
-        # Build plan description
         tier_labels = {"mini": "Mini", "starter": "Pamata", "business": "Bizness", "lifetime": "Mūža licence"}
         cycle_labels = {"monthly": "mēnesī", "yearly": "gadā", "lifetime": "vienreizējs"}
         plan_desc = f"V-Rēķini — {tier_labels.get(tier, tier)} ({cycle_labels.get(cycle, cycle)})"
 
         admin_settings = db.get_all_user_settings(admin_id)
         vat_rate = float(admin_settings.get("default_vat_rate", "21"))
-
-        # Plan prices are VAT-inclusive; calculate net price for the invoice
         net_price = round(amount / (1 + vat_rate / 100), 2)
 
         notes = (
@@ -1135,38 +1198,52 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
             vat_rate=vat_rate, notes=notes,
         )
 
-        # Mark as paid since payment already settled
-        db.update_document_status(admin_id, doc_id, "paid")
+        try:
+            db.update_document_status(admin_id, doc_id, "paid")
+        except Exception:
+            logger.exception("subscription_invoice: failed to mark doc %s as paid", doc_id)
 
-        logger.info("Subscription invoice %s created for user %s (doc_id=%s)",
-                     doc_number, paying_user["username"], doc_id)
-
-        # Generate PDF and email to paying user
-        paying_email = paying_user.get("email", "")
-        if paying_email:
-            filepath = generate_invoice_pdf(doc_id, template="minimal")
-            admin_company = admin_settings.get("company_name", "V-Rēķini")
-
-            email_body = (
-                f"Labdien!\n\n"
-                f"Paldies par V-Rēķini abonementa iegādi!\n"
-                f"Jūsu plāns: {plan_desc}\n"
-                f"Jūsu konts ir aktīvs un gatavs lietošanai.\n\n"
-                f"Pielikumā nosūtām maksājuma rēķinu Nr. {doc_number}.\n\n"
-                f"Ar cieņu,\n{admin_company}\n"
-            )
-
-            _send_email(
-                to_email=paying_email,
-                subject=f"Rēķins Nr. {doc_number} — {admin_company}",
-                body=email_body,
-                attachment_path=filepath,
-            )
-            logger.info("Subscription invoice emailed to %s", paying_email)
+        logger.info("subscription_invoice: created %s (doc_id=%s) for user %s",
+                     doc_number, doc_id, paying_user.get("username", "?"))
 
     except Exception:
-        logger.exception("Failed to generate subscription invoice for user %s",
+        logger.exception("subscription_invoice: failed to create invoice for user %s",
                          paying_user.get("username", "?"))
+        return
+
+    # Email step — separate try/except so a send failure doesn't hide the
+    # successful invoice creation, and a send failure is visible in logs.
+    if not paying_email:
+        logger.warning("subscription_invoice: paying user %s has no email, skipping send",
+                       paying_user.get("username", "?"))
+        return
+
+    try:
+        filepath = generate_invoice_pdf(doc_id, template="minimal")
+    except Exception:
+        logger.exception("subscription_invoice: PDF generation failed for doc %s", doc_id)
+        return
+
+    try:
+        admin_company = admin_settings.get("company_name", "V-Rēķini")
+        email_body = (
+            f"Labdien!\n\n"
+            f"Paldies par V-Rēķini abonementa iegādi!\n"
+            f"Jūsu plāns: {plan_desc}\n"
+            f"Jūsu konts ir aktīvs un gatavs lietošanai.\n\n"
+            f"Pielikumā nosūtām maksājuma rēķinu Nr. {doc_number}.\n\n"
+            f"Ar cieņu,\n{admin_company}\n"
+        )
+        _send_email(
+            to_email=paying_email,
+            subject=f"Rēķins Nr. {doc_number} — {admin_company}",
+            body=email_body,
+            attachment_path=filepath,
+        )
+        logger.info("subscription_invoice: emailed %s to %s", doc_number, paying_email)
+    except Exception:
+        logger.exception("subscription_invoice: email send failed for doc %s to %s",
+                         doc_number, paying_email)
 
 
 @app.get("/billing/return", response_class=HTMLResponse)
@@ -1425,8 +1502,15 @@ async def change_user_tier(request: Request, user_id: int, tier: str = Form(...)
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, date_from: str = "", date_to: str = "", compare_mode: str = "auto"):
     import json as _json
+    user = getattr(request.state, "user", None)
+    # Guest visitor — serve public landing page (good for SEO)
+    if not user:
+        return templates.TemplateResponse("landing.html", {
+            "request": request,
+            "current_user": None,
+            "page": "landing",
+        })
     ctx = _base_context(request)
-    user = request.state.user
     uid = user["id"]
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
