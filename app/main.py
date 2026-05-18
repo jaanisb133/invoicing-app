@@ -1246,7 +1246,8 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
         return
 
     try:
-        filepath = generate_invoice_pdf(doc_id, template="minimal")
+        admin_template = admin_settings.get("default_template", "minimal")
+        filepath = generate_invoice_pdf(doc_id, template=admin_template)
     except Exception:
         logger.exception("subscription_invoice: PDF generation failed for doc %s", doc_id)
         return
