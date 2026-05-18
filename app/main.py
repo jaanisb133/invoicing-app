@@ -225,11 +225,20 @@ def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="",
 
 def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path="", sender_name=""):
     """Send email using SMTP."""
+    from email.utils import formataddr, parseaddr
     msg = MIMEMultipart()
+    # Encode the From display name with RFC 2047 so non-ASCII (Latvian ē, etc.)
+    # is handled properly. Gmail's spam filter silently drops messages with raw
+    # non-ASCII bytes in headers — formataddr produces "=?utf-8?b?...?=" form.
     if sender_name:
-        msg["From"] = f"{sender_name} <{SMTP_USER}>"
+        msg["From"] = formataddr((sender_name, SMTP_USER))
     else:
-        msg["From"] = SMTP_FROM
+        # SMTP_FROM may be either "addr@host" or "Display Name <addr@host>".
+        parsed_name, parsed_addr = parseaddr(SMTP_FROM)
+        if parsed_addr:
+            msg["From"] = formataddr((parsed_name, parsed_addr))
+        else:
+            msg["From"] = SMTP_FROM
     msg["To"] = to_email
     msg["Subject"] = subject
     if reply_to:
@@ -1257,6 +1266,7 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
             subject=f"Rēķins Nr. {doc_number} — {admin_company}",
             body=email_body,
             attachment_path=filepath,
+            sender_name=admin_company,
         )
         logger.info("subscription_invoice: emailed %s to %s", doc_number, paying_email)
     except Exception:
