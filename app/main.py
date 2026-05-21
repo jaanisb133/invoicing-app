@@ -481,11 +481,12 @@ def _build_email_defaults(doc, settings):
     and the send route — so the user's saved template is the source of truth.
     """
     company_name = settings.get("company_name", "") or ""
-    doc_type_name = (
-        settings.get("sell_doc_name", "Rēķins")
-        if doc.get("doc_type") == "sell"
-        else settings.get("buy_doc_name", "Rēķins")
-    )
+    if doc.get("doc_type") == "buy":
+        doc_type_name = settings.get("buy_doc_name", "Rēķins")
+    elif doc.get("doc_type") == "offer":
+        doc_type_name = settings.get("offer_doc_name", "Piedāvājums")
+    else:
+        doc_type_name = settings.get("sell_doc_name", "Rēķins")
     raw_date = doc.get("doc_date", "") or ""
     if raw_date and "-" in raw_date:
         dp = raw_date.split("-")
@@ -1737,7 +1738,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
     if not date_to:
         date_to = today.isoformat()
 
-    recent_docs = db.get_documents(uid)[:5]
+    recent_docs = db.get_documents(uid, exclude_doc_types=["offer"])[:5]
     clients = db.get_all_clients(uid)
     stock = db.get_stock(uid) if stock_on else []
     stats = db.get_dashboard_stats(uid)
@@ -1815,6 +1816,8 @@ async def save_settings(
     sell_doc_prefix: str = Form(""),
     buy_doc_name: str = Form("Rēķins"),
     sell_doc_name: str = Form("Rēķins"),
+    offer_doc_prefix: str = Form("P"),
+    offer_doc_name: str = Form("Piedāvājums"),
     default_vat_rate: str = Form("21"),
     is_vat_payer: str = Form("0"),
     payment_due_days: str = Form(""),
@@ -1845,6 +1848,8 @@ async def save_settings(
         "sell_doc_prefix": sell_doc_prefix,
         "buy_doc_name": buy_doc_name,
         "sell_doc_name": sell_doc_name,
+        "offer_doc_prefix": offer_doc_prefix or "P",
+        "offer_doc_name": offer_doc_name or "Piedāvājums",
         "default_vat_rate": default_vat_rate if is_vat_payer == "1" else "0",
         "payment_due_days": payment_due_days,
         "stock_enabled": stock_enabled,
@@ -2079,6 +2084,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         date_from=date_from or None,
         date_to=date_to or None,
         status=status or None,
+        exclude_doc_types=["offer"],
     )
     clients = db.get_all_clients(user["id"])
     settings = _user_settings(user["id"])
@@ -2101,6 +2107,35 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
     return templates.TemplateResponse("documents.html", ctx)
 
 
+@app.get("/offers", response_class=HTMLResponse)
+async def offers_page(request: Request, client_id: str = "",
+                       date_from: str = "", date_to: str = ""):
+    """List page for Piedāvājumi — same shape as the documents list but
+    scoped to doc_type='offer' only. Excluded from dashboard totals and
+    from the monthly document quota."""
+    ctx = _base_context(request)
+    user = request.state.user
+    docs = db.get_documents(
+        user["id"],
+        doc_type="offer",
+        client_id=int(client_id) if client_id else None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+    )
+    clients = db.get_all_clients(user["id"])
+    settings = _user_settings(user["id"])
+    ctx.update({
+        "documents": docs,
+        "clients": clients,
+        "settings": settings,
+        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "filters": {"client_id": client_id,
+                    "date_from": date_from, "date_to": date_to},
+        "page": "offers",
+    })
+    return templates.TemplateResponse("offers.html", ctx)
+
+
 @app.get("/documents/new", response_class=HTMLResponse)
 async def new_document_page(request: Request, doc_type: str = "sell"):
     ctx = _base_context(request)
@@ -2115,16 +2150,23 @@ async def new_document_page(request: Request, doc_type: str = "sell"):
         return RedirectResponse("/documents/new?doc_type=sell", status_code=302)
     stock_data = db.get_stock(uid) if stock_on else []
     stock_map = {s["id"]: s["stock"] for s in stock_data}
+    if doc_type == "buy":
+        doc_type_name = settings.get("buy_doc_name", "Rēķins")
+    elif doc_type == "offer":
+        doc_type_name = settings.get("offer_doc_name", "Piedāvājums")
+    else:
+        doc_type_name = settings.get("sell_doc_name", "Rēķins")
     ctx.update({
         "clients": clients,
         "products": products,
         "units": UNITS,
         "settings": settings,
         "doc_type": doc_type,
+        "doc_type_name": doc_type_name,
         "stock_map": stock_map,
         "templates": TEMPLATES,
         "today": datetime.date.today().isoformat(),
-        "page": "new_document",
+        "page": "new_document" if doc_type != "offer" else "new_offer",
     })
     return templates.TemplateResponse("document_form.html", ctx)
 
@@ -2133,16 +2175,18 @@ async def new_document_page(request: Request, doc_type: str = "sell"):
 async def create_document(request: Request):
     user = request.state.user
 
-    # Check tier limit
-    allowed, current, maximum = _check_tier_limit(user, "documents")
-    if not allowed:
-        return RedirectResponse(
-            f"/documents?error=Ikmēneša dokumentu limits sasniegts ({current}/{maximum}). "
-            f"<a href='/pricing'>Uzlabojiet plānu</a>, lai turpinātu.",
-            status_code=303)
-
     form = await request.form()
     doc_type = form.get("doc_type", "sell")
+
+    # Tier limit applies to invoices only — offers are unlimited
+    if doc_type != "offer":
+        allowed, current, maximum = _check_tier_limit(user, "documents")
+        if not allowed:
+            return RedirectResponse(
+                f"/documents?error=Ikmēneša dokumentu limits sasniegts ({current}/{maximum}). "
+                f"<a href='/pricing'>Uzlabojiet plānu</a>, lai turpinātu.",
+                status_code=303)
+
     # Block buy doc creation if stock management is off
     if doc_type == "buy" and not _stock_enabled(user["id"]):
         return RedirectResponse("/documents?error=Iegādes dokumenti nav pieejami bez noliktavas pārvaldības.", status_code=303)
@@ -2219,16 +2263,23 @@ async def edit_document_page(request: Request, doc_id: int):
     stock_on = _stock_enabled(uid)
     stock_data = db.get_stock(uid) if stock_on else []
     stock_map = {s["id"]: s["stock"] for s in stock_data}
+    if doc["doc_type"] == "buy":
+        doc_type_name = settings.get("buy_doc_name", "Rēķins")
+    elif doc["doc_type"] == "offer":
+        doc_type_name = settings.get("offer_doc_name", "Piedāvājums")
+    else:
+        doc_type_name = settings.get("sell_doc_name", "Rēķins")
     ctx.update({
         "clients": clients,
         "products": products,
         "units": UNITS,
         "settings": settings,
         "doc_type": doc["doc_type"],
+        "doc_type_name": doc_type_name,
         "stock_map": stock_map,
         "templates": TEMPLATES,
         "today": datetime.date.today().isoformat(),
-        "page": "documents",
+        "page": "offers" if doc["doc_type"] == "offer" else "documents",
         "edit_mode": True,
         "doc": doc,
         "edit_items": items,
@@ -2331,7 +2382,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
         "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
-        "page": "documents",
+        "page": "offers" if doc["doc_type"] == "offer" else "documents",
     })
     return templates.TemplateResponse("document_view.html", ctx)
 
@@ -2897,7 +2948,7 @@ async def email_log_page(request: Request):
 async def export_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
-    docs = db.get_documents(user["id"])
+    docs = db.get_documents(user["id"], exclude_doc_types=["offer"])
     settings = _user_settings(user["id"])
     # Load saved accounting export presets
     raw_presets = settings.get("accounting_export_presets", "[]")
@@ -2932,6 +2983,7 @@ async def export_pdf_bulk(
         doc_type=doc_type or None,
         date_from=date_from or None,
         date_to=date_to or None,
+        exclude_doc_types=["offer"],
     )
 
     if not docs:
@@ -2995,6 +3047,7 @@ async def export_einvoice_bulk(
         doc_type=doc_type or None,
         date_from=date_from or None,
         date_to=date_to or None,
+        exclude_doc_types=["offer"],
     )
 
     if not docs:
@@ -3405,6 +3458,7 @@ async def api_documents(request: Request, doc_type: str = "", client_id: str = "
         date_from=date_from or None,
         date_to=date_to or None,
         status=status or None,
+        exclude_doc_types=["offer"],
     )
     settings = _user_settings(user["id"])
     status_tracking = settings.get("status_tracking", "0") == "1"

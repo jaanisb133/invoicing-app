@@ -165,6 +165,8 @@ def _get_doc_data(doc_id):
 
     if doc["doc_type"] == "buy":
         doc_type_label = settings.get("buy_doc_name", "Rēķins")
+    elif doc["doc_type"] == "offer":
+        doc_type_label = settings.get("offer_doc_name", "Piedāvājums")
     else:
         doc_type_label = settings.get("sell_doc_name", "Rēķins")
 

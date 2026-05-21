@@ -100,7 +100,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
-            doc_type TEXT NOT NULL CHECK(doc_type IN ('buy', 'sell')),
+            doc_type TEXT NOT NULL,
             doc_number TEXT NOT NULL,
             seq_num INTEGER NOT NULL DEFAULT 0,
             client_id INTEGER NOT NULL,
@@ -281,6 +281,47 @@ def _run_migrations():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_monthly ON documents(user_id, deleted_at, created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_dashboard ON documents(user_id, deleted_at, doc_type, doc_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_document_items_doc ON document_items(document_id)")
+
+    # Migration: drop the CHECK(doc_type IN ('buy','sell')) constraint so offers
+    # (doc_type='offer') can be inserted alongside invoices.
+    doc_sql_row = cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='documents'"
+    ).fetchone()
+    doc_sql = (doc_sql_row[0] if doc_sql_row else "") or ""
+    if "CHECK" in doc_sql and "doc_type" in doc_sql:
+        cursor.executescript("""
+            PRAGMA foreign_keys=OFF;
+            CREATE TABLE documents_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                doc_type TEXT NOT NULL,
+                doc_number TEXT NOT NULL,
+                seq_num INTEGER NOT NULL DEFAULT 0,
+                client_id INTEGER NOT NULL,
+                doc_date DATE NOT NULL,
+                payment_due_date DATE,
+                vat_rate REAL NOT NULL DEFAULT 21.0,
+                notes TEXT,
+                status TEXT NOT NULL DEFAULT 'issued',
+                reverse_charge INTEGER NOT NULL DEFAULT 0,
+                deleted_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (client_id) REFERENCES clients(id)
+            );
+            INSERT INTO documents_new (id, user_id, doc_type, doc_number, seq_num,
+                                       client_id, doc_date, payment_due_date, vat_rate,
+                                       notes, status, reverse_charge, deleted_at, created_at)
+                SELECT id, user_id, doc_type, doc_number, seq_num,
+                       client_id, doc_date, payment_due_date, vat_rate,
+                       notes, status, reverse_charge, deleted_at, created_at
+                FROM documents;
+            DROP TABLE documents;
+            ALTER TABLE documents_new RENAME TO documents;
+            CREATE INDEX IF NOT EXISTS idx_documents_user_monthly ON documents(user_id, deleted_at, created_at);
+            CREATE INDEX IF NOT EXISTS idx_documents_dashboard ON documents(user_id, deleted_at, doc_type, doc_date);
+            PRAGMA foreign_keys=ON;
+        """)
 
     # Migration: allow nullable product_id and add description column on document_items
     item_info = list(cursor.execute("PRAGMA table_info(document_items)").fetchall())
@@ -594,10 +635,18 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         start_num = max(1, int(settings.get("invoice_number_start", "1") or "1"))
     except (TypeError, ValueError):
         start_num = 1
-    if settings.get("use_prefixes", "0") == "1":
+    if doc_type == "offer":
+        # Offers always use their own prefix (default "P") and their own counter,
+        # independent of the user's prefix toggle for invoices.
+        prefix = settings.get("offer_doc_prefix", "P")
+    elif settings.get("use_prefixes", "0") == "1":
         prefix = settings.get("sell_doc_prefix", "") if doc_type == "sell" else settings.get("buy_doc_prefix", "")
     else:
         prefix = ""
+
+    # Offers get a sequence scoped to doc_type='offer' so their numbering is
+    # independent of invoices.
+    offer_scope = " AND doc_type='offer'" if doc_type == "offer" else " AND doc_type!='offer'"
 
     if isinstance(doc_date, str):
         doc_date_obj = datetime.date.fromisoformat(doc_date)
@@ -615,7 +664,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         date_str = doc_date_obj.isoformat()
 
         row = conn.execute(
-            "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date = ? AND deleted_at IS NULL",
+            f"SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date = ? AND deleted_at IS NULL{offer_scope}",
             (user_id, date_str)
         ).fetchone()
         next_num = (row["cnt"] if row else 0) + 1
@@ -632,7 +681,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     elif number_type == "type3":
         # Type 3: Simple sequential. Excludes trashed docs so deletion frees the number.
         row = conn.execute(
-            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND deleted_at IS NULL",
+            f"SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND deleted_at IS NULL{offer_scope}",
             (user_id,)
         ).fetchone()
         max_existing = row["max_num"] or 0
@@ -652,7 +701,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         # Type 1 (default): YEAR + sequential, starts from invoice_number_start each year.
         # Excludes trashed docs so deletion frees the number.
         row = conn.execute(
-            "SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND deleted_at IS NULL AND strftime('%Y', doc_date) = ?",
+            f"SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND deleted_at IS NULL{offer_scope} AND strftime('%Y', doc_date) = ?",
             (user_id, str(year))
         ).fetchone()
         max_existing = row["max_num"] or 0
@@ -804,7 +853,8 @@ def get_document(doc_id):
     return (dict(doc) if doc else None, [dict(i) for i in items])
 
 
-def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_to=None, status=None):
+def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_to=None,
+                  status=None, exclude_doc_types=None):
     conn = get_connection()
     query = """SELECT d.*, c.name as client_name,
                ROUND(COALESCE((SELECT SUM(di.total) FROM document_items di WHERE di.document_id = d.id), 0) * (1 + d.vat_rate / 100.0), 2) as total_with_vat
@@ -816,6 +866,10 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
     if doc_type:
         query += " AND d.doc_type = ?"
         params.append(doc_type)
+    if exclude_doc_types:
+        placeholders = ",".join(["?"] * len(exclude_doc_types))
+        query += f" AND d.doc_type NOT IN ({placeholders})"
+        params.extend(exclude_doc_types)
     if client_id:
         query += " AND d.client_id = ?"
         params.append(client_id)
@@ -1649,7 +1703,7 @@ def get_user_resource_counts(user_id: int) -> dict:
     conn = get_connection()
     month_start = datetime.date.today().replace(day=1).isoformat()
     docs = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND created_at >= ?",
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_type != 'offer' AND created_at >= ?",
         (user_id, month_start)
     ).fetchone()
     clients = conn.execute("SELECT COUNT(*) as cnt FROM clients WHERE user_id = ? AND active = 1", (user_id,)).fetchone()

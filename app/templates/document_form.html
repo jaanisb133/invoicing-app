@@ -23,6 +23,8 @@
         {% if edit_mode %}
             {% if doc_type == 'buy' %}
             <span class="pill pill-warning">Iegāde</span>
+            {% elif doc_type == 'offer' %}
+            <span class="pill pill-brand">Piedāvājums</span>
             {% else %}
             <span class="pill pill-brand">Pārdošana</span>
             {% endif %}
@@ -31,6 +33,9 @@
             {% if doc_type == 'buy' %}
             <span class="pill pill-warning">Iegāde</span>
             <h2>Jauns iegādes dokuments</h2>
+            {% elif doc_type == 'offer' %}
+            <span class="pill pill-brand">Piedāvājums</span>
+            <h2>Jauns piedāvājums</h2>
             {% else %}
             <span class="pill pill-brand">Pārdošana</span>
             <h2>Jauns rēķins</h2>
@@ -40,6 +45,8 @@
     <div class="btn-group">
         {% if edit_mode %}
         <a href="/documents/{{ doc.id }}" class="btn btn-outline">Atcelt</a>
+        {% elif doc_type == 'offer' %}
+        <a href="/offers" class="btn btn-outline">Atcelt</a>
         {% else %}
             {% if stock_enabled %}
             <a href="/documents/new?doc_type=buy"
@@ -636,9 +643,14 @@ function getPreviewData() {
     let clientInfo = null;
     if (clientId) clientInfo = clientsData.find(c => c.id == clientId);
 
-    const docTypeName = docType === 'buy'
-        ? (companySettings.buy_doc_name || 'Rēķins')
-        : (companySettings.sell_doc_name || 'Rēķins');
+    let docTypeName;
+    if (docType === 'buy') {
+        docTypeName = companySettings.buy_doc_name || 'Rēķins';
+    } else if (docType === 'offer') {
+        docTypeName = companySettings.offer_doc_name || 'Piedāvājums';
+    } else {
+        docTypeName = companySettings.sell_doc_name || 'Rēķins';
+    }
 
     let displayDate = docDate;
     if (docDate) {

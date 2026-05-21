@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+.row-menu-wrapper { position: relative; display: inline-block; }
+.row-menu-trigger {
+    background: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer;
+    padding: 6px; color: var(--text-light); display: flex; align-items: center; transition: all 0.15s;
+}
+.row-menu-trigger:hover { background: var(--bg-card-hover); color: var(--text); }
+.row-menu-dropdown {
+    display: none; position: fixed;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-lg); min-width: 220px;
+    z-index: 9999; padding: 6px; white-space: nowrap;
+}
+.row-menu-wrapper.open .row-menu-dropdown { display: block; }
+.row-menu-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    font-size: 13.5px; color: var(--text); text-decoration: none;
+    cursor: pointer; transition: background 0.1s; border: none; background: none;
+    width: 100%; text-align: left; font-family: inherit; border-radius: 8px;
+}
+.row-menu-item:hover { background: var(--bg-card-hover); }
+.row-menu-item svg { flex-shrink: 0; color: var(--text-light); }
+.row-menu-danger { color: var(--danger) !important; }
+.row-menu-danger:hover { background: var(--danger-soft) !important; }
+.row-menu-danger svg { color: var(--danger) !important; }
+.row-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.row-menu-disabled { opacity: 0.55; }
+.badge-pro-menu {
+    display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 5px;
+    border-radius: 4px; background: var(--brand); color: #fff; vertical-align: middle; line-height: 1.3; letter-spacing: 0.4px;
+}
+tr.clickable-row { cursor: pointer; }
+tr.clickable-row:hover td { background: var(--bg-card-hover); }
+.doc-filters-card { padding: 14px 16px; margin-bottom: 16px; }
+.doc-filters-card .filters-bar { margin-bottom: 0; align-items: end; }
+.doc-filters-card .form-group label { font-size: 11.5px; color: var(--text-light); font-weight: 500; }
+@media (max-width: 768px) {
+    .doc-filters-card { padding: 12px; }
+    .doc-filters-card .filters-bar { gap: 8px; }
+}
+</style>
+<div class="page-header">
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Piedāvājumi</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Klientiem nosūtītie piedāvājumi. Netiek skaitīti dokumentu limitā.</p>
+    </div>
+    <div class="btn-group">
+        <a href="/documents/new?doc_type=offer" class="btn btn-primary"><span class="btn-label-full">+ Jauns piedāvājums</span><span class="btn-label-short">+ Piedāvājums</span></a>
+    </div>
+</div>
+
+<div class="page-body">
+    {% if request.query_params.get('error') %}
+    <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
+    {% endif %}
+    <div class="card doc-filters-card">
+        <div class="filters-bar" style="flex-wrap:wrap;align-items:end;gap:8px">
+            <div class="form-group" style="margin-bottom:0;flex:1;min-width:180px;position:relative">
+                <label>Klients</label>
+                <input type="text" id="fClientSearch" class="form-control" placeholder="Visi" autocomplete="off" onfocus="showClientDropdown()" oninput="filterClients()">
+                <input type="hidden" id="fClientId" value="{{ filters.client_id or '' }}">
+                <div class="search-dropdown" id="fClientDropdown" style="display:none">
+                    <div class="search-dropdown-item" data-id="" onclick="selectFilterClient('', '')">Visi klienti</div>
+                    {% for c in clients %}
+                    <div class="search-dropdown-item" data-id="{{ c.id }}" onclick="selectFilterClient('{{ c.id }}', {{ c.name|tojson }})">{{ c.name }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;min-width:130px">
+                <label>No datuma</label>
+                <input type="text" id="dateFrom" class="form-control" placeholder="dd/mm/yy" value="{{ filters.date_from }}">
+            </div>
+            <div class="form-group" style="margin-bottom:0;min-width:130px">
+                <label>Līdz datumam</label>
+                <input type="text" id="dateTo" class="form-control" placeholder="dd/mm/yy" value="{{ filters.date_to }}">
+            </div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <div class="table-wrapper mobile-cards">
+                <table class="docs-table">
+                    <thead>
+                        <tr>
+                            <th>Nr.</th>
+                            <th>Klients</th>
+                            <th>Datums</th>
+                            <th class="text-right">Summa</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="docsTbody">
+                    {% if documents %}
+                        {% for doc in documents %}
+                        <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
+                            <td>
+                                <span class="mobile-card-title">{{ doc.doc_number }}</span>
+                            </td>
+                            <td>
+                                <span class="mobile-card-meta">{{ doc.client_name }}</span>
+                            </td>
+                            <td>
+                                <span class="mobile-card-meta">{{ doc.doc_date[8:10] }}.{{ doc.doc_date[5:7] }}.{{ doc.doc_date[:4] }}</span>
+                            </td>
+                            <td class="text-right" style="font-weight:600">{{ "%.2f" | format(doc.total_with_vat) }} EUR</td>
+                            <td>
+                                <div class="row-menu-wrapper">
+                                    <button type="button" class="row-menu-trigger" aria-label="Darbības">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                                    </button>
+                                    <div class="row-menu-dropdown">
+                                        <a href="/documents/{{ doc.id }}" class="row-menu-item">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                            Skatīt
+                                        </a>
+                                        <a href="/documents/{{ doc.id }}/edit" class="row-menu-item">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                            Rediģēt
+                                        </a>
+                                        <a href="/documents/{{ doc.id }}/pdf" class="row-menu-item" target="_blank">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                            Lejupielādēt PDF
+                                        </a>
+                                        {% if email_enabled %}
+                                        <button type="button" class="row-menu-item" data-action="send" data-doc-id="{{ doc.id }}" data-client-id="{{ doc.client_id }}">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                            Nosūtīt klientam
+                                        </button>
+                                        {% else %}
+                                        <a href="/pricing" class="row-menu-item row-menu-disabled">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                            Nosūtīt klientam <span class="badge-pro-menu">PRO</span>
+                                        </a>
+                                        {% endif %}
+                                        <div class="row-menu-divider"></div>
+                                        <form method="post" action="/documents/{{ doc.id }}/delete">
+                                            <button type="submit" class="row-menu-item row-menu-danger">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                                Pārvietot uz papīrgrozu
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-light)">Nav piedāvājumu.</td></tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Send Email Modal -->
+<div class="modal-overlay" id="offerSendModal">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-title">Nosūtīt piedāvājumu pa e-pastu</div>
+        <form method="post" id="offerSendForm" action="">
+            <input type="hidden" name="template" value="classic">
+            <input type="hidden" name="return_to" id="offerSendReturnTo" value="/offers">
+            <div class="form-group">
+                <label>Saņēmēja e-pasts</label>
+                <input type="email" name="email" id="offerSendEmail" class="form-control"
+                       required placeholder="klients@epasts.lv">
+            </div>
+            <div class="form-group">
+                <label>Tēma</label>
+                <input type="text" name="email_subject" id="offerSendSubject" class="form-control">
+            </div>
+            <div style="background:var(--bg);border-radius:var(--radius);padding:10px 16px;font-size:12px;margin-bottom:16px;border:1px solid var(--border);color:var(--text-light)">
+                No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;
+                {% if request.state.user.email %} · Atbildēt uz: {{ request.state.user.email }}{% endif %}
+                 · Pielikums: <span id="offerSendAttachment">piedavajums.pdf</span>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="offerCustomEmailToggle" onchange="offerToggleCustomEmail()"
+                           style="width:18px;height:18px;cursor:pointer">
+                    Pielāgot e-pasta ziņojumu
+                </label>
+            </div>
+            <div id="offerCustomEmailSection" style="display:none">
+                <div class="form-group">
+                    <label>E-pasta teksts</label>
+                    <textarea name="email_body" id="offerSendBody" class="form-control" rows="6"
+                              style="font-size:13px;line-height:1.5;resize:vertical"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('offerSendModal').classList.remove('active')">Atcelt</button>
+                <button type="submit" class="btn btn-primary">Nosūtīt</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientEmailMap = {
+    {% for c in clients %}{{ c.id }}: {{ (c.email or '') | tojson }},{% endfor %}
+};
+
+function showClientDropdown() {
+    document.getElementById('fClientDropdown').style.display = 'block';
+    filterClients();
+}
+function filterClients() {
+    var q = document.getElementById('fClientSearch').value.toLowerCase();
+    document.querySelectorAll('#fClientDropdown .search-dropdown-item').forEach(function(el) {
+        var name = el.textContent.toLowerCase();
+        el.style.display = (!q || name.includes(q)) ? '' : 'none';
+    });
+}
+function selectFilterClient(id, name) {
+    document.getElementById('fClientId').value = id;
+    document.getElementById('fClientSearch').value = id ? name : '';
+    document.getElementById('fClientDropdown').style.display = 'none';
+    applyFilters();
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#fClientSearch') && !e.target.closest('#fClientDropdown')) {
+        document.getElementById('fClientDropdown').style.display = 'none';
+    }
+});
+(function() {
+    var cid = document.getElementById('fClientId').value;
+    if (cid) {
+        var item = document.querySelector('#fClientDropdown .search-dropdown-item[data-id="' + cid + '"]');
+        if (item) document.getElementById('fClientSearch').value = item.textContent.trim();
+    }
+})();
+
+function applyFilters() {
+    var params = new URLSearchParams();
+    var cid = document.getElementById('fClientId').value;
+    if (cid) params.set('client_id', cid);
+    var df = document.getElementById('dateFrom').value;
+    if (df) params.set('date_from', df);
+    var dt = document.getElementById('dateTo').value;
+    if (dt) params.set('date_to', dt);
+    window.location.href = '/offers' + (params.toString() ? '?' + params.toString() : '');
+}
+
+// Init flatpickr
+if (typeof flatpickr !== 'undefined') {
+    flatpickr('#dateFrom', {dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/y', onChange: applyFilters});
+    flatpickr('#dateTo', {dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/y', onChange: applyFilters});
+}
+
+// Send modal
+function offerToggleCustomEmail() {
+    var section = document.getElementById('offerCustomEmailSection');
+    section.style.display = document.getElementById('offerCustomEmailToggle').checked ? 'block' : 'none';
+}
+
+function openOfferSendModal(docId, clientId) {
+    var form = document.getElementById('offerSendForm');
+    form.action = '/documents/' + docId + '/send';
+    var emailInput = document.getElementById('offerSendEmail');
+    var subjectInput = document.getElementById('offerSendSubject');
+    var bodyInput = document.getElementById('offerSendBody');
+    emailInput.value = clientEmailMap[clientId] || '';
+    subjectInput.value = '';
+    bodyInput.value = '';
+    document.getElementById('offerSendReturnTo').value = window.location.pathname + window.location.search;
+    document.getElementById('offerCustomEmailToggle').checked = false;
+    document.getElementById('offerCustomEmailSection').style.display = 'none';
+    var attachEl = document.getElementById('offerSendAttachment');
+    if (attachEl) attachEl.textContent = 'piedavajums.pdf';
+    document.getElementById('offerSendModal').classList.add('active');
+    if (!emailInput.value) setTimeout(function() { emailInput.focus(); }, 50);
+    fetch('/api/documents/' + docId + '/email-defaults', {credentials: 'same-origin'})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+            if (!d) return;
+            subjectInput.value = d.subject || '';
+            bodyInput.value = d.body || '';
+            if (!emailInput.value && d.client_email) emailInput.value = d.client_email;
+            if (attachEl && d.doc_number) attachEl.textContent = d.doc_number + '.pdf';
+        })
+        .catch(function() {});
+}
+
+// Row menu positioning + clickable rows
+function positionDropdown(trigger, dropdown) {
+    const rect = trigger.getBoundingClientRect();
+    dropdown.style.left = '';
+    dropdown.style.right = '';
+    dropdown.style.top = '';
+    dropdown.style.visibility = 'hidden';
+    dropdown.style.display = 'block';
+    const dh = dropdown.offsetHeight;
+    const dw = dropdown.offsetWidth;
+    dropdown.style.display = '';
+    dropdown.style.visibility = '';
+    var top = (window.innerHeight - rect.bottom < dh + 8 && rect.top > dh + 8)
+        ? rect.top - dh - 4 : rect.bottom + 4;
+    top = Math.max(8, Math.min(top, window.innerHeight - dh - 8));
+    dropdown.style.top = top + 'px';
+    var left = rect.right - dw;
+    left = Math.max(8, Math.min(left, window.innerWidth - dw - 8));
+    dropdown.style.left = left + 'px';
+}
+
+document.addEventListener('click', function(e) {
+    var trigger = e.target.closest('.row-menu-trigger');
+    if (trigger) {
+        e.stopPropagation();
+        var wrapper = trigger.closest('.row-menu-wrapper');
+        var dropdown = wrapper.querySelector('.row-menu-dropdown');
+        var wasOpen = wrapper.classList.contains('open');
+        document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+        if (!wasOpen) {
+            positionDropdown(trigger, dropdown);
+            wrapper.classList.add('open');
+        }
+        return;
+    }
+
+    var actionBtn = e.target.closest('[data-action]');
+    if (actionBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var action = actionBtn.dataset.action;
+        var docId = actionBtn.dataset.docId;
+        document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+        if (action === 'send') {
+            openOfferSendModal(docId, actionBtn.dataset.clientId);
+        }
+        return;
+    }
+
+    if (e.target.closest('.row-menu-wrapper') || e.target.closest('a') ||
+        e.target.closest('button') || e.target.closest('form') || e.target.closest('[onclick]')) {
+        return;
+    }
+    document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+    const row = e.target.closest('tr.clickable-row');
+    if (row && row.dataset.href) {
+        window.location.href = row.dataset.href;
+    }
+});
+window.addEventListener('scroll', function() {
+    document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+}, true);
+window.addEventListener('resize', function() {
+    document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+});
+</script>
+{% endblock %}
