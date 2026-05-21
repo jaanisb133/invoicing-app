@@ -3481,14 +3481,19 @@ async def api_documents(request: Request, doc_type: str = "", client_id: str = "
 async def api_add_client(request: Request):
     user = request.state.user
     data = await request.json()
+    one_time = int(data.get("one_time", 0))
     reg_number = data.get("reg_number", "")
-    if reg_number:
-        existing = db.get_client_by_reg_number(user["id"], reg_number)
-        if existing:
-            return JSONResponse({"error": f"Klients ar reģ. nr. {reg_number} jau eksistē ({existing['name']})", "duplicate": True, "client": existing}, status_code=409)
-    allowed, current, maximum = _check_tier_limit(user, "clients")
-    if not allowed:
-        return JSONResponse({"error": f"Klientu limits sasniegts ({current}/{maximum})"}, status_code=403)
+    # One-time clients are attached to a single document and never appear in
+    # the clients list, so they don't trigger duplicate checks or count
+    # against the tier quota.
+    if not one_time:
+        if reg_number:
+            existing = db.get_client_by_reg_number(user["id"], reg_number)
+            if existing:
+                return JSONResponse({"error": f"Klients ar reģ. nr. {reg_number} jau eksistē ({existing['name']})", "duplicate": True, "client": existing}, status_code=409)
+        allowed, current, maximum = _check_tier_limit(user, "clients")
+        if not allowed:
+            return JSONResponse({"error": f"Klientu limits sasniegts ({current}/{maximum})"}, status_code=403)
     client_id = db.add_client(
         user["id"],
         name=data["name"],
@@ -3499,6 +3504,7 @@ async def api_add_client(request: Request):
         bank_name=data.get("bank_name", ""),
         bank_account=data.get("bank_account", ""),
         client_type=data.get("client_type", "business"),
+        one_time=one_time,
     )
     client = db.get_client(client_id)
     return JSONResponse(client)

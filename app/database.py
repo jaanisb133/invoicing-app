@@ -252,6 +252,8 @@ def _run_migrations():
         cursor.execute("ALTER TABLE clients ADD COLUMN vat_payer INTEGER NOT NULL DEFAULT 0")
     if "client_type" not in client_cols:
         cursor.execute("ALTER TABLE clients ADD COLUMN client_type TEXT NOT NULL DEFAULT 'business'")
+    if "one_time" not in client_cols:
+        cursor.execute("ALTER TABLE clients ADD COLUMN one_time INTEGER NOT NULL DEFAULT 0")
 
     # Add email_subject / email_body to recurring_invoices if missing
     rec_cols = {row[1] for row in cursor.execute("PRAGMA table_info(recurring_invoices)").fetchall()}
@@ -531,14 +533,14 @@ def get_product(product_id):
 
 def add_client(user_id, name, reg_number="", vat_number="", vat_payer=0, legal_address="",
                bank_name="", bank_account="", contact_person="", phone="", email="",
-               client_type="business"):
+               client_type="business", one_time=0):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO clients (user_id, name, reg_number, vat_number, vat_payer, legal_address,
-           bank_name, bank_account, contact_person, phone, email, client_type)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           bank_name, bank_account, contact_person, phone, email, client_type, one_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (user_id, name, reg_number, vat_number, int(vat_payer), legal_address,
-         bank_name, bank_account, contact_person, phone, email, client_type)
+         bank_name, bank_account, contact_person, phone, email, client_type, int(one_time))
     )
     client_id = cursor.lastrowid
     conn.commit()
@@ -570,15 +572,18 @@ def delete_client(user_id, client_id):
 
 
 def get_all_clients(user_id, active_only=True):
+    """Return the user's saved clients. One-time clients (one_time=1) are
+    always excluded — they exist only to attach to a single document and
+    should never appear in pickers or the clients page."""
     conn = get_connection()
     if active_only:
         rows = conn.execute(
-            "SELECT * FROM clients WHERE user_id = ? AND active = 1 ORDER BY name",
+            "SELECT * FROM clients WHERE user_id = ? AND active = 1 AND one_time = 0 ORDER BY name",
             (user_id,)
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM clients WHERE user_id = ? ORDER BY name",
+            "SELECT * FROM clients WHERE user_id = ? AND one_time = 0 ORDER BY name",
             (user_id,)
         ).fetchall()
     conn.close()
@@ -586,11 +591,13 @@ def get_all_clients(user_id, active_only=True):
 
 
 def get_client_by_reg_number(user_id, reg_number):
+    """Look up an existing saved client by reg number. One-time clients are
+    not considered — duplicates are fine when both are one-time."""
     if not reg_number:
         return None
     conn = get_connection()
     row = conn.execute(
-        "SELECT * FROM clients WHERE user_id = ? AND reg_number = ?",
+        "SELECT * FROM clients WHERE user_id = ? AND reg_number = ? AND one_time = 0",
         (user_id, reg_number)
     ).fetchone()
     conn.close()
@@ -1706,7 +1713,7 @@ def get_user_resource_counts(user_id: int) -> dict:
         "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_type != 'offer' AND created_at >= ?",
         (user_id, month_start)
     ).fetchone()
-    clients = conn.execute("SELECT COUNT(*) as cnt FROM clients WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
+    clients = conn.execute("SELECT COUNT(*) as cnt FROM clients WHERE user_id = ? AND active = 1 AND one_time = 0", (user_id,)).fetchone()
     products = conn.execute("SELECT COUNT(*) as cnt FROM products WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
     conn.close()
     return {

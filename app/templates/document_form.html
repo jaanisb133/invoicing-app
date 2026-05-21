@@ -229,6 +229,21 @@
                 </label>
             </div>
         </div>
+        <div class="form-group">
+            <div class="client-save-toggle" style="display:flex;gap:6px;background:var(--bg-input);padding:4px;border-radius:12px;border:1px solid var(--border)">
+                <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:var(--brand);color:#fff;border-radius:9px;transition:all 0.15s;box-shadow:0 2px 6px rgba(59,130,246,0.32)" id="qc_save_keep_label">
+                    <input type="radio" name="qc_save_mode" value="keep" checked
+                           onchange="qcToggleSaveMode('keep')" style="display:none">
+                    Saglabāt sarakstā
+                </label>
+                <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:transparent;color:var(--text-light);border-radius:9px;transition:all 0.15s" id="qc_save_once_label">
+                    <input type="radio" name="qc_save_mode" value="once"
+                           onchange="qcToggleSaveMode('once')" style="display:none">
+                    Vienreizējs
+                </label>
+            </div>
+            <div style="font-size:12px;color:var(--text-light);margin-top:6px" id="qc_save_hint">Klients tiks saglabāts klientu sarakstā.</div>
+        </div>
         <!-- Business name with registry search -->
         <div class="form-group" id="qc_business_name_group">
             <label>Nosaukums *</label>
@@ -899,10 +914,38 @@ function updatePreview() {
 
 function showQuickAddClient() {
     document.getElementById('quickAddClientModal').classList.add('active');
-    // Reset to business mode
+    // Reset to business mode + keep-in-list mode
     document.querySelector('#quickAddClientModal input[name="qc_client_type"][value="business"]').checked = true;
     qcToggleClientType('business');
+    document.querySelector('#quickAddClientModal input[name="qc_save_mode"][value="keep"]').checked = true;
+    qcToggleSaveMode('keep');
     document.getElementById('qc_name').focus();
+}
+
+/* --- Quick-Add Save Mode Toggle (keep in list vs one-time) --- */
+function qcToggleSaveMode(mode) {
+    const keepLabel = document.getElementById('qc_save_keep_label');
+    const onceLabel = document.getElementById('qc_save_once_label');
+    const hint = document.getElementById('qc_save_hint');
+    const activeStyle = 'var(--brand)';
+    const activeShadow = '0 2px 6px rgba(59,130,246,0.32)';
+    if (mode === 'keep') {
+        keepLabel.style.background = activeStyle;
+        keepLabel.style.color = '#fff';
+        keepLabel.style.boxShadow = activeShadow;
+        onceLabel.style.background = 'transparent';
+        onceLabel.style.color = 'var(--text-light)';
+        onceLabel.style.boxShadow = 'none';
+        hint.textContent = 'Klients tiks saglabāts klientu sarakstā.';
+    } else {
+        onceLabel.style.background = activeStyle;
+        onceLabel.style.color = '#fff';
+        onceLabel.style.boxShadow = activeShadow;
+        keepLabel.style.background = 'transparent';
+        keepLabel.style.color = 'var(--text-light)';
+        keepLabel.style.boxShadow = 'none';
+        hint.textContent = 'Klients tiks lietots tikai šim dokumentam un neparādīsies klientu sarakstā.';
+    }
 }
 
 /* --- Quick-Add Client Type Toggle --- */
@@ -1039,6 +1082,7 @@ function showQuickAddProduct(rowBtn) {
 
 async function quickAddClient() {
     const clientType = document.querySelector('#quickAddClientModal input[name="qc_client_type"]:checked').value;
+    const saveMode = (document.querySelector('#quickAddClientModal input[name="qc_save_mode"]:checked') || {}).value || 'keep';
     let name;
     if (clientType === 'individual') {
         const first = (document.getElementById('qc_first_name') || {}).value || '';
@@ -1057,6 +1101,7 @@ async function quickAddClient() {
         legal_address: document.getElementById('qc_legal_address').value,
         bank_name: document.getElementById('qc_bank_name').value,
         bank_account: document.getElementById('qc_bank_account').value,
+        one_time: saveMode === 'once' ? 1 : 0,
     };
     if (!data.name) return;
 
