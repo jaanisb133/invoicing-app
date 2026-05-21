@@ -200,7 +200,10 @@ def _get_doc_data(doc_id):
         supplier = party_info(None, from_settings=True)
         buyer = party_info(client)
 
-    subtotal = sum(item["quantity"] * item["price_per_unit"] for item in items)
+    subtotal = sum(
+        0 if item.get("included_in_price") else item["quantity"] * item["price_per_unit"]
+        for item in items
+    )
     vat_rate = doc["vat_rate"]
     vat_amount = subtotal * (vat_rate / 100)
     total = subtotal + vat_amount
@@ -368,14 +371,17 @@ def _generate_classic(doc_id):
     ]]
 
     for i, item in enumerate(data["items"], 1):
-        line_total = item["quantity"] * item["price_per_unit"]
+        included = bool(item.get("included_in_price"))
+        line_total = 0 if included else item["quantity"] * item["price_per_unit"]
+        price_text = "Iekļauts cenā" if included else f"{item['price_per_unit']:.2f}"
+        total_text = "Iekļauts cenā" if included else f"{line_total:.2f}"
         items_data.append([
             Paragraph(str(i), td),
             Paragraph(item["product_name"], td),
             Paragraph(item["unit"], td),
             Paragraph(f"{item['quantity']:.2f}", td_r),
-            Paragraph(f"{item['price_per_unit']:.2f}", td_r),
-            Paragraph(f"{line_total:.2f}", td_r),
+            Paragraph(price_text, td_r),
+            Paragraph(total_text, td_r),
         ])
 
     num_items = len(data["items"])
@@ -576,14 +582,17 @@ def _generate_modern(doc_id):
     ]]
 
     for i, item in enumerate(data["items"], 1):
-        line_total = item["quantity"] * item["price_per_unit"]
+        included = bool(item.get("included_in_price"))
+        line_total = 0 if included else item["quantity"] * item["price_per_unit"]
+        price_text = "Iekļauts cenā" if included else f"{item['price_per_unit']:.2f}"
+        total_text = "Iekļauts cenā" if included else f"{line_total:.2f}"
         items_data.append([
             Paragraph(str(i), td),
             Paragraph(item["product_name"], td),
             Paragraph(item["unit"], td),
             Paragraph(f"{item['quantity']:.2f}", td_r),
-            Paragraph(f"{item['price_per_unit']:.2f}", td_r),
-            Paragraph(f"{line_total:.2f}", td_r),
+            Paragraph(price_text, td_r),
+            Paragraph(total_text, td_r),
         ])
 
     num_items = len(data["items"])
@@ -773,14 +782,17 @@ def _generate_minimal(doc_id):
     ]]
 
     for i, item in enumerate(data["items"], 1):
-        line_total = item["quantity"] * item["price_per_unit"]
+        included = bool(item.get("included_in_price"))
+        line_total = 0 if included else item["quantity"] * item["price_per_unit"]
+        price_text = "Iekļauts cenā" if included else f"{item['price_per_unit']:.2f}"
+        total_text = "Iekļauts cenā" if included else f"{line_total:.2f}"
         items_data.append([
             Paragraph(str(i), td),
             Paragraph(item["product_name"], td),
             Paragraph(item["unit"], td),
             Paragraph(f"{item['quantity']:.2f}", td_r),
-            Paragraph(f"{item['price_per_unit']:.2f}", td_r),
-            Paragraph(f"{line_total:.2f}", td_r),
+            Paragraph(price_text, td_r),
+            Paragraph(total_text, td_r),
         ])
 
     num_items = len(data["items"])

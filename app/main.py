@@ -2208,7 +2208,9 @@ async def create_document(request: Request):
         description = (form.get(f"items[{i}][product_name]") or "").strip()
         quantity = float(form[f"items[{i}][quantity]"])
         unit = form[f"items[{i}][unit]"]
-        price_per_unit = float(form[f"items[{i}][price_per_unit]"])
+        included_in_price = form.get(f"items[{i}][included_in_price]") == "1"
+        price_raw = form.get(f"items[{i}][price_per_unit]") or ""
+        price_per_unit = 0.0 if included_in_price or not price_raw else float(price_raw)
         # Skip blank lines (no product selected and no free-text)
         if not product_id and not description:
             i += 1
@@ -2219,6 +2221,7 @@ async def create_document(request: Request):
             "quantity": quantity,
             "unit": unit,
             "price_per_unit": price_per_unit,
+            "included_in_price": included_in_price,
         })
         i += 1
 
@@ -2310,7 +2313,9 @@ async def update_document(request: Request, doc_id: int):
         description = (form.get(f"items[{i}][product_name]") or "").strip()
         quantity = float(form[f"items[{i}][quantity]"])
         unit = form[f"items[{i}][unit]"]
-        price_per_unit = float(form[f"items[{i}][price_per_unit]"])
+        included_in_price = form.get(f"items[{i}][included_in_price]") == "1"
+        price_raw = form.get(f"items[{i}][price_per_unit]") or ""
+        price_per_unit = 0.0 if included_in_price or not price_raw else float(price_raw)
         if not product_id and not description:
             i += 1
             continue
@@ -2320,6 +2325,7 @@ async def update_document(request: Request, doc_id: int):
             "quantity": quantity,
             "unit": unit,
             "price_per_unit": price_per_unit,
+            "included_in_price": included_in_price,
         })
         i += 1
 

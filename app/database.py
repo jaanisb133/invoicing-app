@@ -122,6 +122,7 @@ def init_db():
             unit TEXT NOT NULL,
             price_per_unit REAL NOT NULL,
             total REAL NOT NULL,
+            included_in_price INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
             FOREIGN KEY (product_id) REFERENCES products(id)
         );
@@ -351,6 +352,11 @@ def _run_migrations():
             CREATE INDEX IF NOT EXISTS idx_document_items_doc ON document_items(document_id);
             PRAGMA foreign_keys=ON;
         """)
+        item_cols = {row[1] for row in cursor.execute("PRAGMA table_info(document_items)").fetchall()}
+
+    # Migration: add included_in_price flag used by offer line items
+    if "included_in_price" not in item_cols:
+        cursor.execute("ALTER TABLE document_items ADD COLUMN included_in_price INTEGER NOT NULL DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -761,14 +767,16 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         doc_id = cursor.lastrowid
 
         for item in items:
-            total = item["quantity"] * item["price_per_unit"]
+            included = 1 if item.get("included_in_price") else 0
+            price = 0.0 if included else item["price_per_unit"]
+            total = 0.0 if included else item["quantity"] * price
             pid = item.get("product_id") or None
             description = item.get("description", "") or ""
             conn.execute(
-                """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total, included_in_price)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (doc_id, pid, description, item["quantity"], item["unit"],
-                 item["price_per_unit"], total)
+                 price, total, included)
             )
 
         conn.commit()
@@ -827,14 +835,16 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
         # Delete old items and insert new ones
         conn.execute("DELETE FROM document_items WHERE document_id = ?", (doc_id,))
         for item in items:
-            total = item["quantity"] * item["price_per_unit"]
+            included = 1 if item.get("included_in_price") else 0
+            price = 0.0 if included else item["price_per_unit"]
+            total = 0.0 if included else item["quantity"] * price
             pid = item.get("product_id") or None
             description = item.get("description", "") or ""
             conn.execute(
-                """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total, included_in_price)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (doc_id, pid, description, item["quantity"], item["unit"],
-                 item["price_per_unit"], total)
+                 price, total, included)
             )
 
         conn.commit()

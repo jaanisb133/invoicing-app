@@ -436,7 +436,7 @@ if (!editMode && paymentDueDays && dueDateInput) {
 
 const templateLabels = {{ templates | tojson }};
 
-function addItemRow(presetProduct, presetUnit, presetQty, presetPrice, presetName) {
+function addItemRow(presetProduct, presetUnit, presetQty, presetPrice, presetName, presetIncluded) {
     const idx = itemIndex++;
     const tbody = document.getElementById('itemsBody');
     const tr = document.createElement('tr');
@@ -460,6 +460,22 @@ function addItemRow(presetProduct, presetUnit, presetQty, presetPrice, presetNam
         if (p) initialName = p.name;
     }
 
+    const included = presetIncluded ? true : false;
+    const includedAttr = included ? 'checked' : '';
+    const priceDisabledAttr = included ? 'disabled' : 'required';
+    const priceValue = included ? '' : price;
+    const includedRowHtml = (docType === 'offer') ? `
+        <tr class="item-row-included" id="item-included-${idx}">
+            <td></td>
+            <td colspan="5" style="padding-top:0;padding-bottom:8px">
+                <label style="display:inline-flex;align-items:center;gap:6px;font-weight:400;font-size:12.5px;color:var(--text-light);cursor:pointer">
+                    <input type="checkbox" name="items[${idx}][included_in_price]" value="1" id="included-${idx}"
+                           onchange="toggleIncludedInPrice(${idx})" ${includedAttr}
+                           style="width:14px;height:14px;cursor:pointer">
+                    Iekļauts cenā (nerādīt cenu šai pozīcijai)
+                </label>
+            </td>
+        </tr>` : '';
     tr.innerHTML = `
         <td>
             <div class="product-search-wrapper" style="position:relative;display:flex;gap:4px">
@@ -475,13 +491,36 @@ function addItemRow(presetProduct, presetUnit, presetQty, presetPrice, presetNam
         </td>
         <td data-label="Mērvienība"><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control" ${stockEnabled ? 'disabled' : ''}>${unitOptions}</select>${stockEnabled ? `<input type="hidden" name="items[${idx}][unit]" id="unit-hidden-${idx}" value="${presetUnit || units[0]}">` : ''}</td>
         <td data-label="Daudzums"><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" placeholder="Daudzums" onchange="recalculate()" oninput="recalculate()" required></td>
-        <td data-label="Cena"><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" placeholder="Cena" onchange="recalculate()" oninput="recalculate()" required></td>
-        <td class="item-total text-right" id="total-${idx}">0.00</td>
+        <td data-label="Cena"><input type="number" name="items[${idx}][price_per_unit]" id="price-${idx}" class="form-control" step="0.01" min="0" value="${priceValue}" placeholder="${included ? 'Iekļauts cenā' : 'Cena'}" onchange="recalculate()" oninput="recalculate()" ${priceDisabledAttr}></td>
+        <td class="item-total text-right" id="total-${idx}">${included ? 'Iekļauts cenā' : '0.00'}</td>
         <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
     `;
     tbody.appendChild(tr);
+    if (includedRowHtml) {
+        const wrap = document.createElement('tbody');
+        wrap.innerHTML = includedRowHtml;
+        tbody.appendChild(wrap.firstElementChild);
+    }
     // Wire the product search behavior
     initProductSearch(idx);
+    recalculate();
+}
+
+function toggleIncludedInPrice(idx) {
+    const cb = document.getElementById('included-' + idx);
+    const priceInput = document.getElementById('price-' + idx);
+    const totalCell = document.getElementById('total-' + idx);
+    if (!cb || !priceInput || !totalCell) return;
+    if (cb.checked) {
+        priceInput.value = '';
+        priceInput.disabled = true;
+        priceInput.removeAttribute('required');
+        priceInput.placeholder = 'Iekļauts cenā';
+    } else {
+        priceInput.disabled = false;
+        priceInput.setAttribute('required', '');
+        priceInput.placeholder = 'Cena';
+    }
     recalculate();
 }
 
@@ -553,6 +592,8 @@ function selectProduct(idx, pid, name, unit) {
 function removeItemRow(idx) {
     const row = document.getElementById('item-' + idx);
     if (row) row.remove();
+    const includedRow = document.getElementById('item-included-' + idx);
+    if (includedRow) includedRow.remove();
     // Ensure at least one row remains
     if (document.querySelectorAll('.item-row').length === 0) {
         addItemRow();
@@ -563,12 +604,19 @@ function removeItemRow(idx) {
 function recalculate() {
     let subtotal = 0;
     document.querySelectorAll('.item-row').forEach(row => {
+        const idx = row.id.split('-')[1];
+        const includedCb = document.getElementById('included-' + idx);
+        const isIncluded = includedCb && includedCb.checked;
+        const totalCell = document.getElementById('total-' + idx);
+        if (isIncluded) {
+            if (totalCell) totalCell.textContent = 'Iekļauts cenā';
+            return;
+        }
         const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
         const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
         const lineTotal = qty * price;
         subtotal += lineTotal;
-        const idx = row.id.split('-')[1];
-        document.getElementById('total-' + idx).textContent = lineTotal.toFixed(2);
+        if (totalCell) totalCell.textContent = lineTotal.toFixed(2);
     });
 
     const rcCheckbox = document.getElementById('reverseCharge');
@@ -701,15 +749,18 @@ function getPreviewData() {
     let items = [];
     let subtotal = 0;
     document.querySelectorAll('.item-row').forEach(row => {
+        const idx = row.id.split('-')[1];
+        const includedCb = document.getElementById('included-' + idx);
+        const isIncluded = includedCb && includedCb.checked;
         const nameInput = row.querySelector('input[name*="product_name"]');
         const productName = (nameInput && nameInput.value || '').trim();
         const unit = row.querySelector('select[name*="unit"]').value;
         const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
-        const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
-        const lineTotal = qty * price;
-        subtotal += lineTotal;
+        const price = isIncluded ? 0 : (parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0);
+        const lineTotal = isIncluded ? 0 : qty * price;
+        if (!isIncluded) subtotal += lineTotal;
         if (productName) {
-            items.push({ name: productName, unit, qty, price, total: lineTotal });
+            items.push({ name: productName, unit, qty, price, total: lineTotal, included: isIncluded });
         }
     });
 
@@ -741,13 +792,15 @@ function itemsTableHtml(items, style) {
     }
     return items.map((item, i) => {
         const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
+        const priceCell = item.included ? 'Iekļauts cenā' : item.price.toFixed(2);
+        const totalCell = item.included ? 'Iekļauts cenā' : item.total.toFixed(2);
         return `<tr style="${bg}">
             <td style="padding:5px 8px">${i + 1}</td>
             <td style="padding:5px 8px">${item.name}</td>
             <td style="padding:5px 8px">${item.unit}</td>
             <td style="padding:5px 8px;text-align:right">${item.qty.toFixed(2)}</td>
-            <td style="padding:5px 8px;text-align:right">${item.price.toFixed(2)}</td>
-            <td style="padding:5px 8px;text-align:right">${item.total.toFixed(2)}</td>
+            <td style="padding:5px 8px;text-align:right">${priceCell}</td>
+            <td style="padding:5px 8px;text-align:right">${totalCell}</td>
         </tr>`;
     }).join('');
 }
@@ -1183,7 +1236,7 @@ async function quickAddProduct() {
 // Initialize
 if (editMode && editItems.length > 0) {
     editItems.forEach(item => {
-        addItemRow(item.product_id, item.unit, item.quantity, item.price_per_unit, item.product_name);
+        addItemRow(item.product_id, item.unit, item.quantity, item.price_per_unit, item.product_name, item.included_in_price);
     });
 } else {
     addItemRow();

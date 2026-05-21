@@ -329,7 +329,7 @@ const docData = {
     },
     items: [
         {% for item in items %}
-        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: Number({{ item.quantity | tojson }}), price: Number({{ item.price_per_unit | tojson }}), total: Number({{ "%.2f" | format(item.quantity * item.price_per_unit) }}) },
+        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: Number({{ item.quantity | tojson }}), price: Number({{ item.price_per_unit | tojson }}), total: Number({{ "%.2f" | format(item.quantity * item.price_per_unit) }}), included: {{ 'true' if item.get('included_in_price') else 'false' }} },
         {% endfor %}
     ],
     subtotal: Number({{ "%.2f" | format(subtotal) }}),
@@ -383,13 +383,15 @@ function signatureHtml(style) {
 function itemsTableHtml(items, style) {
     return items.map((item, i) => {
         const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
+        const priceCell = item.included ? 'Iekļauts cenā' : item.price.toFixed(2);
+        const totalCell = item.included ? 'Iekļauts cenā' : item.total.toFixed(2);
         return `<tr style="${bg}">
             <td style="padding:8px 12px">${i + 1}</td>
             <td style="padding:8px 12px">${item.name}</td>
             <td style="padding:8px 12px">${item.unit}</td>
             <td style="padding:8px 12px;text-align:right">${item.qty.toFixed(2)}</td>
-            <td style="padding:8px 12px;text-align:right">${item.price.toFixed(2)}</td>
-            <td style="padding:8px 12px;text-align:right">${item.total.toFixed(2)}</td>
+            <td style="padding:8px 12px;text-align:right">${priceCell}</td>
+            <td style="padding:8px 12px;text-align:right">${totalCell}</td>
         </tr>`;
     }).join('');
 }
