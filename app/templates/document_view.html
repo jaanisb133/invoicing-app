@@ -309,7 +309,7 @@ const docData = {
         {% endif %}
     },
     buyer: {
-        {% if doc.doc_type == 'sell' %}
+        {% if doc.doc_type != 'buy' %}
         name: {{ client.name | tojson }},
         reg: {{ (client.reg_number or '') | tojson }},
         vat: {{ (client.vat_number or '') | tojson }},
