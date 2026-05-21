@@ -207,7 +207,7 @@ def _get_doc_data(doc_id):
 
     raw_due = doc.get("payment_due_date", "") or ""
     display_due_date = ""
-    if raw_due:
+    if raw_due and doc.get("doc_type") != "offer":
         try:
             if isinstance(raw_due, str):
                 dd = datetime.date.fromisoformat(raw_due)

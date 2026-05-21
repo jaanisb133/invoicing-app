@@ -282,7 +282,7 @@ const docData = {
     docTypeName: {{ (settings.get('buy_doc_name', 'Rēķins') if doc.doc_type == 'buy' else (settings.get('offer_doc_name', 'Piedāvājums') if doc.doc_type == 'offer' else settings.get('sell_doc_name', 'Rēķins'))) | tojson }},
     docNumber: {{ doc.doc_number | tojson }},
     displayDate: "{{ doc.doc_date.split('-')[2] }}.{{ doc.doc_date.split('-')[1] }}.{{ doc.doc_date.split('-')[0] }}",
-    displayDueDate: {% if doc.payment_due_date %}"{{ doc.payment_due_date.split('-')[2] }}.{{ doc.payment_due_date.split('-')[1] }}.{{ doc.payment_due_date.split('-')[0] }}"{% else %}""{% endif %},
+    displayDueDate: {% if doc.payment_due_date and doc.doc_type != 'offer' %}"{{ doc.payment_due_date.split('-')[2] }}.{{ doc.payment_due_date.split('-')[1] }}.{{ doc.payment_due_date.split('-')[0] }}"{% else %}""{% endif %},
     notes: {{ (doc.notes or '') | tojson }},
     hasLogo: {{ 'true' if has_logo else 'false' }},
     accentColor: {{ settings.get('accent_color', '#09090b') | tojson }},

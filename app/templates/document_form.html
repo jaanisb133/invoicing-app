@@ -125,12 +125,14 @@
                                     {% endfor %}
                                 </select>
                             </div>
+                            {% if doc_type != 'offer' %}
                             <div class="form-group">
                                 <label>Apmaksas termiņš</label>
                                 <input type="date" name="payment_due_date" id="paymentDueDate" class="form-control"
                                        value="{{ doc.payment_due_date if edit_mode and doc.payment_due_date else '' }}">
                                 <span style="font-size:12px;color:var(--text-light)" id="dueDateHint"></span>
                             </div>
+                            {% endif %}
                             <div class="form-group">
                                 <label>Piezīmes</label>
                                 <input type="text" name="notes" class="form-control" id="notesInput"
@@ -391,6 +393,7 @@ const dueDateInput = document.getElementById('paymentDueDate');
 const dueDateHint = document.getElementById('dueDateHint');
 
 function setDateValue(el, isoDate) {
+    if (!el) return;
     if (el._flatpickr) {
         el._flatpickr.setDate(isoDate, false);
     } else {
@@ -399,16 +402,16 @@ function setDateValue(el, isoDate) {
 }
 
 function calcDefaultDueDate() {
-    if (dueDateInput.value || !paymentDueDays) return;
+    if (!dueDateInput || dueDateInput.value || !paymentDueDays) return;
     const docDate = dateInput.value;
     if (!docDate) return;
     const d = new Date(docDate);
     d.setDate(d.getDate() + paymentDueDays);
     setDateValue(dueDateInput, d.toISOString().slice(0, 10));
-    dueDateHint.textContent = paymentDueDays + ' dienas no dokumenta datuma';
+    if (dueDateHint) dueDateHint.textContent = paymentDueDays + ' dienas no dokumenta datuma';
 }
 
-if (!editMode && paymentDueDays) {
+if (!editMode && paymentDueDays && dueDateInput) {
     calcDefaultDueDate();
     dateInput.addEventListener('change', function() {
         setDateValue(dueDateInput, '');
