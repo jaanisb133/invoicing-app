@@ -168,13 +168,34 @@ a, a:link, a:visited, a:hover, a:active, a *, a:hover *, a u { text-decoration: 
 .flatpickr-calendar { background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-md); border-radius: var(--radius); }
 .flatpickr-months, .flatpickr-weekdays { background: var(--bg-card); }
 .flatpickr-month, span.flatpickr-weekday { color: var(--text); background: var(--bg-card); }
+.flatpickr-current-month {
+    color: var(--text); background: var(--bg-card);
+    fill: var(--text);
+}
+.flatpickr-current-month .numInputWrapper,
+.flatpickr-current-month .numInputWrapper span,
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+    color: var(--text) !important;
+    background: var(--bg-card) !important;
+}
+.flatpickr-current-month input.cur-year {
+    color: var(--text) !important;
+    background: var(--bg-card) !important;
+    border: none !important;
+}
+.flatpickr-monthDropdown-months .flatpickr-monthDropdown-month {
+    color: var(--text);
+    background: var(--bg-card);
+}
+.flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: var(--text); }
+.flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: var(--text); }
 .flatpickr-day { color: var(--text); border-radius: 6px; }
 .flatpickr-day:hover { background: var(--bg-card-hover); border-color: var(--border); }
 .flatpickr-day.today { border-color: var(--brand); color: var(--brand); }
 .flatpickr-day.selected, .flatpickr-day.selected:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
-.flatpickr-current-month input.cur-year,
-.flatpickr-current-month .flatpickr-monthDropdown-months { color: var(--text); background: var(--bg-card); }
+.flatpickr-prev-month, .flatpickr-next-month { fill: var(--text); color: var(--text); }
 .flatpickr-prev-month svg, .flatpickr-next-month svg { fill: var(--text); }
+.flatpickr-prev-month:hover svg, .flatpickr-next-month:hover svg { fill: var(--brand); }
 .flatpickr-day.flatpickr-disabled { color: var(--text-lighter); opacity: 0.4; }
 
 /* --- Sidebar --- */
