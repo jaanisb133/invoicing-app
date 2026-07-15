@@ -246,6 +246,11 @@ def _run_migrations():
         cursor.execute("ALTER TABLE documents ADD COLUMN reverse_charge INTEGER NOT NULL DEFAULT 0")
     if "deleted_at" not in doc_cols:
         cursor.execute("ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP")
+    if "excluded_from_stats" not in doc_cols:
+        # When 1, the document is kept out of all dashboard analytics and totals
+        # (revenue, expenses, averages, top client/product, charts) while still
+        # appearing in the documents list. Useful for test/cancelled/proforma docs.
+        cursor.execute("ALTER TABLE documents ADD COLUMN excluded_from_stats INTEGER NOT NULL DEFAULT 0")
 
     # Add vat_payer column to clients if missing
     client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
@@ -914,6 +919,27 @@ def update_document_status(user_id, doc_id, status):
     conn.close()
 
 
+def set_document_excluded(user_id, doc_id, excluded):
+    """Mark a document as excluded from (or included in) dashboard analytics
+    and totals. Returns the resulting flag (1/0), or None if the doc is not
+    found / not owned by the user."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT id FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return None
+    flag = 1 if excluded else 0
+    conn.execute(
+        "UPDATE documents SET excluded_from_stats = ? WHERE id = ? AND user_id = ?",
+        (flag, doc_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return flag
+
+
 def delete_document(user_id, doc_id):
     """Soft-delete a document (move to trash). Permanently deleted after 7 days."""
     conn = get_connection()
@@ -1215,7 +1241,7 @@ def get_dashboard_stats(user_id: int) -> dict:
 
     # Invoices in last 7 days
     row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_date >= ?",
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND excluded_from_stats = 0 AND doc_date >= ?",
         (user_id, week_ago)
     ).fetchone()
     docs_last_7_days = row["cnt"] if row else 0
@@ -1225,7 +1251,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell'
     """, (user_id,)).fetchone()
     total_revenue = row["total"] if row else 0
 
@@ -1234,7 +1260,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.doc_date >= ?
     """, (user_id, week_ago)).fetchone()
     revenue_last_7_days = row["total"] if row else 0
 
@@ -1243,7 +1269,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         SELECT c.name, COUNT(*) as cnt
         FROM documents d
         JOIN clients c ON d.client_id = c.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0
         GROUP BY d.client_id
         ORDER BY cnt DESC
         LIMIT 1
@@ -1256,7 +1282,7 @@ def get_dashboard_stats(user_id: int) -> dict:
         FROM document_items di
         JOIN documents d ON di.document_id = d.id
         JOIN products p ON di.product_id = p.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell'
         GROUP BY di.product_id
         ORDER BY total_qty DESC
         LIMIT 1
@@ -1265,7 +1291,7 @@ def get_dashboard_stats(user_id: int) -> dict:
 
     # Total documents
     row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL", (user_id,)
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND excluded_from_stats = 0", (user_id,)
     ).fetchone()
     total_docs = row["cnt"] if row else 0
 
@@ -1369,7 +1395,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
             COUNT(DISTINCT d.id) as doc_count
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, date_from, date_to)).fetchone()
     total_revenue = row["revenue"] if row else 0
     total_expenses = row["expenses"] if row else 0
@@ -1382,7 +1408,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
             COUNT(DISTINCT d.id) as doc_count
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, prev_from_str, prev_to_str)).fetchone()
     prev_revenue = prev_row["revenue"] if prev_row else 0
     prev_doc_count = prev_row["doc_count"] if prev_row else 0
@@ -1393,7 +1419,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
             SELECT SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) as inv_total
             FROM documents d
             JOIN document_items di ON di.document_id = d.id
-            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
             GROUP BY d.id
         )
     """, (user_id, date_from, date_to)).fetchone()
@@ -1410,7 +1436,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
                    SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) as inv_total
             FROM documents d
             JOIN document_items di ON di.document_id = d.id
-            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.status = 'issued'
+            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.status = 'issued'
             GROUP BY d.id
         )
     """, (today_str, today_str, user_id)).fetchone()
@@ -1425,7 +1451,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
         JOIN clients c ON d.client_id = c.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
         GROUP BY d.client_id
         ORDER BY revenue DESC
         LIMIT 1
@@ -1438,7 +1464,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
                COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as daily_total
         FROM documents d
         JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
         GROUP BY d.doc_date
         ORDER BY d.doc_date
     """, (user_id, date_from, date_to)).fetchall()

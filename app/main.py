@@ -2571,6 +2571,21 @@ async def toggle_document_status(request: Request, doc_id: int):
     return RedirectResponse(f"/documents/{doc_id}", status_code=303)
 
 
+@app.post("/documents/{doc_id}/toggle-stats")
+async def toggle_document_stats(request: Request, doc_id: int):
+    """Toggle whether a document is counted in dashboard analytics and totals."""
+    user = request.state.user
+    doc, _ = db.get_document(doc_id)
+    if not doc or doc.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404)
+    new_excluded = 0 if doc.get("excluded_from_stats", 0) else 1
+    db.set_document_excluded(user["id"], doc_id, new_excluded)
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept:
+        return JSONResponse({"excluded_from_stats": new_excluded})
+    return RedirectResponse(f"/documents/{doc_id}", status_code=303)
+
+
 # =============================================================================
 # Stock (per-user)
 # =============================================================================
@@ -3479,6 +3494,7 @@ async def api_documents(request: Request, doc_type: str = "", client_id: str = "
             "doc_date": d["doc_date"],
             "total_with_vat": round(d.get("total_with_vat") or 0, 2),
             "status": d.get("status", "issued") if status_tracking else None,
+            "excluded_from_stats": d.get("excluded_from_stats", 0),
         })
     return JSONResponse(rows)
 

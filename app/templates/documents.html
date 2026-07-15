@@ -157,7 +157,7 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                     {% if documents %}
                         {% for doc in documents %}
                         <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
-                            <td data-label="Nr." class="mobile-card-title" style="font-weight:600">{{ doc.doc_number }}</td>
+                            <td data-label="Nr." class="mobile-card-title" style="font-weight:600">{{ doc.doc_number }}{% if doc.excluded_from_stats %} <span class="pill pill-neutral" style="font-weight:600" title="Netiek iekļauts statistikā">∅</span>{% endif %}</td>
                             <td data-label="Tips">
                                 {% if doc.doc_type == 'buy' %}
                                 <span class="pill pill-warning">Iegāde</span>
@@ -466,7 +466,7 @@ function renderDocs(docs) {
             + '<span>' + escapeHtml(clientName) + '</span>'
             + '</span>';
         html += '<tr data-href="/documents/' + d.id + '" class="clickable-row">'
-            + '<td data-label="Nr." class="mobile-card-title" style="font-weight:600">' + d.doc_number + '</td>'
+            + '<td data-label="Nr." class="mobile-card-title" style="font-weight:600">' + escapeHtml(d.doc_number) + (d.excluded_from_stats ? ' <span class="pill pill-neutral" style="font-weight:600" title="Netiek iekļauts statistikā">&#8709;</span>' : '') + '</td>'
             + '<td data-label="Tips">' + typePill + '</td>'
             + '<td data-label="Klients" class="mobile-card-meta">' + clientHtml + '</td>'
             + '<td data-label="Datums" class="mobile-card-meta">' + fmtDate(d.doc_date) + '</td>'

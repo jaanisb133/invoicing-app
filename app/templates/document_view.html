@@ -74,6 +74,9 @@ a.btn-download-main:active {
             <span class="pill pill-brand">Izrakstīts</span>
             {% endif %}
         {% endif %}
+        {% if doc.excluded_from_stats and doc.doc_type != 'offer' %}
+        <span class="pill pill-neutral" title="Šis dokuments netiek iekļauts statistikā un kopsummās">Neskaita statistikā</span>
+        {% endif %}
     </div>
     <a href="{% if doc.doc_type == 'offer' %}/offers{% else %}/documents{% endif %}" class="btn btn-outline">← Atpakaļ</a>
 </div>
@@ -181,6 +184,22 @@ a.btn-download-main:active {
                     <button type="submit" class="view-menu-item view-menu-status">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                         Atzīmēt kā apmaksātu
+                    </button>
+                    {% endif %}
+                </form>
+                {% endif %}
+                {% if doc.doc_type != 'offer' %}
+                <div class="view-menu-divider"></div>
+                <form method="post" action="/documents/{{ doc.id }}/toggle-stats" style="margin:0">
+                    {% if doc.excluded_from_stats %}
+                    <button type="submit" class="view-menu-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        Iekļaut statistikā
+                    </button>
+                    {% else %}
+                    <button type="submit" class="view-menu-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                        Izslēgt no statistikas
                     </button>
                     {% endif %}
                 </form>
