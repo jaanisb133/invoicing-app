@@ -28,12 +28,17 @@
         align-items: flex-start;
         justify-content: center;
         padding-top: 80px;
-        background: rgba(255,255,255,0.85);
+        /* Dark is the default theme — the app only ever sets
+           data-theme="light" — so the dark value has to be the base one.
+           This used to be the other way round, which left a white sheet
+           over the page for everyone not using light mode. */
+        background: rgba(7, 8, 11, 0.88);
         backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
         border-radius: var(--radius-lg);
     }
-    [data-theme="dark"] .upgrade-gate-overlay {
-        background: rgba(30,30,30,0.88);
+    [data-theme="light"] .upgrade-gate-overlay {
+        background: rgba(247, 248, 251, 0.88);
     }
     .upgrade-gate-content {
         text-align: center;
