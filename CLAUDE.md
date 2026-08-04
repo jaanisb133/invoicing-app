@@ -109,10 +109,41 @@ the app to feel **"alive" and "cool"**, not just minimal-but-empty.
   `prefers-reduced-motion`.
 - ✅ **Bottom nav on mobile** and **PWA manifest** — already shipped earlier.
 
+- ✅ **Chart granularity** — Dienas / Nedēļas / Mēneši toggle on the revenue chart.
+  `buildChartSeries()` in `dashboard.html` buckets the sparse per-day API data into
+  gap-free day/week/month series (weeks start Monday, buckets clip to the range so
+  totals are identical at every granularity). `_chartGrain` is 'auto' until the user
+  picks one: day ≤ 62 days, week ≤ 366, month beyond. Choice persists in localStorage.
+- ✅ **Offer → invoice** — "Izveidot rēķinu" on an offer opens a prefilled invoice
+  form (client, items, VAT, notes, `included_in_price` flags). Nothing is saved until
+  submit, and the offer is never modified. `documents.converted_from_offer_id` records
+  the link: the offer shows which invoice it produced, the invoice links back, the
+  offers list badges converted offers, and a second conversion asks for confirmation.
+  A forged `from_offer` pointing at another user's document is ignored.
+
 ### Still open
-1. **Hero stat treatment** — make the primary revenue card more visually dominant on mobile (larger type, accent for change %)
-2. **List redesign on mobile** — swipe actions for mark-paid/delete; sticky filter bar that collapses on scroll (FAB already exists)
-3. **Dashboard "alive" feel** — upcoming due dates highlighted, "X days since last invoice" prompts (recent activity feed exists)
+1. **Offer accepted/rejected state** — offers have no lifecycle. "Has an invoice" is
+   the only signal of a won deal; there is no way to mark one rejected or expired,
+   so the list can't be triaged. Biggest remaining gap in the offers feature.
+2. **Hero stat treatment** — make the primary revenue card more visually dominant on mobile
+3. **List redesign on mobile** — swipe actions for mark-paid/delete; sticky filter bar (FAB already exists)
+4. **Dashboard "alive" feel** — upcoming due dates highlighted, "X days since last invoice" prompts
+5. **Self-host the footer payment logos** — `_public_footer.html` hotlinks all Visa /
+   Mastercard / Google Pay / Apple Pay / EveryPay / bank logos from
+   `vnmedia.lv/wp-content/uploads/2026/03/...`. A WordPress media reshuffle silently
+   breaks the card logos SEB compliance requires, on every public page.
+
+## Gotchas worth remembering
+- **`dashboard.html` is one ~490-line `<script>` block.** An uncaught error anywhere
+  in it kills every feature below — this already happened once when Chart.js failed to
+  load and took the date presets, AJAX refresh and sparklines with it. Chart and
+  flatpickr init are now guarded; keep new top-level code defensive.
+- **CSS version lives in one place:** `CSS_VERSION` in `main.py`, exposed as the
+  `css_version` Jinja global. Bump it on every CSS change. Do not hardcode `?v=N` in a
+  template — nine standalone templates used to and had drifted to v18 while base.html
+  was on v21, so landing/login/register/pricing served visitors a stale stylesheet.
+- **Cards that aren't range-scoped must say so.** "Neapmaksāti (kopā)" is all-time
+  outstanding by design, sitting in a row of range-scoped stats.
 11. **Document view page** — likely needs mobile work; PDF preview probably overflows
 12. **Settings page** — large form, mobile UX likely needs grouping/accordion
 13. **Invoice templates preview** — the live preview on document_form.html is desktop-only (`@media max-width: 1100px` stacks it)

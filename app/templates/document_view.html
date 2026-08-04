@@ -94,6 +94,23 @@ a.btn-download-main:active {
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
+    {% if offer_invoices %}
+    <div class="alert alert-info">
+        {% if offer_invoices | length == 1 %}
+        Šim piedāvājumam ir izveidots rēķins
+        <a href="/documents/{{ offer_invoices[0].id }}">{{ offer_invoices[0].doc_number }}</a>.
+        {% else %}
+        Šim piedāvājumam ir izveidoti {{ offer_invoices | length }} rēķini:
+        {% for inv in offer_invoices %}<a href="/documents/{{ inv.id }}">{{ inv.doc_number }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
+        {% endif %}
+    </div>
+    {% endif %}
+    {% if source_offer %}
+    <div class="alert alert-info">
+        Izveidots no piedāvājuma
+        <a href="/documents/{{ source_offer.id }}">{{ source_offer.doc_number }}</a>.
+    </div>
+    {% endif %}
 
     <div class="doc-actions-bar">
         <div class="template-tabs">
@@ -105,6 +122,16 @@ a.btn-download-main:active {
             </button>
             {% endfor %}
         </div>
+
+        {% if doc.doc_type == 'offer' %}
+        <a href="/documents/new?from_offer={{ doc.id }}"
+           class="btn {% if offer_invoices %}btn-outline{% else %}btn-primary{% endif %}"
+           {% if offer_invoices %}onclick="return confirm('Šim piedāvājumam jau ir izveidots rēķins {{ offer_invoices[0].doc_number }}. Izveidot vēl vienu?')"{% endif %}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            Izveidot rēķinu
+        </a>
+        {% endif %}
 
         <!-- Download split button with dropdown -->
         <div class="view-menu-wrapper" id="downloadWrapper">

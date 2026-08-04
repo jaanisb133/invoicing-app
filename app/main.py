@@ -47,6 +47,14 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
+# Cache-busting version for style.css. Bump this on every CSS change.
+# Exposed as a Jinja global so the standalone templates (landing, login,
+# pricing, ...) stay in step with base.html — they used to carry their own
+# hardcoded ?v= and silently drifted behind, serving visitors a stale
+# stylesheet on exactly the pages new users land on.
+CSS_VERSION = "22"
+templates.env.globals["css_version"] = CSS_VERSION
+
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
@@ -318,6 +326,24 @@ def _base_context(request):
         "needs_setup": not db.get_user_setting(user["id"], "company_name"),
         "offline_mode": OFFLINE_MODE,
     }
+
+
+def _with_document_client(clients, uid, doc):
+    """Make sure a document's own client is in the picker list.
+
+    get_all_clients() hides deleted and one-time clients, so a document
+    attached to one would render with an empty client box even though the
+    client is still on the document. The stored client_id is untouched either
+    way, but showing a blank field on a document that has a client invites the
+    user to pick the wrong one."""
+    if not doc or not doc.get("client_id"):
+        return clients
+    if any(c["id"] == doc["client_id"] for c in clients):
+        return clients
+    own = db.get_client(doc["client_id"])
+    if own and own.get("user_id") == uid:
+        return list(clients) + [own]
+    return clients
 
 
 def _check_tier_feature(user, feature_key):
@@ -2131,17 +2157,30 @@ async def offers_page(request: Request, client_id: str = "",
         "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "filters": {"client_id": client_id,
                     "date_from": date_from, "date_to": date_to},
+        "converted_offer_ids": db.get_converted_offer_ids(user["id"]),
         "page": "offers",
     })
     return templates.TemplateResponse("offers.html", ctx)
 
 
 @app.get("/documents/new", response_class=HTMLResponse)
-async def new_document_page(request: Request, doc_type: str = "sell"):
+async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0):
     ctx = _base_context(request)
     user = request.state.user
     uid = user["id"]
-    clients = db.get_all_clients(uid)
+
+    # Converting an accepted offer into an invoice: load the offer and hand its
+    # client, items and notes to the form as starting values. Nothing is saved
+    # until the user submits, so they can still adjust quantities or prices.
+    prefill_doc, prefill_items = None, []
+    if from_offer:
+        offer, offer_items = db.get_document(from_offer)
+        if not offer or offer.get("user_id") != uid or offer.get("doc_type") != "offer":
+            raise HTTPException(status_code=404, detail="Piedāvājums nav atrasts")
+        prefill_doc, prefill_items = offer, offer_items
+        doc_type = "sell"
+
+    clients = _with_document_client(db.get_all_clients(uid), uid, prefill_doc)
     products = db.get_all_products(uid)
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
@@ -2167,6 +2206,11 @@ async def new_document_page(request: Request, doc_type: str = "sell"):
         "templates": TEMPLATES,
         "today": datetime.date.today().isoformat(),
         "page": "new_document" if doc_type != "offer" else "new_offer",
+        "doc": prefill_doc,
+        "edit_items": prefill_items,
+        "prefill": prefill_doc is not None,
+        "from_offer": prefill_doc["id"] if prefill_doc else 0,
+        "from_offer_number": prefill_doc["doc_number"] if prefill_doc else "",
     })
     return templates.TemplateResponse("document_form.html", ctx)
 
@@ -2228,10 +2272,20 @@ async def create_document(request: Request):
     if not items:
         return RedirectResponse(f"/documents/new?doc_type={doc_type}&error=no_items", status_code=303)
 
+    # Link back to the offer this invoice was built from, but only if that
+    # offer really belongs to the user — the id arrives from a form field.
+    from_offer_raw = (form.get("from_offer") or "").strip()
+    converted_from = None
+    if from_offer_raw.isdigit() and doc_type == "sell":
+        src, _ = db.get_document(int(from_offer_raw))
+        if src and src.get("user_id") == user["id"] and src.get("doc_type") == "offer":
+            converted_from = src["id"]
+
     try:
         doc_id, doc_number = db.create_document(
             user["id"], doc_type, client_id, doc_date, items, vat_rate, notes,
             payment_due_date=payment_due_date, reverse_charge=reverse_charge,
+            converted_from_offer_id=converted_from,
         )
     except ValueError as e:
         logger.warning("Document creation error: %s", e)
@@ -2260,7 +2314,7 @@ async def edit_document_page(request: Request, doc_id: int):
     doc, items = db.get_document(doc_id)
     if not doc or doc.get("user_id") != uid:
         raise HTTPException(status_code=404, detail="Dokuments nav atrasts")
-    clients = db.get_all_clients(uid)
+    clients = _with_document_client(db.get_all_clients(uid), uid, doc)
     products = db.get_all_products(uid)
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
@@ -2284,6 +2338,7 @@ async def edit_document_page(request: Request, doc_id: int):
         "today": datetime.date.today().isoformat(),
         "page": "offers" if doc["doc_type"] == "offer" else "documents",
         "edit_mode": True,
+        "prefill": True,
         "doc": doc,
         "edit_items": items,
     })
@@ -2389,6 +2444,11 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "recurring_enabled": _check_tier_feature(user, "recurring"),
         "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "page": "offers" if doc["doc_type"] == "offer" else "documents",
+        # An offer shows the invoices it produced; an invoice shows its source offer.
+        "offer_invoices": (db.get_invoices_from_offer(user["id"], doc_id)
+                           if doc["doc_type"] == "offer" else []),
+        "source_offer": (db.get_document(doc["converted_from_offer_id"])[0]
+                         if doc.get("converted_from_offer_id") else None),
     })
     return templates.TemplateResponse("document_view.html", ctx)
 

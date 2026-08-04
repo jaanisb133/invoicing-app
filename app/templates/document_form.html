@@ -45,6 +45,10 @@
     <div class="btn-group">
         {% if edit_mode %}
         <a href="/documents/{{ doc.id }}" class="btn btn-outline">Atcelt</a>
+        {% elif from_offer %}
+        {# Converting an offer: the type is already decided, so the
+           Iegāde/Pārdošana switcher would only be a way to lose the data. #}
+        <a href="/documents/{{ from_offer }}" class="btn btn-outline">Atcelt</a>
         {% elif doc_type == 'offer' %}
         <a href="/offers" class="btn btn-outline">Atcelt</a>
         {% else %}
@@ -62,10 +66,20 @@
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
+    {% if from_offer %}
+    <div class="alert alert-info" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Dati pārkopēti no piedāvājuma
+            <a href="/documents/{{ from_offer }}"><strong>{{ from_offer_number }}</strong></a>.
+            Pārbaudiet tos un izveidojiet rēķinu — piedāvājums paliks neizmainīts.</span>
+    </div>
+    {% endif %}
 
     <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm"
           onsubmit="if(!document.getElementById('clientSelect').value){document.getElementById('clientSearchInput').focus();return false;}">
         <input type="hidden" name="doc_type" value="{{ doc_type }}">
+        {% if from_offer %}<input type="hidden" name="from_offer" value="{{ from_offer }}">{% endif %}
 
         <div class="doc-editor-layout">
             <!-- LEFT COLUMN: Form -->
@@ -78,7 +92,7 @@
                                 <label>Klients *</label>
                                 <div style="display:flex;gap:8px">
                                     <div style="flex:1;position:relative">
-                                        <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if edit_mode else '' }}" required>
+                                        <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if prefill else '' }}" required>
                                         <input type="text" id="clientSearchInput" class="form-control" placeholder="Meklēt klientu..."
                                                autocomplete="off" onfocus="showFormClientDropdown()" oninput="filterFormClients()">
                                         <div id="formClientDropdown" class="search-dropdown" style="display:none">
@@ -100,10 +114,10 @@
                             <div class="form-group" id="vatRateGroup">
                                 <label>PVN likme (%)</label>
                                 <input type="number" name="vat_rate" id="vatRate" class="form-control"
-                                       value="{{ doc.vat_rate if edit_mode else settings.get('default_vat_rate', '21') }}" step="0.1" min="0" onchange="updatePreview()" oninput="updatePreview()">
+                                       value="{{ doc.vat_rate if prefill else settings.get('default_vat_rate', '21') }}" step="0.1" min="0" onchange="updatePreview()" oninput="updatePreview()">
                                 <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400;font-size:13px;cursor:pointer">
                                     <input type="checkbox" name="reverse_charge" id="reverseCharge" value="1"
-                                           {% if edit_mode and doc.reverse_charge %}checked{% endif %}
+                                           {% if prefill and doc.reverse_charge %}checked{% endif %}
                                            onchange="toggleReverseCharge()">
                                     Reverse Charge
                                 </label>
@@ -136,7 +150,7 @@
                             <div class="form-group">
                                 <label>Piezīmes</label>
                                 <input type="text" name="notes" class="form-control" id="notesInput"
-                                       value="{{ doc.notes if edit_mode and doc.notes else '' }}" oninput="updatePreview()">
+                                       value="{{ doc.notes if prefill and doc.notes else '' }}" oninput="updatePreview()">
                             </div>
                         </div>
                     </div>
@@ -394,7 +408,7 @@ function toggleReverseCharge() {
 if (document.getElementById('reverseCharge') && document.getElementById('reverseCharge').checked) {
     document.getElementById('vatRate').disabled = true;
 }
-const editItems = {{ edit_items | tojson if edit_mode else '[]' }};
+const editItems = {{ edit_items | tojson if prefill else '[]' }};
 const editDocNumber = "{{ doc.doc_number if edit_mode else '' }}";
 let itemIndex = 0;
 
@@ -1234,7 +1248,7 @@ async function quickAddProduct() {
 }
 
 // Initialize
-if (editMode && editItems.length > 0) {
+if (editItems.length > 0) {
     editItems.forEach(item => {
         addItemRow(item.product_id, item.unit, item.quantity, item.price_per_unit, item.product_name, item.included_in_price);
     });

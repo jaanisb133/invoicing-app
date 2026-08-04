@@ -99,6 +99,9 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                         <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
                             <td>
                                 <span class="mobile-card-title">{{ doc.doc_number }}</span>
+                                {% if doc.id in converted_offer_ids %}
+                                <span class="pill pill-success" style="margin-left:6px">Rēķins izveidots</span>
+                                {% endif %}
                             </td>
                             <td>
                                 <span class="mobile-card-meta">{{ doc.client_name }}</span>

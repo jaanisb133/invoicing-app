@@ -148,6 +148,13 @@
     transition: all var(--transition);
 }
 .dash-chart-switch button.active { background: var(--brand); color: #fff; }
+.dash-chart-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.dash-chart-grain button { font-size: 12px; font-weight: 500; padding: 5px 10px; letter-spacing: -0.1px; }
+@media (max-width: 560px) {
+    .dash-chart-header { flex-wrap: wrap; gap: 10px; }
+    .dash-chart-controls { width: 100%; justify-content: space-between; }
+    .dash-chart-grain button { padding: 5px 8px; font-size: 11.5px; }
+}
 
 {# Compute how many insight cards will render: top-client always; revexp only with stock; overdue only with status tracking #}
 {% set insight_cols = 1 + (1 if stock_enabled else 0) + (1 if settings.get('status_tracking', '0') == '1' else 0) %}
@@ -280,7 +287,9 @@
         {% if settings.get('status_tracking', '0') == '1' %}
         <a href="/documents?status=issued" class="dash-stat">
             <div class="dash-stat-top">
-                <div class="dash-stat-label">Neapmaksāti</div>
+                {# All-time outstanding, unlike its range-scoped neighbours —
+                   say so, or the row reads as a contradiction. #}
+                <div class="dash-stat-label" title="Visi neapmaksātie rēķini, neatkarīgi no izvēlētā perioda">Neapmaksāti (kopā)</div>
                 <span class="icon-square tint-blue">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                 </span>
@@ -332,14 +341,21 @@
     <!-- Revenue Chart -->
     <div class="card dash-chart-card">
         <div class="dash-chart-header">
-            <h3>Apgrozījums pa dienām</h3>
-            <div class="dash-chart-switch">
-                <button type="button" id="chartTypeBar" onclick="switchChartType('bar')" class="active" title="Stabiņu grafiks">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
-                </button>
-                <button type="button" id="chartTypeLine" onclick="switchChartType('line')" title="Līniju grafiks">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 8 13 13 8 8 2 14"/></svg>
-                </button>
+            <h3 id="chartTitle">Apgrozījums pa dienām</h3>
+            <div class="dash-chart-controls">
+                <div class="dash-chart-switch dash-chart-grain">
+                    <button type="button" id="chartGrainDay" onclick="switchChartGrain('day')" title="Pa dienām">Dienas</button>
+                    <button type="button" id="chartGrainWeek" onclick="switchChartGrain('week')" title="Pa nedēļām">Nedēļas</button>
+                    <button type="button" id="chartGrainMonth" onclick="switchChartGrain('month')" title="Pa mēnešiem">Mēneši</button>
+                </div>
+                <div class="dash-chart-switch">
+                    <button type="button" id="chartTypeBar" onclick="switchChartType('bar')" class="active" title="Stabiņu grafiks">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
+                    </button>
+                    <button type="button" id="chartTypeLine" onclick="switchChartType('line')" title="Līniju grafiks">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 8 13 13 8 8 2 14"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
         <div class="card-body" style="padding:8px 20px 16px">
@@ -748,6 +764,97 @@ var dashRangeStats = {{ range_stats_json | safe }};
 
 // --- Revenue Chart ---
 var _chartType = localStorage.getItem('dashChartType') || 'line';
+// 'auto' picks a granularity from the range width; an explicit choice sticks.
+var _chartGrain = localStorage.getItem('dashChartGrain') || 'auto';
+
+var LV_MONTHS_SHORT = ['jan.', 'feb.', 'mar.', 'apr.', 'mai.', 'jūn.',
+                       'jūl.', 'aug.', 'sep.', 'okt.', 'nov.', 'dec.'];
+
+function _pad2(n) { return n < 10 ? '0' + n : '' + n; }
+function _isoOf(d) { return d.getFullYear() + '-' + _pad2(d.getMonth() + 1) + '-' + _pad2(d.getDate()); }
+function _parseISO(s) { var p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+
+function _chartRange() {
+    var f = document.getElementById('dashDateFrom');
+    var t = document.getElementById('dashDateTo');
+    return { from: f && f.value, to: t && t.value };
+}
+
+function effectiveGrain(fromISO, toISO) {
+    if (_chartGrain !== 'auto') return _chartGrain;
+    if (!fromISO || !toISO) return 'day';
+    var days = Math.round((_parseISO(toISO) - _parseISO(fromISO)) / 86400000) + 1;
+    if (days <= 62) return 'day';
+    if (days <= 366) return 'week';
+    return 'month';
+}
+
+// Turns the sparse per-day figures from the API into a gap-free series at the
+// requested granularity. Days without documents become 0 rather than being
+// skipped — otherwise the line jumps straight between two distant days and
+// reads as if there were revenue in between.
+function buildChartSeries(daily, fromISO, toISO, grain) {
+    var byDay = {};
+    (daily || []).forEach(function(d) {
+        byDay[d.date] = (byDay[d.date] || 0) + Number(d.total || 0);
+    });
+    if (!fromISO || !toISO) return { labels: [], values: [] };
+
+    var start = _parseISO(fromISO), end = _parseISO(toISO);
+    var labels = [], values = [], d;
+    if (end < start) return { labels: [], values: [] };
+
+    function sumBetween(a, b) {
+        var total = 0;
+        for (var x = new Date(a); x <= b; x.setDate(x.getDate() + 1)) {
+            if (x >= start && x <= end) total += byDay[_isoOf(x)] || 0;
+        }
+        return Math.round(total * 100) / 100;
+    }
+
+    if (grain === 'week') {
+        var cur = new Date(start);
+        cur.setDate(cur.getDate() - ((cur.getDay() + 6) % 7));  // back to Monday
+        while (cur <= end) {
+            var wEnd = new Date(cur);
+            wEnd.setDate(wEnd.getDate() + 6);
+            labels.push(_pad2(cur.getDate()) + '/' + _pad2(cur.getMonth() + 1));
+            values.push(sumBetween(cur, wEnd));
+            cur.setDate(cur.getDate() + 7);
+        }
+    } else if (grain === 'month') {
+        var multiYear = start.getFullYear() !== end.getFullYear();
+        var m = new Date(start.getFullYear(), start.getMonth(), 1);
+        while (m <= end) {
+            var mEnd = new Date(m.getFullYear(), m.getMonth() + 1, 0);
+            labels.push(LV_MONTHS_SHORT[m.getMonth()]
+                + (multiYear ? " '" + String(m.getFullYear()).slice(2) : ''));
+            values.push(sumBetween(m, mEnd));
+            m = new Date(m.getFullYear(), m.getMonth() + 1, 1);
+        }
+    } else {
+        for (d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            labels.push(_pad2(d.getDate()) + '/' + _pad2(d.getMonth() + 1));
+            values.push(byDay[_isoOf(d)] || 0);
+        }
+    }
+    return { labels: labels, values: values };
+}
+
+function _grainTitle(grain) {
+    return grain === 'week' ? 'Apgrozījums pa nedēļām'
+         : grain === 'month' ? 'Apgrozījums pa mēnešiem'
+         : 'Apgrozījums pa dienām';
+}
+
+function _updateGrainButtons(grain) {
+    ['day', 'week', 'month'].forEach(function(g) {
+        var el = document.getElementById('chartGrain' + g.charAt(0).toUpperCase() + g.slice(1));
+        if (el) el.classList.toggle('active', g === grain);
+    });
+    var title = document.getElementById('chartTitle');
+    if (title) title.textContent = _grainTitle(grain);
+}
 (function() {
     var ctx = document.getElementById('revenueChart');
     if (!ctx) return;
@@ -760,9 +867,15 @@ var _chartType = localStorage.getItem('dashChartType') || 'line';
             host.innerHTML = '<div class="empty-state" style="padding:80px 20px">'
                 + 'Grafiks nav pieejams bezsaistē.</div>';
         }
+        // No chart to re-draw, so the granularity switch has nothing to act on.
+        var controls = document.querySelector('.dash-chart-grain');
+        if (controls) controls.style.display = 'none';
         return;
     }
-    var data = dashRangeStats.daily_revenue || [];
+    var _range = _chartRange();
+    var _grain = effectiveGrain(_range.from, _range.to);
+    var series = buildChartSeries(dashRangeStats.daily_revenue, _range.from, _range.to, _grain);
+    window._chartSeries = series;
     var isLight = document.documentElement.getAttribute('data-theme') === 'light';
     var gridColor = isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.06)';
     var textColor = isLight ? '#64748B' : '#9CA3AF';
@@ -774,7 +887,7 @@ var _chartType = localStorage.getItem('dashChartType') || 'line';
     function makeDataset(type) {
         var ds = {
             label: 'Apgrozījums (EUR)',
-            data: data.map(function(d) { return d.total; }),
+            data: (window._chartSeries || { values: [] }).values.slice(),
         };
         if (type === 'line') {
             // Gradient area fill
@@ -807,10 +920,7 @@ var _chartType = localStorage.getItem('dashChartType') || 'line';
     window._revenueChart = new Chart(ctx, {
         type: _chartType,
         data: {
-            labels: data.map(function(d) {
-                var parts = d.date.split('-');
-                return parts[2] + '/' + parts[1];
-            }),
+            labels: series.labels.slice(),
             datasets: [makeDataset(_chartType)]
         },
         options: {
@@ -849,6 +959,7 @@ var _chartType = localStorage.getItem('dashChartType') || 'line';
 
     // Set initial button state
     _updateChartButtons(_chartType);
+    _updateGrainButtons(_grain);
 })();
 
 function _updateChartButtons(type) {
@@ -868,6 +979,29 @@ function switchChartType(type) {
     chart.data.datasets = [window._makeChartDataset(type)];
     chart.update();
     _updateChartButtons(type);
+}
+
+// Rebuilds the series from whatever the API last returned. Called when the
+// granularity changes and after every date-range refresh.
+function redrawChart(daily) {
+    var range = _chartRange();
+    var grain = effectiveGrain(range.from, range.to);
+    window._chartSeries = buildChartSeries(
+        daily || (window.dashRangeStats && dashRangeStats.daily_revenue) || [],
+        range.from, range.to, grain);
+    _updateGrainButtons(grain);
+    var chart = window._revenueChart;
+    if (!chart) return;
+    chart.data.labels = window._chartSeries.labels.slice();
+    chart.data.datasets = [window._makeChartDataset(_chartType)];
+    chart.config.type = _chartType;
+    chart.update();
+}
+
+function switchChartGrain(grain) {
+    _chartGrain = grain;
+    localStorage.setItem('dashChartGrain', grain);
+    redrawChart();
 }
 
 // --- Date Range Presets & Dynamic Update ---
@@ -1065,17 +1199,8 @@ function switchChartType(type) {
                         + '<div style="font-size:12px;color:var(--text-light);margin-top:4px">Nav kavētu rēķinu</div>';
                 }
 
-                // Update chart
-                var chart = window._revenueChart;
-                if (chart) {
-                    var cdata = s.daily_revenue || [];
-                    chart.data.labels = cdata.map(function(d) { var p = d.date.split('-'); return p[2] + '/' + p[1]; });
-                    var ds = window._makeChartDataset(_chartType);
-                    ds.data = cdata.map(function(d) { return d.total; });
-                    chart.data.datasets = [ds];
-                    chart.config.type = _chartType;
-                    chart.update();
-                }
+                // Update chart at whatever granularity is in effect
+                redrawChart(s.daily_revenue || []);
                 if (chartCard) chartCard.classList.remove('is-loading');
             })
             .catch(function(e) {

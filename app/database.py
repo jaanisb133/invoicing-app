@@ -251,6 +251,10 @@ def _run_migrations():
         # (revenue, expenses, averages, top client/product, charts) while still
         # appearing in the documents list. Useful for test/cancelled/proforma docs.
         cursor.execute("ALTER TABLE documents ADD COLUMN excluded_from_stats INTEGER NOT NULL DEFAULT 0")
+    if "converted_from_offer_id" not in doc_cols:
+        # Set on an invoice created via "Izveidot rēķinu" on an offer. Lets the
+        # offer show which invoice it produced, so it is not billed twice.
+        cursor.execute("ALTER TABLE documents ADD COLUMN converted_from_offer_id INTEGER")
 
     # Add vat_payer column to clients if missing
     client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
@@ -615,6 +619,32 @@ def get_client_by_reg_number(user_id, reg_number):
     return dict(row) if row else None
 
 
+def get_invoices_from_offer(user_id, offer_id):
+    """Invoices created from an offer via "Izveidot rēķinu", newest first.
+    Used to show on the offer that it has already been billed."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT id, doc_number, doc_date, deleted_at FROM documents
+           WHERE user_id = ? AND converted_from_offer_id = ? AND deleted_at IS NULL
+           ORDER BY id DESC""",
+        (user_id, offer_id)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_converted_offer_ids(user_id):
+    """Ids of offers that already have an invoice, for badging the offers list."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT DISTINCT converted_from_offer_id AS oid FROM documents
+           WHERE user_id = ? AND converted_from_offer_id IS NOT NULL AND deleted_at IS NULL""",
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    return {r["oid"] for r in rows}
+
+
 def get_client(client_id):
     conn = get_connection()
     row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
@@ -736,7 +766,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
 
-def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id (int or None), description (str, used
@@ -763,11 +793,12 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
 
         cursor = conn.execute(
-            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge, converted_from_offer_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
-             payment_due_date or None, vat_rate, notes, int(reverse_charge))
+             payment_due_date or None, vat_rate, notes, int(reverse_charge),
+             converted_from_offer_id or None)
         )
         doc_id = cursor.lastrowid
 
