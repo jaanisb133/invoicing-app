@@ -2376,3 +2376,50 @@ a.dash-stat:hover { transform: translateY(-1px); }
     * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* --- Offer status switch (Piedāvājumi) --------------------------------- */
+.offer-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.offer-status-label {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-light);
+}
+.offer-status-switch {
+    display: inline-flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 2px;
+}
+.offer-status-btn {
+    padding: 6px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-light);
+    font-size: 12.5px;
+    font-weight: 500;
+    font-family: inherit;
+    letter-spacing: -0.1px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition), color var(--transition);
+}
+.offer-status-btn:hover { background: var(--bg-card-hover); color: var(--text); }
+.offer-status-btn.active { color: var(--text); background: var(--bg-card); font-weight: 600; }
+.offer-status-btn.active.is-accepted { background: var(--success-soft); color: var(--success); }
+.offer-status-btn.active.is-rejected { background: var(--danger-soft); color: var(--danger); }
+.offer-status-btn:focus-visible { outline: none; box-shadow: var(--brand-glow); }
+@media (max-width: 560px) {
+    .offer-status-bar { gap: 8px; }
+    .offer-status-switch { width: 100%; }
+    .offer-status-switch form { flex: 1; }
+    .offer-status-btn { width: 100%; padding: 8px 6px; font-size: 12px; }
+}

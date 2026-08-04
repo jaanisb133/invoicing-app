@@ -94,6 +94,21 @@ a.btn-download-main:active {
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
+    {% if doc.doc_type == 'offer' %}
+    <div class="offer-status-bar">
+        <span class="offer-status-label">Statuss</span>
+        <div class="offer-status-switch">
+            {% for key, label in offer_statuses.items() %}
+            <form method="post" action="/documents/{{ doc.id }}/offer-status" style="margin:0">
+                <input type="hidden" name="status" value="{{ key }}">
+                <button type="submit"
+                        class="offer-status-btn {% if doc.status == key %}active is-{{ key }}{% endif %}"
+                        {% if doc.status == key %}aria-current="true"{% endif %}>{{ label }}</button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
     {% if offer_invoices %}
     <div class="alert alert-info">
         {% if offer_invoices | length == 1 %}

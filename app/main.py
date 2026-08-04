@@ -52,7 +52,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "22"
+CSS_VERSION = "23"
 templates.env.globals["css_version"] = CSS_VERSION
 
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
@@ -344,6 +344,40 @@ def _with_document_client(clients, uid, doc):
     if own and own.get("user_id") == uid:
         return list(clients) + [own]
     return clients
+
+
+FREE_TEMPLATE = "classic"
+
+# Offer lifecycle. Reuses documents.status, which offers already default to
+# 'issued'; the unpaid/overdue queries are all scoped to doc_type='sell', so
+# these values never leak into invoice figures.
+OFFER_STATUSES = {
+    "issued": "Gaida atbildi",
+    "accepted": "Pieņemts",
+    "rejected": "Noraidīts",
+}
+OFFER_STATUS_PILL = {
+    "issued": "pill-neutral",
+    "accepted": "pill-success",
+    "rejected": "pill-danger",
+}
+
+
+def _resolve_template(user, template=""):
+    """Clamp a requested PDF template to what the user's tier allows.
+
+    The pickers hide PRO templates, but every PDF endpoint takes `template`
+    straight from a query string or form field, so a free user could simply
+    ask for ?template=modern. The tier check has to live here, not in the UI.
+    """
+    if not template or template not in TEMPLATES:
+        template = _user_settings(user["id"]).get("default_template", FREE_TEMPLATE)
+    if template not in TEMPLATES:
+        template = FREE_TEMPLATE
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    if not limits.get("all_templates", False):
+        template = FREE_TEMPLATE
+    return template
 
 
 def _check_tier_feature(user, feature_key):
@@ -1114,8 +1148,10 @@ async def save_setup(
             status_code=303,
         )
 
-    # No pending plan — show plans page so user can choose
-    return RedirectResponse("/pricing", status_code=303)
+    # No pending plan — drop them on the dashboard. Sending someone to the
+    # pricing page before they have made a single invoice asks them to pay for
+    # something they have not seen yet; the plans are one sidebar click away.
+    return RedirectResponse("/", status_code=303)
 
 
 # =============================================================================
@@ -1878,7 +1914,12 @@ async def save_settings(
         "offer_doc_name": offer_doc_name or "Piedāvājums",
         "default_vat_rate": default_vat_rate if is_vat_payer == "1" else "0",
         "payment_due_days": payment_due_days,
-        "stock_enabled": stock_enabled,
+        # Stock management is sold as a Bizness feature. Users already using it
+        # keep it (turning it off under them would hide their existing data),
+        # but it cannot be switched on without the tier.
+        "stock_enabled": stock_enabled if (
+            _check_tier_feature(user, "stock") or _stock_enabled(user["id"])
+        ) else "0",
         "electronic_doc": electronic_doc,
         "status_tracking": status_tracking,
         "logo_width": logo_width,
@@ -2135,7 +2176,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
 
 @app.get("/offers", response_class=HTMLResponse)
 async def offers_page(request: Request, client_id: str = "",
-                       date_from: str = "", date_to: str = ""):
+                       date_from: str = "", date_to: str = "", status: str = ""):
     """List page for Piedāvājumi — same shape as the documents list but
     scoped to doc_type='offer' only. Excluded from dashboard totals and
     from the monthly document quota."""
@@ -2147,6 +2188,7 @@ async def offers_page(request: Request, client_id: str = "",
         client_id=int(client_id) if client_id else None,
         date_from=date_from or None,
         date_to=date_to or None,
+        status=status if status in OFFER_STATUSES else None,
     )
     clients = db.get_all_clients(user["id"])
     settings = _user_settings(user["id"])
@@ -2155,9 +2197,11 @@ async def offers_page(request: Request, client_id: str = "",
         "clients": clients,
         "settings": settings,
         "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
-        "filters": {"client_id": client_id,
-                    "date_from": date_from, "date_to": date_to},
+        "filters": {"client_id": client_id, "date_from": date_from,
+                    "date_to": date_to, "status": status},
         "converted_offer_ids": db.get_converted_offer_ids(user["id"]),
+        "offer_statuses": OFFER_STATUSES,
+        "offer_status_pill": OFFER_STATUS_PILL,
         "page": "offers",
     })
     return templates.TemplateResponse("offers.html", ctx)
@@ -2242,7 +2286,7 @@ async def create_document(request: Request):
     if reverse_charge:
         vat_rate = 0.0
     notes = form.get("notes", "")
-    template = form.get("template", "minimal")
+    template = _resolve_template(user, form.get("template", ""))
 
     items = []
     i = 0
@@ -2295,6 +2339,13 @@ async def create_document(request: Request):
         generate_invoice_pdf(doc_id, template=template)
     except Exception as e:
         logger.exception("PDF generation failed for doc %s", doc_id)
+
+    # Invoicing an offer is the clearest possible signal the client said yes.
+    if converted_from:
+        try:
+            db.update_document_status(user["id"], converted_from, "accepted")
+        except Exception:
+            logger.exception("Failed to mark offer %s accepted", converted_from)
 
     try:
         db.log_event(user["id"], "document_created",
@@ -2357,7 +2408,7 @@ async def update_document(request: Request, doc_id: int):
     if reverse_charge:
         vat_rate = 0.0
     notes = form.get("notes", "")
-    template = form.get("template", "minimal")
+    template = _resolve_template(user, form.get("template", ""))
     payment_due_date = form.get("payment_due_date", "")
 
     items = []
@@ -2416,10 +2467,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
     vat_amount = subtotal * (doc["vat_rate"] / 100)
     total = subtotal + vat_amount
 
-    if not template or template not in TEMPLATES:
-        template = settings.get("default_template", "minimal")
-    if template not in TEMPLATES:
-        template = "minimal"
+    template = _resolve_template(user, template)
 
     # Build default email subject + body for send modal — same logic as send
     # route, dashboard, and documents list, so the user's saved template is the
@@ -2447,6 +2495,8 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         # An offer shows the invoices it produced; an invoice shows its source offer.
         "offer_invoices": (db.get_invoices_from_offer(user["id"], doc_id)
                            if doc["doc_type"] == "offer" else []),
+        "offer_statuses": OFFER_STATUSES,
+        "offer_status_pill": OFFER_STATUS_PILL,
         "source_offer": (db.get_document(doc["converted_from_offer_id"])[0]
                          if doc.get("converted_from_offer_id") else None),
     })
@@ -2459,11 +2509,7 @@ async def download_pdf(request: Request, doc_id: int, template: str = ""):
     doc, _ = db.get_document(doc_id)
     if not doc or doc.get("user_id") != user["id"]:
         raise HTTPException(status_code=404)
-    if not template or template not in TEMPLATES:
-        settings = _user_settings(user["id"])
-        template = settings.get("default_template", "minimal")
-    if template not in TEMPLATES:
-        template = "minimal"
+    template = _resolve_template(user, template)
     filepath = generate_invoice_pdf(doc_id, template=template)
     return FileResponse(filepath, media_type="application/pdf",
                         filename=os.path.basename(filepath))
@@ -2496,7 +2542,7 @@ async def send_document_email(request: Request, doc_id: int):
     user = request.state.user
     form = await request.form()
     recipient_email = form.get("email", "").strip()
-    template = form.get("template", "minimal")
+    template = _resolve_template(user, form.get("template", ""))
     return_to = form.get("return_to", "").strip()
 
     def _redirect_with(qs: str) -> RedirectResponse:
@@ -2628,6 +2674,21 @@ async def toggle_document_status(request: Request, doc_id: int):
     accept = request.headers.get("accept", "")
     if "application/json" in accept:
         return JSONResponse({"status": new_status})
+    return RedirectResponse(f"/documents/{doc_id}", status_code=303)
+
+
+@app.post("/documents/{doc_id}/offer-status")
+async def set_offer_status(request: Request, doc_id: int):
+    """Mark an offer as waiting / accepted / rejected."""
+    user = request.state.user
+    doc, _ = db.get_document(doc_id)
+    if not doc or doc.get("user_id") != user["id"] or doc.get("doc_type") != "offer":
+        raise HTTPException(status_code=404)
+    form = await request.form()
+    status = form.get("status", "")
+    if status not in OFFER_STATUSES:
+        raise HTTPException(status_code=400, detail="Nederīgs statuss")
+    db.update_document_status(user["id"], doc_id, status)
     return RedirectResponse(f"/documents/{doc_id}", status_code=303)
 
 
@@ -2813,9 +2874,10 @@ def _parse_recurring_form(form):
         vat_rate = 21.0
 
     notes = form.get("notes", "")
-    template = form.get("template", "minimal")
+    # Tier clamping happens in the callers, which have the user in scope.
+    template = form.get("template", FREE_TEMPLATE)
     if template not in TEMPLATES:
-        template = "minimal"
+        template = FREE_TEMPLATE
 
     frequency = form.get("frequency", "monthly")
     if frequency not in FREQUENCY_LABELS:
@@ -2892,6 +2954,7 @@ async def create_recurring(request: Request):
         data = _parse_recurring_form(form)
     except ValueError as e:
         return _render_recurring_form(request, error=str(e))
+    data["template"] = _resolve_template(user, data["template"])
 
     _sync_client_email(user["id"], data["client_id"], data["client_email"])
 
@@ -2918,6 +2981,7 @@ async def update_recurring(request: Request, recurring_id: int):
         data = _parse_recurring_form(form)
     except ValueError as e:
         return _render_recurring_form(request, recurring=rec, error=str(e))
+    data["template"] = _resolve_template(user, data["template"])
 
     _sync_client_email(user["id"], data["client_id"], data["client_email"])
 
@@ -2947,7 +3011,7 @@ async def create_recurring_from_document(request: Request, doc_id: int):
     form = await request.form()
     frequency = form.get("frequency", "monthly")
     send_email = form.get("send_email", "0") == "1"
-    template = form.get("template", "minimal")
+    template = _resolve_template(user, form.get("template", ""))
     next_run = form.get("next_run", "")
 
     doc, items = db.get_document(doc_id)
@@ -3059,6 +3123,7 @@ async def export_pdf_bulk(
     import tempfile
 
     user = request.state.user
+    template = _resolve_template(user, template)
     docs = db.get_documents(
         user["id"],
         doc_type=doc_type or None,

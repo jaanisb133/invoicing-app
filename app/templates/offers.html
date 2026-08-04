@@ -78,6 +78,15 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                 <label>Līdz datumam</label>
                 <input type="text" id="dateTo" class="form-control" placeholder="dd/mm/yy" value="{{ filters.date_to }}">
             </div>
+            <div class="form-group" style="margin-bottom:0;min-width:150px">
+                <label>Statuss</label>
+                <select id="fStatus" class="form-control" onchange="applyFilters()">
+                    <option value="">Visi</option>
+                    {% for key, label in offer_statuses.items() %}
+                    <option value="{{ key }}" {% if filters.status == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
         </div>
     </div>
     <div class="card">
@@ -99,8 +108,9 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                         <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
                             <td>
                                 <span class="mobile-card-title">{{ doc.doc_number }}</span>
+                                <span class="pill {{ offer_status_pill.get(doc.status, 'pill-neutral') }}" style="margin-left:6px">{{ offer_statuses.get(doc.status, 'Gaida atbildi') }}</span>
                                 {% if doc.id in converted_offer_ids %}
-                                <span class="pill pill-success" style="margin-left:6px">Rēķins izveidots</span>
+                                <span class="pill pill-brand" style="margin-left:4px">Rēķins izveidots</span>
                                 {% endif %}
                             </td>
                             <td>
@@ -257,6 +267,8 @@ function applyFilters() {
     if (df) params.set('date_from', df);
     var dt = document.getElementById('dateTo').value;
     if (dt) params.set('date_to', dt);
+    var st = document.getElementById('fStatus');
+    if (st && st.value) params.set('status', st.value);
     window.location.href = '/offers' + (params.toString() ? '?' + params.toString() : '');
 }
 

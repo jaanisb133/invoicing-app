@@ -1662,7 +1662,7 @@ TIER_LIMITS = {
         "max_documents": 5, "max_clients": 5, "max_products": 5,
         "max_emails_month": 0, "recurring": False, "max_recurring": 0,
         "all_templates": False,
-        "einvoice": False, "accounting_export": False,
+        "einvoice": False, "accounting_export": False, "stock": False,
         "label": "Bezmaksas",
         "price_monthly": 0, "price_yearly": 0,
     },
@@ -1670,7 +1670,7 @@ TIER_LIMITS = {
         "max_documents": 50, "max_clients": 25, "max_products": 25,
         "max_emails_month": 10, "recurring": False, "max_recurring": 0,
         "all_templates": False,
-        "einvoice": False, "accounting_export": False,
+        "einvoice": False, "accounting_export": False, "stock": False,
         "label": "Mini",
         "price_monthly": 299, "price_yearly": 2900,  # cents
     },
@@ -1678,7 +1678,7 @@ TIER_LIMITS = {
         "max_documents": 500, "max_clients": 100, "max_products": 200,
         "max_emails_month": 50, "recurring": True, "max_recurring": 3,
         "all_templates": True,
-        "einvoice": True, "accounting_export": True,
+        "einvoice": True, "accounting_export": True, "stock": False,
         "label": "Pamata",
         "price_monthly": 599, "price_yearly": 5900,  # cents
     },
@@ -1686,7 +1686,7 @@ TIER_LIMITS = {
         "max_documents": 5000, "max_clients": 500, "max_products": 1000,
         "max_emails_month": 0, "recurring": True, "max_recurring": 0,  # 0 = unlimited
         "all_templates": True,
-        "einvoice": True, "accounting_export": True,
+        "einvoice": True, "accounting_export": True, "stock": True,
         "label": "Bizness",
         "price_monthly": 1999, "price_yearly": 19900,  # cents
     },
@@ -1694,7 +1694,7 @@ TIER_LIMITS = {
         "max_documents": 5000, "max_clients": 500, "max_products": 1000,
         "max_emails_month": 0, "recurring": True, "max_recurring": 0,  # 0 = unlimited
         "all_templates": True,
-        "einvoice": True, "accounting_export": True,
+        "einvoice": True, "accounting_export": True, "stock": True,
         "label": "Mūža licence",
         "price_monthly": 0, "price_yearly": 0, "price_lifetime": 49900,  # cents
     },
@@ -1702,7 +1702,7 @@ TIER_LIMITS = {
         "max_documents": 999999, "max_clients": 999999, "max_products": 999999,
         "max_emails_month": 0, "recurring": True, "max_recurring": 0,
         "all_templates": True,
-        "einvoice": True, "accounting_export": True,
+        "einvoice": True, "accounting_export": True, "stock": True,
         "label": "Administrators",
         "price_monthly": 0, "price_yearly": 0,
     },
