@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>V-Rēķini — Rēķinu izrakstīšana Latvijā | Vienkārši un ātri</title>
-    <meta name="description" content="V-Rēķini ir vienkārša rēķinu izrakstīšanas platforma uzņēmējiem Latvijā. PVN, e-rēķini (PEPPOL XML), klientu un produktu pārvaldība, periodiskie rēķini, PDF lejupielāde un nosūtīšana pa e-pastu. Sāciet bez maksas.">
-    <meta name="keywords" content="rēķinu izrakstīšana, rēķinu programma, e-rēķini, PVN rēķini, Latvija, online rēķini, grāmatvedības programma, PEPPOL, periodiskie rēķini, mazajiem uzņēmumiem">
+    <meta name="description" content="V-Rēķini ir vienkārša rēķinu izrakstīšanas platforma uzņēmējiem Latvijā. PVN, e-rēķini (PEPPOL XML), klientu un produktu pārvaldība, periodiskie rēķini, eksports grāmatvedim un vairāki lietotāji vienā kontā. Sāciet bez maksas.">
+    <meta name="keywords" content="rēķinu izrakstīšana, rēķinu programma, e-rēķini, PVN rēķini, Latvija, online rēķini, grāmatvedības programma, PEPPOL, periodiskie rēķini, mazajiem uzņēmumiem, piedāvājumi, eksports grāmatvedim, vairāki lietotāji">
     <link rel="canonical" href="https://v-rekini.lv/">
     <meta name="robots" content="index,follow">
     <meta property="og:type" content="website">
@@ -133,6 +133,11 @@
             grid-template-columns: repeat(3, 1fr);
             gap: 18px;
         }
+        /* An odd card count leaves one alone on the last row — centre it so it
+           reads as deliberate instead of a gap. */
+        .feature-card:last-child:nth-child(3n + 1) {
+            grid-column: 2;
+        }
         .feature-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -195,6 +200,7 @@
             .section { padding: 40px 20px; }
             .section h2 { font-size: 26px; }
             .features-grid { grid-template-columns: 1fr; }
+            .feature-card:last-child:nth-child(3n + 1) { grid-column: auto; }
             .cta-band { margin: 32px 16px; padding: 32px 22px; }
             .cta-band h2 { font-size: 22px; }
         }
@@ -278,7 +284,14 @@
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     </span>
                     <h3>Eksports grāmatvedim</h3>
-                    <p>Lejupielādējiet perioda dokumentus Excel formātā vai vairākus rēķinus uzreiz vienā ZIP failā — PDF vai PEPPOL XML. Grāmatvedim vairs nav jāsūta faili pa vienam.</p>
+                    <p>Perioda dokumenti Excel failā vai vairāki rēķini uzreiz vienā ZIP arhīvā — PDF vai PEPPOL XML. Excel kolonnas varat salikt tieši tā, kā tās gaida Jūsu grāmatvedis, un saglabāt kā savu izkārtojumu.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon" style="background:var(--tint-rose-bg);color:var(--tint-rose-fg)">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </span>
+                    <h3>Vairāki lietotāji vienā kontā</h3>
+                    <p>Pievienojiet kolēģus, kas izraksta rēķinus Jūsu uzņēmuma vārdā. Visi strādā ar vieniem un tiem pašiem klientiem un vienu numerāciju, bet uzņēmuma iestatījumus un abonementu pārvaldāt tikai Jūs.</p>
                 </div>
                 <div class="feature-card">
                     <span class="feature-icon" style="background:var(--tint-blue-bg);color:var(--tint-blue-fg)">
