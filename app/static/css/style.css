@@ -766,6 +766,27 @@ select.form-control { cursor: pointer; }
     letter-spacing: -0.3px;
 }
 
+/* Modals that manage their own padding per section */
+.modal-flush {
+    padding: 0;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+}
+
 .modal-actions {
     display: flex;
     gap: 8px;
@@ -1573,13 +1594,50 @@ td > .empty-state-rich { padding: 48px 16px 52px; }
     border-color: var(--primary-light);
 }
 
-.col-builder-handle {
+.col-builder-empty {
+    padding: 14px 12px;
     color: var(--text-light);
-    font-size: 14px;
-    user-select: none;
-    width: 16px;
+    font-size: 13px;
     text-align: center;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+}
+
+.col-builder-move {
+    display: inline-flex;
     flex-shrink: 0;
+}
+
+.col-builder-arrow {
+    width: 24px;
+    height: 26px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--text-light);
+    background: transparent;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: background .12s ease, color .12s ease;
+}
+
+.col-builder-arrow:first-child {
+    border-radius: 6px 0 0 6px;
+}
+
+.col-builder-arrow:last-child {
+    border-radius: 0 6px 6px 0;
+    border-left: none;
+}
+
+.col-builder-arrow:hover:not(:disabled) {
+    background: var(--bg);
+    color: var(--text);
+}
+
+.col-builder-arrow:disabled {
+    opacity: .35;
+    cursor: default;
 }
 
 .col-builder-num {
@@ -1615,18 +1673,35 @@ td > .empty-state-rich { padding: 48px 16px 52px; }
     font-size: 13px !important;
 }
 
+/* Muted until you reach for it — 15 red boxes in a row reads as an error state */
 .col-builder-remove {
     padding: 2px 8px !important;
     font-size: 16px;
     line-height: 1;
     flex-shrink: 0;
-    color: var(--danger);
-    border-color: var(--danger);
+    color: var(--text-lighter);
+    border-color: var(--border);
 }
 
 .col-builder-remove:hover {
     background: var(--danger);
+    border-color: var(--danger);
     color: #fff;
+}
+
+.col-builder-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+}
+
+.col-builder-footer #builderStatus {
+    font-size: 12.5px;
+    color: var(--text-light);
+    margin-right: auto;
 }
 
 @media (max-width: 768px) {
@@ -1637,6 +1712,47 @@ td > .empty-state-rich { padding: 48px 16px 52px; }
     .col-builder-select {
         min-width: 100%;
     }
+    .col-builder-move {
+        margin-left: auto;
+    }
+    /* Status on its own line so it never squeezes the buttons */
+    .col-builder-footer {
+        flex-wrap: wrap;
+    }
+    .col-builder-footer #builderStatus {
+        flex: 0 0 100%;
+        margin-right: 0;
+    }
+    .col-builder-footer #builderStatus:empty {
+        display: none;
+    }
+}
+
+/* Column summary shown under the accounting export form */
+.acc-col-line {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 4px 0;
+}
+
+.acc-col-sheet {
+    font-weight: 600;
+    color: var(--text);
+    min-width: 78px;
+    flex-shrink: 0;
+}
+
+.acc-col-chip {
+    display: inline-block;
+    padding: 2px 7px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+    font-size: 11.5px;
+    color: var(--text-light);
+    white-space: nowrap;
 }
 
 /* ============================================================

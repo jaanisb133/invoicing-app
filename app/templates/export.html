@@ -18,7 +18,10 @@
     <div class="alert alert-danger">Norādītajā periodā nav atrasts neviens dokuments.</div>
     {% endif %}
     {% if request.query_params.get('error') == 'no_preset' %}
-    <div class="alert alert-danger">Eksporta profils nav atrasts.</div>
+    <div class="alert alert-danger">Kolonnu izkārtojums nav atrasts.</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'no_columns' %}
+    <div class="alert alert-danger">Šajā izkārtojumā nav nevienas kolonnas. Pielāgojiet to un mēģiniet vēlreiz.</div>
     {% endif %}
 
     <!-- ============================================================= -->
@@ -132,16 +135,17 @@
     </div>
 
     <!-- ============================================================= -->
-    <!-- Accounting Export — TEMPORARILY HIDDEN                         -->
+    <!-- Accounting Excel export — layout is fully user-defined         -->
     <!-- ============================================================= -->
-    {% if False %}
     <div class="card" style="margin-top:24px">
         <div class="card-header">
-            <span>Grāmatvedības eksports</span>
+            <span>Grāmatvedības eksports (Excel)</span>
         </div>
         <div class="card-body">
             <p style="font-size:13px;color:var(--text-light);margin-bottom:16px">
-                Eksportējiet dokumentu datus Excel formātā grāmatvedības programmatūrai. Fails satur 2 lapas: dokumentu kopsavilkumu un pozīcijas.
+                Perioda dokumenti Excel failā: viena lapa ar dokumentu kopsavilkumu, otra ar pozīcijām.
+                Sāciet ar kādu no sagatavēm un pielāgojiet kolonnas — nosaukumus, secību un saturu —
+                tieši tā, kā tās gaida Jūsu grāmatvedis vai grāmatvedības programma.
             </p>
 
             <form method="post" action="/export/accounting" id="accExportForm">
@@ -163,15 +167,15 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Eksporta profils</label>
+                        <label>Kolonnu izkārtojums</label>
                         <select name="acc_preset" id="accPreset" class="form-control" onchange="onPresetChange()">
-                            <optgroup label="Iebūvētie profili">
-                                <option value="horizon">Horizon</option>
-                                <option value="jumis">Jumis</option>
-                                <option value="zalktis">Zalktis</option>
+                            <optgroup label="Sagataves">
+                                {% for key, p in builtin_presets.items() %}
+                                <option value="{{ key }}">{{ p.name }}</option>
+                                {% endfor %}
                             </optgroup>
                             {% if custom_presets %}
-                            <optgroup label="Mani profili" id="customPresetGroup">
+                            <optgroup label="Mani izkārtojumi" id="customPresetGroup">
                                 {% for p in custom_presets %}
                                 <option value="custom_{{ loop.index0 }}">{{ p.name }}</option>
                                 {% endfor %}
@@ -188,12 +192,12 @@
                     <span style="flex:1"></span>
                     <button type="button" class="btn btn-outline btn-sm" onclick="openColumnBuilder()">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                        Profilu pārvaldība
+                        Pielāgot kolonnas
                     </button>
                 </div>
 
                 <div id="accPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:20px;display:none">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-light)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
                         <span style="font-size:14px;font-weight:600" id="accPreviewCount">0 dokumenti</span>
                     </div>
@@ -207,49 +211,49 @@
             </form>
         </div>
     </div>
-    {% endif %}
 </div>
 
 <!-- ================================================================= -->
-<!-- Column Builder Modal — hidden while accounting export is off      -->
+<!-- Column layout builder                                             -->
 <!-- ================================================================= -->
-{% if False %}
 <div class="modal-overlay" id="columnBuilderModal" style="display:none">
-    <div class="modal" style="max-width:900px;width:95%;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal modal-flush" style="max-width:900px;width:95%;max-height:90vh;display:flex;flex-direction:column">
         <div class="modal-header">
-            <h3 style="margin:0">Eksporta profilu pārvaldība</h3>
+            <h3 style="margin:0">Kolonnu izkārtojumi</h3>
             <button type="button" class="btn btn-outline btn-sm" onclick="closeColumnBuilder()" style="padding:4px 10px">&times;</button>
         </div>
         <div style="flex:1;overflow-y:auto;padding:20px">
-            <!-- Preset selector / create -->
-            <div style="display:flex;gap:12px;align-items:end;margin-bottom:20px;flex-wrap:wrap">
+            <!-- Layout selector / create -->
+            <div style="display:flex;gap:12px;align-items:end;margin-bottom:16px;flex-wrap:wrap">
                 <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0">
-                    <label>Profils</label>
+                    <label>Izkārtojums</label>
                     <select id="builderPresetSelect" class="form-control" onchange="loadPresetInBuilder()">
-                        <optgroup label="Iebūvētie (tikai skatīt)">
-                            <option value="builtin_horizon">Horizon</option>
-                            <option value="builtin_jumis">Jumis</option>
-                            <option value="builtin_zalktis">Zalktis</option>
-                        </optgroup>
-                        <optgroup label="Mani profili" id="builderCustomGroup"></optgroup>
+                        <optgroup label="Sagataves (tikai skatīt)" id="builderBuiltinGroup"></optgroup>
+                        <optgroup label="Mani izkārtojumi" id="builderCustomGroup"></optgroup>
                     </select>
                 </div>
-                <button type="button" class="btn btn-outline btn-sm" onclick="createNewPreset()" style="margin-bottom:0">+ Jauns profils</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="createNewPreset()" style="margin-bottom:0">+ Jauns</button>
                 <button type="button" class="btn btn-danger btn-sm" id="deletePresetBtn" onclick="deleteCurrentPreset()" style="margin-bottom:0;display:none">Dzēst</button>
             </div>
 
-            <!-- Preset name (for custom) -->
+            <!-- Layout name (for custom) -->
             <div id="presetNameRow" style="margin-bottom:16px;display:none">
                 <div class="form-group" style="margin-bottom:0;max-width:300px">
-                    <label>Profila nosaukums</label>
-                    <input type="text" id="presetNameInput" class="form-control" placeholder="Piem., Mans eksports">
+                    <label>Izkārtojuma nosaukums</label>
+                    <input type="text" id="presetNameInput" class="form-control" placeholder="Piem., Mana grāmatvedība">
                 </div>
             </div>
 
-            <!-- Readonly notice for built-in presets -->
+            <!-- Readonly notice for built-in layouts -->
             <div id="builtinNotice" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text-light)">
-                Iebūvētos profilus nevar rediģēt. Izveidojiet jaunu profilu vai kopējiet šo kā pamatu.
-                <button type="button" class="btn btn-outline btn-sm" onclick="duplicateAsCustom()" style="margin-left:8px">Kopēt kā jaunu</button>
+                <div id="builtinDescription" style="margin-bottom:8px"></div>
+                Sagataves nevar mainīt. Nokopējiet sagatavi un pielāgojiet kolonnas pēc vajadzības.
+                <button type="button" class="btn btn-outline btn-sm" onclick="duplicateAsCustom()" style="margin-left:8px">Kopēt un pielāgot</button>
+            </div>
+
+            <div id="builderHelp" style="font-size:12.5px;color:var(--text-light);margin-bottom:16px;display:none">
+                Kolonnas nosaukums nonāk Excel faila pirmajā rindā — ierakstiet tieši to, ko gaida grāmatvedības programma.
+                Ar bultiņām mainiet secību.
             </div>
 
             <!-- Document columns -->
@@ -270,13 +274,13 @@
                 <div id="itemColumnsContainer"></div>
             </div>
         </div>
-        <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+        <div class="col-builder-footer">
+            <span id="builderStatus"></span>
             <button type="button" class="btn btn-outline" onclick="closeColumnBuilder()">Aizvērt</button>
             <button type="button" class="btn btn-primary" id="savePresetBtn" onclick="savePresets()" style="display:none">Saglabāt</button>
         </div>
     </div>
 </div>
-{% endif %}
 
 {% endblock %}
 
@@ -421,26 +425,34 @@ setEiPreviousMonth();
 
 
 // ===================================================================
-// Accounting Export — hidden, JS guarded
+// Accounting Excel export
 // ===================================================================
-{% if False %}
 
-// Available fields loaded from server
+// Field definitions come from the server so the builder can never drift
+// out of sync with what the export actually knows how to resolve.
 let allFields = {};
 let itemOnlyFields = [];
+let dateFields = ['doc_date', 'payment_due_date'];
 let builtinPresets = {};
 let customPresets = {{ custom_presets | tojson }};
+let fieldsReady = false;
 
-// Fetch field definitions on load
+const ACC_PRESET_KEY = 'vr_accPreset';
+
 fetch('/api/accounting-presets')
-    .then(r => r.json())
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
     .then(data => {
-        allFields = data.fields;
-        itemOnlyFields = data.item_only_fields;
-        builtinPresets = data.builtin;
-    });
+        allFields = data.fields || {};
+        itemOnlyFields = data.item_only_fields || [];
+        dateFields = data.date_fields || dateFields;
+        builtinPresets = data.builtin || {};
+        if (Array.isArray(data.custom)) customPresets = data.custom;
+        fieldsReady = true;
+        updateAccPreview();
+    })
+    .catch(() => { /* preview falls back to a plain description */ });
 
-// --- Date shortcuts for accounting export ---
+// --- Date shortcuts ---
 function setAccPreviousMonth() {
     const now = new Date();
     const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -464,6 +476,19 @@ function setAccCurrentYear() {
     updateAccPreview();
 }
 
+function currentAccLayout() {
+    const key = document.getElementById('accPreset').value;
+    if (key.startsWith('custom_')) {
+        return customPresets[parseInt(key.replace('custom_', ''))] || null;
+    }
+    return builtinPresets[key] || null;
+}
+
+function columnChips(columns) {
+    if (!columns || !columns.length) return '';
+    return columns.map(c => `<span class="acc-col-chip">${escapeHtml(c.header || '')}</span>`).join('');
+}
+
 function updateAccPreview() {
     const from = document.getElementById('accDateFrom').value;
     const to = document.getElementById('accDateTo').value;
@@ -483,73 +508,120 @@ function updateAccPreview() {
     const count = filtered.length;
     document.getElementById('accPreviewCount').textContent = count === 1 ? '1 dokuments' : count + ' dokumenti';
 
-    const presetKey = document.getElementById('accPreset').value;
-    let presetName = document.getElementById('accPreset').selectedOptions[0]?.text || '';
-    document.getElementById('accColumnPreview').innerHTML =
-        `Profils: <strong>${presetName}</strong> &mdash; Excel ar 2 lapām (Dokumenti + Pozīcijas)`;
+    const layout = currentAccLayout();
+    const target = document.getElementById('accColumnPreview');
+    if (!layout) {
+        const name = document.getElementById('accPreset').selectedOptions[0]?.text || '';
+        target.innerHTML = `Izkārtojums: <strong>${escapeHtml(name)}</strong>`;
+    } else {
+        const docChips = columnChips(layout.doc_columns);
+        const itemChips = columnChips(layout.item_columns);
+        let html = '';
+        if (layout.description) {
+            html += `<div style="margin-bottom:10px">${escapeHtml(layout.description)}</div>`;
+        }
+        html += `<div class="acc-col-line"><span class="acc-col-sheet">Dokumenti</span>`;
+        html += docChips || '<em>nav kolonnu</em>';
+        html += `</div>`;
+        html += `<div class="acc-col-line"><span class="acc-col-sheet">Pozīcijas</span>`;
+        html += itemChips || '<em>lapa netiek pievienota</em>';
+        html += `</div>`;
+        target.innerHTML = html;
+    }
 
     btn.disabled = count === 0;
 }
 
 function onPresetChange() {
+    try { localStorage.setItem(ACC_PRESET_KEY, document.getElementById('accPreset').value); } catch (e) {}
     updateAccPreview();
 }
 
 document.getElementById('accDateFrom').addEventListener('change', updateAccPreview);
 document.getElementById('accDateTo').addEventListener('change', updateAccPreview);
+
+// Restore the layout picked last time, if it still exists
+try {
+    const remembered = localStorage.getItem(ACC_PRESET_KEY);
+    if (remembered) {
+        const sel = document.getElementById('accPreset');
+        if ([...sel.options].some(o => o.value === remembered)) sel.value = remembered;
+    }
+} catch (e) {}
+
 setAccPreviousMonth();
 
 
 // ===================================================================
-// Column Builder Modal
+// Column layout builder
 // ===================================================================
 
 let currentBuilderPreset = null; // {name, doc_columns, item_columns}
 let isBuiltinPreset = true;
-let currentCustomIndex = -1; // index in customPresets array, -1 = new
+let currentCustomIndex = -1; // index in customPresets, -1 = unsaved
 
 function openColumnBuilder() {
     document.getElementById('columnBuilderModal').style.display = 'flex';
     rebuildBuilderPresetList();
-    // Load the first preset
-    document.getElementById('builderPresetSelect').selectedIndex = 0;
+    // Open on whatever the export form currently points at
+    const active = document.getElementById('accPreset').value;
+    const sel = document.getElementById('builderPresetSelect');
+    const wanted = active.startsWith('custom_') ? active : 'builtin_' + active;
+    sel.value = [...sel.options].some(o => o.value === wanted) ? wanted : (sel.options[0] || {}).value;
     loadPresetInBuilder();
 }
 
 function closeColumnBuilder() {
     document.getElementById('columnBuilderModal').style.display = 'none';
-    // Refresh main page preset dropdown
+    document.getElementById('builderStatus').textContent = '';
     refreshMainPresetDropdown();
+    updateAccPreview();
 }
 
 function rebuildBuilderPresetList() {
+    const builtinGroup = document.getElementById('builderBuiltinGroup');
+    builtinGroup.innerHTML = '';
+    Object.entries(builtinPresets).forEach(([key, p]) => {
+        const opt = document.createElement('option');
+        opt.value = 'builtin_' + key;
+        opt.textContent = p.name || key;
+        builtinGroup.appendChild(opt);
+    });
+
     const group = document.getElementById('builderCustomGroup');
     group.innerHTML = '';
     customPresets.forEach((p, i) => {
         const opt = document.createElement('option');
         opt.value = 'custom_' + i;
-        opt.textContent = p.name || ('Profils ' + (i + 1));
+        opt.textContent = p.name || ('Izkārtojums ' + (i + 1));
         group.appendChild(opt);
     });
+    group.style.display = customPresets.length ? '' : 'none';
 }
 
 function refreshMainPresetDropdown() {
     const sel = document.getElementById('accPreset');
-    // Remove old custom optgroup
+    const previous = sel.value;
     const oldGroup = document.getElementById('customPresetGroup');
     if (oldGroup) oldGroup.remove();
-    // Add updated custom presets
     if (customPresets.length > 0) {
         const group = document.createElement('optgroup');
-        group.label = 'Mani profili';
+        group.label = 'Mani izkārtojumi';
         group.id = 'customPresetGroup';
         customPresets.forEach((p, i) => {
             const opt = document.createElement('option');
             opt.value = 'custom_' + i;
-            opt.textContent = p.name || ('Profils ' + (i + 1));
+            opt.textContent = p.name || ('Izkārtojums ' + (i + 1));
             group.appendChild(opt);
         });
         sel.appendChild(group);
+    }
+    // A deleted layout can leave the form pointing at nothing
+    if ([...sel.options].some(o => o.value === previous)) {
+        sel.value = previous;
+    } else {
+        sel.selectedIndex = 0;
+        try { localStorage.setItem(ACC_PRESET_KEY, sel.value); } catch (e) {}
     }
 }
 
@@ -557,28 +629,37 @@ function loadPresetInBuilder() {
     const val = document.getElementById('builderPresetSelect').value;
     if (val.startsWith('builtin_')) {
         const key = val.replace('builtin_', '');
-        currentBuilderPreset = JSON.parse(JSON.stringify(builtinPresets[key] || {name: key, doc_columns: [], item_columns: []}));
+        currentBuilderPreset = JSON.parse(JSON.stringify(
+            builtinPresets[key] || {name: key, doc_columns: [], item_columns: []}));
         isBuiltinPreset = true;
         currentCustomIndex = -1;
     } else if (val.startsWith('custom_')) {
         const idx = parseInt(val.replace('custom_', ''));
-        currentBuilderPreset = JSON.parse(JSON.stringify(customPresets[idx]));
+        currentBuilderPreset = JSON.parse(JSON.stringify(customPresets[idx] || {}));
+        currentBuilderPreset.doc_columns = currentBuilderPreset.doc_columns || [];
+        currentBuilderPreset.item_columns = currentBuilderPreset.item_columns || [];
         isBuiltinPreset = false;
         currentCustomIndex = idx;
+    } else {
+        return;
     }
+    document.getElementById('builderStatus').textContent = '';
     renderBuilderUI();
 }
 
 function renderBuilderUI() {
     const isEditable = !isBuiltinPreset;
     document.getElementById('builtinNotice').style.display = isBuiltinPreset ? 'block' : 'none';
+    document.getElementById('builderHelp').style.display = isEditable ? 'block' : 'none';
     document.getElementById('presetNameRow').style.display = isEditable ? 'block' : 'none';
     document.getElementById('addDocColBtn').style.display = isEditable ? 'inline-flex' : 'none';
     document.getElementById('addItemColBtn').style.display = isEditable ? 'inline-flex' : 'none';
     document.getElementById('savePresetBtn').style.display = isEditable ? 'inline-flex' : 'none';
     document.getElementById('deletePresetBtn').style.display = (isEditable && currentCustomIndex >= 0) ? 'inline-flex' : 'none';
 
-    if (isEditable) {
+    if (isBuiltinPreset) {
+        document.getElementById('builtinDescription').textContent = currentBuilderPreset.description || '';
+    } else {
         document.getElementById('presetNameInput').value = currentBuilderPreset.name || '';
     }
 
@@ -589,153 +670,181 @@ function renderBuilderUI() {
 function renderColumns(type, columns, editable) {
     const container = document.getElementById(type + 'ColumnsContainer');
     if (columns.length === 0) {
-        container.innerHTML = '<div style="padding:12px;color:var(--text-light);font-size:13px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius)">Nav kolonnu. Nospiediet "+ Kolonna" lai pievienotu.</div>';
+        container.innerHTML = editable
+            ? '<div class="col-builder-empty">Nav kolonnu. Nospiediet &bdquo;+ Kolonna&ldquo;, lai pievienotu.</div>'
+            : '<div class="col-builder-empty">Šī lapa netiek pievienota failam.</div>';
         return;
     }
 
-    // Determine which fields are available for this sheet type
     const isItemSheet = type === 'item';
 
     let html = '<div class="col-builder-list">';
     columns.forEach((col, i) => {
         const sourceLabel = allFields[col.source] || col.source || '—';
         html += `<div class="col-builder-row" data-type="${type}" data-index="${i}">`;
-        html += `<span class="col-builder-handle" title="Velciet lai pārkārtotu">${editable ? '⠿' : ''}</span>`;
         html += `<span class="col-builder-num">${i + 1}</span>`;
 
         if (editable) {
-            // Header input
             html += `<input type="text" class="form-control col-builder-input" value="${escapeAttr(col.header || '')}"
                       placeholder="Kolonnas nosaukums" onchange="updateColumnHeader('${type}', ${i}, this.value)">`;
-            // Source select
             html += `<select class="form-control col-builder-select" onchange="updateColumnSource('${type}', ${i}, this.value)">`;
             for (const [fk, fv] of Object.entries(allFields)) {
                 if (!isItemSheet && itemOnlyFields.includes(fk)) continue;
                 const sel = col.source === fk ? ' selected' : '';
-                html += `<option value="${fk}"${sel}>${fv}</option>`;
+                html += `<option value="${fk}"${sel}>${escapeHtml(fv)}</option>`;
             }
             html += `</select>`;
-            // Constant value input (shown only when source=constant)
             const showConst = col.source === 'constant' ? '' : 'display:none;';
             html += `<input type="text" class="form-control col-builder-const" style="${showConst}width:100px"
                       value="${escapeAttr(col.value || '')}" placeholder="Vērtība"
                       onchange="updateColumnValue('${type}', ${i}, this.value)">`;
-            // Date format (shown only for date fields)
-            const showFmt = col.source === 'doc_date' ? '' : 'display:none;';
+            const showFmt = dateFields.includes(col.source) ? '' : 'display:none;';
             html += `<select class="form-control col-builder-fmt" style="${showFmt}width:120px" onchange="updateColumnFormat('${type}', ${i}, this.value)">
                 <option value=""${!col.format ? ' selected' : ''}>YYYY-MM-DD</option>
                 <option value="dd.mm.yyyy"${col.format === 'dd.mm.yyyy' ? ' selected' : ''}>DD.MM.YYYY</option>
             </select>`;
-            // Remove button
+            html += `<span class="col-builder-move">`;
+            html += `<button type="button" class="col-builder-arrow" onclick="moveColumn('${type}', ${i}, -1)"
+                      title="Uz augšu"${i === 0 ? ' disabled' : ''}>&uarr;</button>`;
+            html += `<button type="button" class="col-builder-arrow" onclick="moveColumn('${type}', ${i}, 1)"
+                      title="Uz leju"${i === columns.length - 1 ? ' disabled' : ''}>&darr;</button>`;
+            html += `</span>`;
             html += `<button type="button" class="btn btn-outline btn-sm col-builder-remove" onclick="removeColumn('${type}', ${i})" title="Noņemt">&times;</button>`;
         } else {
-            // Read-only display
             html += `<span class="col-builder-input" style="background:transparent;border:none">${escapeHtml(col.header || '')}</span>`;
-            html += `<span class="col-builder-select" style="background:transparent;border:none;color:var(--text-light);font-size:12px">${sourceLabel}${col.source === 'constant' ? ' = "' + escapeHtml(col.value || '') + '"' : ''}</span>`;
+            html += `<span class="col-builder-select" style="background:transparent;border:none;color:var(--text-light);font-size:12px">${escapeHtml(sourceLabel)}${col.source === 'constant' ? ' = "' + escapeHtml(col.value || '') + '"' : ''}</span>`;
         }
 
         html += `</div>`;
     });
     html += '</div>';
     container.innerHTML = html;
-
-    // Enable drag reordering for editable presets
-    if (editable) {
-        enableDragReorder(container, type);
-    }
 }
 
-function escapeAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function escapeAttr(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 function escapeHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+function columnsOf(type) {
+    return type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+}
+
+function markDirty() {
+    document.getElementById('builderStatus').textContent = 'Nesaglabātas izmaiņas';
+}
+
 function addColumn(type) {
-    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
-    cols.push({header: '', source: 'doc_number', value: '', format: ''});
+    const cols = columnsOf(type);
+    const source = type === 'item' ? 'product_name' : 'doc_number';
+    cols.push({header: allFields[source] || '', source: source, value: '', format: ''});
     renderColumns(type, cols, true);
+    markDirty();
 }
 
 function removeColumn(type, index) {
-    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
+    const cols = columnsOf(type);
     cols.splice(index, 1);
     renderColumns(type, cols, true);
+    markDirty();
+}
+
+function moveColumn(type, index, delta) {
+    const cols = columnsOf(type);
+    const target = index + delta;
+    if (target < 0 || target >= cols.length) return;
+    const [moved] = cols.splice(index, 1);
+    cols.splice(target, 0, moved);
+    renderColumns(type, cols, true);
+    markDirty();
 }
 
 function updateColumnHeader(type, index, val) {
-    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
-    cols[index].header = val;
+    columnsOf(type)[index].header = val;
+    markDirty();
 }
 
 function updateColumnSource(type, index, val) {
-    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
-    cols[index].source = val;
-    // Show/hide constant input and format select
-    const row = document.querySelectorAll(`[data-type="${type}"][data-index="${index}"]`)[0];
-    if (row) {
-        const constInput = row.querySelector('.col-builder-const');
-        const fmtSelect = row.querySelector('.col-builder-fmt');
-        if (constInput) constInput.style.display = val === 'constant' ? '' : 'none';
-        if (fmtSelect) fmtSelect.style.display = val === 'doc_date' ? '' : 'none';
+    const cols = columnsOf(type);
+    const col = cols[index];
+    const previousLabel = allFields[col.source] || '';
+    col.source = val;
+    // Keep the header in step while the user has not written their own
+    if (!col.header || col.header === previousLabel) {
+        col.header = allFields[val] || col.header;
     }
+    renderColumns(type, cols, true);
+    markDirty();
 }
 
 function updateColumnValue(type, index, val) {
-    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
-    cols[index].value = val;
+    columnsOf(type)[index].value = val;
+    markDirty();
 }
 
 function updateColumnFormat(type, index, val) {
-    const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
-    cols[index].format = val;
+    columnsOf(type)[index].format = val;
+    markDirty();
 }
 
 function createNewPreset() {
     currentBuilderPreset = {name: '', doc_columns: [], item_columns: []};
     isBuiltinPreset = false;
-    currentCustomIndex = -1; // new, not yet saved
+    currentCustomIndex = -1;
     renderBuilderUI();
     document.getElementById('presetNameInput').focus();
+    markDirty();
 }
 
 function duplicateAsCustom() {
     const copy = JSON.parse(JSON.stringify(currentBuilderPreset));
-    copy.name = (copy.name || 'Profils') + ' (kopija)';
+    copy.name = (copy.name || 'Izkārtojums') + ' (kopija)';
+    delete copy.description;
     currentBuilderPreset = copy;
     isBuiltinPreset = false;
     currentCustomIndex = -1;
     renderBuilderUI();
     document.getElementById('presetNameInput').focus();
+    markDirty();
 }
 
 function deleteCurrentPreset() {
     if (currentCustomIndex < 0) return;
-    if (!confirm('Vai tiešām dzēst šo profilu?')) return;
+    if (!confirm('Vai tiešām dzēst šo izkārtojumu?')) return;
     customPresets.splice(currentCustomIndex, 1);
     savePresetsToServer().then(() => {
         rebuildBuilderPresetList();
         document.getElementById('builderPresetSelect').selectedIndex = 0;
         loadPresetInBuilder();
-    });
+        refreshMainPresetDropdown();
+    }).catch(showSaveError);
 }
 
 function savePresets() {
-    // Update name from input
-    currentBuilderPreset.name = document.getElementById('presetNameInput').value.trim() || 'Profils';
+    currentBuilderPreset.name = document.getElementById('presetNameInput').value.trim() || 'Izkārtojums';
+    const docCols = currentBuilderPreset.doc_columns || [];
+    const itemCols = currentBuilderPreset.item_columns || [];
+    if (!docCols.length && !itemCols.length) {
+        document.getElementById('builderStatus').textContent = 'Pievienojiet vismaz vienu kolonnu.';
+        return;
+    }
 
     if (currentCustomIndex >= 0) {
-        // Update existing
         customPresets[currentCustomIndex] = JSON.parse(JSON.stringify(currentBuilderPreset));
     } else {
-        // Add new
         customPresets.push(JSON.parse(JSON.stringify(currentBuilderPreset)));
         currentCustomIndex = customPresets.length - 1;
     }
 
     savePresetsToServer().then(() => {
         rebuildBuilderPresetList();
-        // Select the saved preset
         document.getElementById('builderPresetSelect').value = 'custom_' + currentCustomIndex;
         loadPresetInBuilder();
-    });
+        refreshMainPresetDropdown();
+        document.getElementById('builderStatus').textContent = 'Saglabāts';
+    }).catch(showSaveError);
+}
+
+function showSaveError() {
+    document.getElementById('builderStatus').textContent = 'Neizdevās saglabāt. Mēģiniet vēlreiz.';
 }
 
 function savePresetsToServer() {
@@ -746,49 +855,12 @@ function savePresetsToServer() {
     }).then(r => {
         if (!r.ok) throw new Error('Save failed');
         return r.json();
+    }).then(data => {
+        // The server drops columns it cannot resolve — mirror what it stored
+        if (Array.isArray(data.presets)) customPresets = data.presets;
+        if (currentCustomIndex >= customPresets.length) currentCustomIndex = customPresets.length - 1;
+        return data;
     });
 }
-
-// --- Drag reorder ---
-function enableDragReorder(container, type) {
-    const list = container.querySelector('.col-builder-list');
-    if (!list) return;
-    let dragEl = null;
-    let dragIdx = -1;
-
-    list.querySelectorAll('.col-builder-row').forEach(row => {
-        const handle = row.querySelector('.col-builder-handle');
-        if (!handle) return;
-        handle.style.cursor = 'grab';
-        handle.addEventListener('mousedown', e => {
-            dragEl = row;
-            dragIdx = parseInt(row.dataset.index);
-            row.style.opacity = '0.5';
-            e.preventDefault();
-        });
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (dragEl) {
-            dragEl.style.opacity = '1';
-            dragEl = null;
-        }
-    });
-
-    list.addEventListener('mouseover', e => {
-        if (!dragEl) return;
-        const target = e.target.closest('.col-builder-row');
-        if (!target || target === dragEl) return;
-        const targetIdx = parseInt(target.dataset.index);
-        if (isNaN(targetIdx) || targetIdx === dragIdx) return;
-
-        const cols = type === 'doc' ? currentBuilderPreset.doc_columns : currentBuilderPreset.item_columns;
-        const [moved] = cols.splice(dragIdx, 1);
-        cols.splice(targetIdx, 0, moved);
-        dragIdx = targetIdx;
-        renderColumns(type, cols, true);
-    });
-}
-{% endif %}
 </script>
 {% endblock %}

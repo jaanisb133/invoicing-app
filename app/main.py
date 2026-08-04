@@ -52,7 +52,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "26"
+CSS_VERSION = "27"
 templates.env.globals["css_version"] = CSS_VERSION
 
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
@@ -3145,6 +3145,7 @@ async def export_page(request: Request):
         "selected_template": settings.get("default_template", "minimal"),
         "page": "export",
         "custom_presets": custom_presets,
+        "builtin_presets": ACCOUNTING_PRESETS,
     })
     return templates.TemplateResponse("export.html", ctx)
 
@@ -3257,79 +3258,84 @@ async def export_einvoice_bulk(
 # Accounting Export (Grāmatvedības eksports)
 # =============================================================================
 
-# Built-in presets — placeholder column configs (will be refined with real specs)
+# Built-in layouts. Deliberately named after what they *contain*, not after any
+# accounting package — we cannot verify a third party's import spec, so claiming
+# compatibility would be a promise we can't keep. Users copy one of these and
+# rename/reorder the columns to whatever their accountant actually asks for.
 ACCOUNTING_PRESETS = {
-    "horizon": {
-        "name": "Horizon",
+    "full": {
+        "name": "Pilns — visi lauki",
+        "description": "Visi pieejamie dokumenta un klienta lauki. Droša izvēle, "
+                       "ja neesat pārliecināts — liekās kolonnas grāmatvedis var izdzēst.",
         "doc_columns": [
-            {"header": "Dokumenta tips", "source": "doc_type_code"},
-            {"header": "Klients.Kods", "source": "client_reg_number"},
-            {"header": "PVN kategorija", "source": "vat_category"},
-            {"header": "Dok. datums", "source": "doc_date", "format": "dd.mm.yyyy"},
-            {"header": "Valūta.Kods", "source": "constant", "value": "EUR"},
+            {"header": "Dokumenta tips", "source": "doc_type_name"},
             {"header": "Numurs", "source": "doc_number"},
+            {"header": "Datums", "source": "doc_date", "format": "dd.mm.yyyy"},
+            {"header": "Apmaksas termiņš", "source": "payment_due_date", "format": "dd.mm.yyyy"},
+            {"header": "Klients", "source": "client_name"},
+            {"header": "Reģ. nr.", "source": "client_reg_number"},
+            {"header": "PVN nr.", "source": "client_vat_number"},
+            {"header": "Adrese", "source": "client_address"},
+            {"header": "E-pasts", "source": "client_email"},
+            {"header": "PVN likme", "source": "vat_rate"},
             {"header": "Summa bez PVN", "source": "subtotal_no_vat"},
             {"header": "PVN summa", "source": "vat_amount"},
             {"header": "Summa ar PVN", "source": "total_with_vat"},
-            {"header": "Apmaksas termiņš", "source": "payment_due_date", "format": "dd.mm.yyyy"},
-            {"header": "Klients", "source": "client_name"},
-            {"header": "Klients.PVN", "source": "client_vat_number"},
-            {"header": "Adrese", "source": "client_address"},
-            {"header": "E-pasts", "source": "client_email"},
-        ],
-        "item_columns": [
-            {"header": "Pavadzīme.Numurs", "source": "doc_number"},
-            {"header": "Nosaukums", "source": "product_name"},
-            {"header": "Tips", "source": "constant", "value": "3"},
-            {"header": "Daudzums", "source": "quantity"},
-            {"header": "Summa", "source": "line_total"},
-        ],
-    },
-    "jumis": {
-        "name": "Jumis",
-        "doc_columns": [
-            {"header": "Dok.tips", "source": "doc_type_code"},
-            {"header": "Numurs", "source": "doc_number"},
-            {"header": "Datums", "source": "doc_date", "format": "dd.mm.yyyy"},
-            {"header": "Klients", "source": "client_name"},
-            {"header": "Reģ.Nr.", "source": "client_reg_number"},
-            {"header": "PVN Nr.", "source": "client_vat_number"},
-            {"header": "Summa bez PVN", "source": "subtotal_no_vat"},
-            {"header": "PVN", "source": "vat_amount"},
-            {"header": "Kopā", "source": "total_with_vat"},
             {"header": "Valūta", "source": "constant", "value": "EUR"},
+            {"header": "Statuss", "source": "status"},
+            {"header": "Piezīmes", "source": "notes"},
         ],
         "item_columns": [
-            {"header": "Dok.numurs", "source": "doc_number"},
-            {"header": "Prece", "source": "product_name"},
-            {"header": "Mērv.", "source": "product_unit"},
-            {"header": "Daudzums", "source": "quantity"},
-            {"header": "Cena", "source": "price_per_unit"},
-            {"header": "Summa", "source": "line_total"},
-        ],
-    },
-    "zalktis": {
-        "name": "Zalktis",
-        "doc_columns": [
-            {"header": "Tips", "source": "doc_type_code"},
-            {"header": "Nr.", "source": "doc_number"},
+            {"header": "Dokumenta numurs", "source": "doc_number"},
             {"header": "Datums", "source": "doc_date", "format": "dd.mm.yyyy"},
-            {"header": "Partneris", "source": "client_name"},
-            {"header": "Reģ.nr.", "source": "client_reg_number"},
-            {"header": "PVN nr.", "source": "client_vat_number"},
-            {"header": "Adrese", "source": "client_address"},
-            {"header": "Bez PVN", "source": "subtotal_no_vat"},
-            {"header": "PVN", "source": "vat_amount"},
-            {"header": "Ar PVN", "source": "total_with_vat"},
-        ],
-        "item_columns": [
-            {"header": "Dok.nr.", "source": "doc_number"},
-            {"header": "Prece/pakalpojums", "source": "product_name"},
+            {"header": "Prece / pakalpojums", "source": "product_name"},
             {"header": "Mērvienība", "source": "product_unit"},
             {"header": "Daudzums", "source": "quantity"},
             {"header": "Cena bez PVN", "source": "price_per_unit"},
             {"header": "Summa bez PVN", "source": "line_total"},
         ],
+    },
+    "basic": {
+        "name": "Pamata — numurs, datums, summas",
+        "description": "Kompakts saraksts grāmatvedības žurnālam, bez klienta rekvizītiem.",
+        "doc_columns": [
+            {"header": "Tips", "source": "doc_type_name"},
+            {"header": "Numurs", "source": "doc_number"},
+            {"header": "Datums", "source": "doc_date", "format": "dd.mm.yyyy"},
+            {"header": "Klients", "source": "client_name"},
+            {"header": "Summa bez PVN", "source": "subtotal_no_vat"},
+            {"header": "PVN", "source": "vat_amount"},
+            {"header": "Kopā", "source": "total_with_vat"},
+        ],
+        "item_columns": [
+            {"header": "Dokumenta numurs", "source": "doc_number"},
+            {"header": "Prece / pakalpojums", "source": "product_name"},
+            {"header": "Mērvienība", "source": "product_unit"},
+            {"header": "Daudzums", "source": "quantity"},
+            {"header": "Cena", "source": "price_per_unit"},
+            {"header": "Summa", "source": "line_total"},
+        ],
+    },
+    "vat": {
+        "name": "PVN atskaitei",
+        "description": "Lauki, kas parasti vajadzīgi PVN deklarācijas pielikumam: "
+                       "darījuma partnera reģ. nr. un PVN nr., summa bez PVN un PVN summa. "
+                       "Bez pozīciju lapas.",
+        "doc_columns": [
+            {"header": "Darījuma veids", "source": "doc_type_code"},
+            {"header": "Numurs", "source": "doc_number"},
+            {"header": "Datums", "source": "doc_date", "format": "dd.mm.yyyy"},
+            {"header": "Partneris", "source": "client_name"},
+            {"header": "Partnera reģ. nr.", "source": "client_reg_number"},
+            {"header": "Partnera PVN nr.", "source": "client_vat_number"},
+            {"header": "PVN kategorija", "source": "vat_category"},
+            {"header": "PVN likme", "source": "vat_rate"},
+            {"header": "Summa bez PVN", "source": "subtotal_no_vat"},
+            {"header": "PVN summa", "source": "vat_amount"},
+            {"header": "Summa ar PVN", "source": "total_with_vat"},
+            {"header": "Valūta", "source": "constant", "value": "EUR"},
+        ],
+        "item_columns": [],
     },
 }
 
@@ -3374,6 +3380,47 @@ ACCOUNTING_EXPORT_FIELDS = {
 # Fields only available in line-item sheet
 _ITEM_ONLY_FIELDS = {"product_name", "product_unit", "quantity", "price_per_unit", "line_total"}
 
+# Date fields that accept a display format
+_DATE_FIELDS = {"doc_date", "payment_due_date"}
+
+_LV_TRANSLIT = str.maketrans(
+    "āčēģīķļņōŗšūžĀČĒĢĪĶĻŅŌŖŠŪŽ",
+    "acegiklnorsuzACEGIKLNORSUZ",
+)
+
+
+def _export_slug(name):
+    """ASCII-safe filename fragment from a layout name the user typed."""
+    cleaned = "".join(
+        ch if (ch.isalnum() and ch.isascii()) else "_"
+        for ch in (name or "").translate(_LV_TRANSLIT).lower()
+    )
+    slug = "_".join(part for part in cleaned.split("_") if part)
+    return slug[:40] or "eksports"
+
+
+def _clean_export_columns(raw, item_sheet):
+    """Keep only well-formed columns with a source we can actually resolve."""
+    cleaned = []
+    for col in (raw or [])[:60]:
+        if not isinstance(col, dict):
+            continue
+        source = str(col.get("source", "")).strip()
+        if source not in ACCOUNTING_EXPORT_FIELDS:
+            continue
+        if not item_sheet and source in _ITEM_ONLY_FIELDS:
+            continue
+        out = {
+            "header": str(col.get("header", ""))[:60] or ACCOUNTING_EXPORT_FIELDS[source],
+            "source": source,
+        }
+        if source == "constant":
+            out["value"] = str(col.get("value", ""))[:60]
+        if source in _DATE_FIELDS and col.get("format") == "dd.mm.yyyy":
+            out["format"] = "dd.mm.yyyy"
+        cleaned.append(out)
+    return cleaned
+
 
 def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val=""):
     """Resolve a column field value from document/item/settings data."""
@@ -3386,24 +3433,11 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
         val = "Pārdošana" if doc.get("doc_type") == "sell" else "Iegāde"
     elif source == "doc_number":
         val = doc.get("doc_number", "")
-    elif source == "doc_date":
-        raw = doc.get("doc_date", "")
-        if fmt == "dd.mm.yyyy" and raw:
-            parts = raw.split("-")
-            if len(parts) == 3:
-                val = f"{parts[2]}.{parts[1]}.{parts[0]}"
-            else:
-                val = raw
-        else:
-            val = raw
-    elif source == "payment_due_date":
-        raw = doc.get("payment_due_date", "")
-        if fmt == "dd.mm.yyyy" and raw:
-            parts = raw.split("-")
-            if len(parts) == 3:
-                val = f"{parts[2]}.{parts[1]}.{parts[0]}"
-            else:
-                val = raw
+    elif source in _DATE_FIELDS:
+        raw = doc.get(source) or ""
+        parts = raw.split("-")
+        if fmt == "dd.mm.yyyy" and len(parts) == 3:
+            val = f"{parts[2]}.{parts[1]}.{parts[0]}"
         else:
             val = raw
     elif source == "seq_num":
@@ -3482,13 +3516,28 @@ async def export_accounting(request: Request):
             custom_presets = json.loads(raw) if raw else []
         except (json.JSONDecodeError, TypeError):
             custom_presets = []
-        idx = int(preset_key.replace("custom_", ""))
-        if 0 <= idx < len(custom_presets):
-            preset = custom_presets[idx]
+        try:
+            idx = int(preset_key.replace("custom_", ""))
+        except ValueError:
+            return RedirectResponse("/export?error=no_preset", status_code=303)
+        if 0 <= idx < len(custom_presets) and isinstance(custom_presets[idx], dict):
+            saved = custom_presets[idx]
+            # Normalise: layouts saved before column validation existed may
+            # carry sources we no longer resolve.
+            preset = {
+                "name": saved.get("name", "eksports"),
+                "doc_columns": _clean_export_columns(saved.get("doc_columns"), item_sheet=False),
+                "item_columns": _clean_export_columns(saved.get("item_columns"), item_sheet=True),
+            }
         else:
             return RedirectResponse("/export?error=no_preset", status_code=303)
     else:
         return RedirectResponse("/export?error=no_preset", status_code=303)
+
+    doc_columns = preset.get("doc_columns", [])
+    item_columns = preset.get("item_columns", [])
+    if not doc_columns and not item_columns:
+        return RedirectResponse("/export?error=no_columns", status_code=303)
 
     docs = db.get_documents_for_export(
         user["id"],
@@ -3500,20 +3549,22 @@ async def export_accounting(request: Request):
     if not docs:
         return RedirectResponse("/export?error=no_docs", status_code=303)
 
-    doc_columns = preset.get("doc_columns", [])
-    item_columns = preset.get("item_columns", [])
-
     wb = Workbook()
-
-    # --- Sheet 1: Dokumenti (one row per document) ---
-    ws_docs = wb.active
-    ws_docs.title = "Dokumenti"
 
     header_font = Font(bold=True, size=11)
     header_alignment = Alignment(horizontal="center", wrap_text=True)
     thin_border = Border(
         bottom=Side(style="thin", color="CCCCCC"),
     )
+
+    # --- Sheet 1: Dokumenti (one row per document) ---
+    # A layout may drop this sheet entirely, so the blank starter sheet openpyxl
+    # creates has to go with it or the file opens on an empty tab.
+    ws_docs = wb.active
+    if not doc_columns:
+        wb.remove(ws_docs)
+    else:
+        ws_docs.title = "Dokumenti"
 
     # Headers
     for col_idx, col_def in enumerate(doc_columns, 1):
@@ -3578,8 +3629,9 @@ async def export_accounting(request: Request):
     tmp.close()
     wb.save(tmp.name)
 
-    preset_name = preset.get("name", "eksports").lower().replace(" ", "_")
-    filename = f"gramatvediba_{preset_name}_{date_from}_{date_to}.xlsx"
+    filename = (
+        f"gramatvediba_{_export_slug(preset.get('name'))}_{date_from}_{date_to}.xlsx"
+    )
     return FileResponse(
         tmp.name,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -3589,12 +3641,26 @@ async def export_accounting(request: Request):
 
 @app.post("/api/accounting-presets/save")
 async def save_accounting_presets(request: Request):
-    """Save custom accounting export presets."""
+    """Save custom accounting export layouts."""
     user = request.state.user
+    if not _check_tier_feature(user, "accounting_export"):
+        return JSONResponse({"error": "Nav pieejams šajā plānā"}, status_code=403)
     data = await request.json()
-    presets = data.get("presets", [])
+    presets = []
+    for idx, p in enumerate((data.get("presets") or [])[:20]):
+        if not isinstance(p, dict):
+            continue
+        doc_cols = _clean_export_columns(p.get("doc_columns"), item_sheet=False)
+        item_cols = _clean_export_columns(p.get("item_columns"), item_sheet=True)
+        if not doc_cols and not item_cols:
+            continue
+        presets.append({
+            "name": str(p.get("name", "")).strip()[:60] or f"Izkārtojums {idx + 1}",
+            "doc_columns": doc_cols,
+            "item_columns": item_cols,
+        })
     db.set_user_setting(user["id"], "accounting_export_presets", json.dumps(presets))
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "presets": presets})
 
 
 @app.get("/api/accounting-presets")
@@ -3608,10 +3674,19 @@ async def get_accounting_presets(request: Request):
     except (json.JSONDecodeError, TypeError):
         custom = []
     return JSONResponse({
-        "builtin": {k: {"name": v["name"], "doc_columns": v["doc_columns"], "item_columns": v["item_columns"]} for k, v in ACCOUNTING_PRESETS.items()},
+        "builtin": {
+            k: {
+                "name": v["name"],
+                "description": v.get("description", ""),
+                "doc_columns": v["doc_columns"],
+                "item_columns": v["item_columns"],
+            }
+            for k, v in ACCOUNTING_PRESETS.items()
+        },
         "custom": custom,
         "fields": ACCOUNTING_EXPORT_FIELDS,
         "item_only_fields": list(_ITEM_ONLY_FIELDS),
+        "date_fields": list(_DATE_FIELDS),
     })
 
 
