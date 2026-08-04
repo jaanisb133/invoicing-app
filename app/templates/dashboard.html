@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_empty_state.html" import empty_state %}
 
 {% block content %}
 <style>
@@ -60,8 +61,63 @@
 .dash-stat-value small { font-size: 13px; font-weight: 500; color: var(--text-light); margin-left: 4px; }
 .dash-stat-foot { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-lighter); }
 .dash-stat-foot .pill { font-size: 11px; padding: 2px 8px; }
-.dash-stats-grid.is-loading .dash-stat { opacity: 0.55; transition: opacity 0.15s; }
-.dash-stats-grid:not(.is-loading) .dash-stat { transition: opacity 0.15s; }
+
+/* --- Sparklines --- */
+.dash-stat-spark { height: 32px; margin-top: -4px; position: relative; }
+.dash-stat-spark svg { display: block; width: 100%; height: 32px; }
+.dash-stat-spark .spark-area { fill: var(--text); opacity: 0.055; }
+.dash-stat-spark .spark-dot {
+    position: absolute;
+    width: 5px; height: 5px;
+    margin: -2.5px 0 0 -2.5px;
+    border-radius: 50%;
+    background: var(--text);
+    opacity: 0;
+    transition: opacity var(--transition);
+}
+.dash-stat-spark .spark-line {
+    fill: none;
+    stroke: var(--text);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.42;
+    vector-effect: non-scaling-stroke;
+    transition: opacity var(--transition);
+}
+.dash-stat:hover .spark-line { opacity: 0.72; }
+.dash-stat:hover .spark-dot { opacity: 0.8; }
+/* Draw the line in on first paint */
+.dash-stat-spark.spark-enter .spark-line {
+    stroke-dasharray: var(--spark-len);
+    stroke-dashoffset: var(--spark-len);
+    animation: sparkDraw 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+.dash-stat-spark.spark-enter .spark-area { animation: sparkFade 0.9s ease forwards; opacity: 0; }
+@keyframes sparkDraw { to { stroke-dashoffset: 0; } }
+@keyframes sparkFade { to { opacity: 0.055; } }
+
+/* --- Loading skeletons (AJAX date-range refresh) --- */
+.dash-stats-grid.is-loading .dash-stat-value,
+.dash-stats-grid.is-loading .dash-stat-foot > * {
+    color: transparent !important;
+    border-color: transparent !important;
+    background: linear-gradient(90deg, var(--bg-card-hover) 25%, var(--border) 37%, var(--bg-card-hover) 63%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+    border-radius: 6px;
+}
+.dash-stats-grid.is-loading .dash-stat-value small { color: transparent !important; }
+.dash-stats-grid.is-loading .dash-stat-spark { opacity: 0.25; transition: opacity 0.2s; }
+.dash-stat-spark { transition: opacity 0.2s; }
+.dash-chart-card.is-loading .dash-chart-body { opacity: 0.3; transition: opacity 0.2s; }
+.dash-chart-body { transition: opacity 0.2s; }
+@media (prefers-reduced-motion: reduce) {
+    .dash-stat-spark.spark-enter .spark-line { animation: none; stroke-dashoffset: 0; }
+    .dash-stat-spark.spark-enter .spark-area { animation: none; opacity: 0.055; }
+    .dash-stats-grid.is-loading .dash-stat-value,
+    .dash-stats-grid.is-loading .dash-stat-foot > * { animation: none; }
+}
 
 .dash-chart-card { margin-bottom: 22px; }
 .dash-chart-header {
@@ -213,6 +269,7 @@
                 </span>
             </div>
             <div class="dash-stat-value" id="statRevenue">{{ "%.2f" | format(range_stats.total_revenue) }} <small>EUR</small></div>
+            <div class="dash-stat-spark" id="sparkRevenue"></div>
             <div class="dash-stat-foot" id="statRevenueChange">
                 {% if range_stats.revenue_change > 0 %}<span class="pill pill-success">↑ {{ range_stats.revenue_change }}%</span>
                 {% elif range_stats.revenue_change < 0 %}<span class="pill pill-danger">↓ {{ range_stats.revenue_change|abs }}%</span>
@@ -229,6 +286,9 @@
                 </span>
             </div>
             <div class="dash-stat-value" id="statUnpaid">{{ "%.2f" | format(range_stats.unpaid_total) }} <small>EUR</small></div>
+            {# Unpaid is a point-in-time snapshot, not a trend, so it gets no
+               sparkline — but it keeps the spacer so all four feet line up. #}
+            <div class="dash-stat-spark"></div>
             <div class="dash-stat-foot">
                 {% if range_stats.overdue_count > 0 %}
                 <span class="pill pill-danger">{{ range_stats.overdue_count }} kavēts</span>
@@ -246,11 +306,12 @@
                 </span>
             </div>
             <div class="dash-stat-value" id="statDocs">{{ range_stats.doc_count }}</div>
+            <div class="dash-stat-spark" id="sparkDocs"></div>
             <div class="dash-stat-foot" id="statDocsChange">
                 {% if range_stats.doc_count_change > 0 %}<span class="pill pill-success">↑ {{ range_stats.doc_count_change }}%</span>
                 {% elif range_stats.doc_count_change < 0 %}<span class="pill pill-danger">↓ {{ range_stats.doc_count_change|abs }}%</span>
                 {% else %}<span class="pill pill-neutral">0%</span>{% endif %}
-                <span>periodā</span>
+                <span>vs iepr. {{ 'gads' if range_stats.compare_mode == 'year' else 'mēnesis' }}</span>
             </div>
         </div>
         <div class="dash-stat">
@@ -261,6 +322,7 @@
                 </span>
             </div>
             <div class="dash-stat-value" id="statAvg">{{ "%.2f" | format(range_stats.avg_invoice) }} <small>EUR</small></div>
+            <div class="dash-stat-spark" id="sparkAvg"></div>
             <div class="dash-stat-foot"><span style="color:var(--text-lighter)">Pārdošanas vidējais</span></div>
         </div>
     </div>
@@ -281,7 +343,7 @@
             </div>
         </div>
         <div class="card-body" style="padding:8px 20px 16px">
-            <div style="position:relative;height:280px"><canvas id="revenueChart"></canvas></div>
+            <div class="dash-chart-body" style="position:relative;height:280px"><canvas id="revenueChart"></canvas></div>
         </div>
     </div>
 
@@ -538,7 +600,12 @@
                 </table>
             </div>
             {% else %}
-            <div class="empty-state">Nav dokumentu. Izveidojiet pirmo dokumentu!</div>
+            {{ empty_state(
+                icon="document",
+                title="Vēl nav neviena dokumenta",
+                text="Izveidojiet pirmo rēķinu — tas aizņems mazāk par minūti.",
+                cta_href="/documents/new",
+                cta_label="Jauns dokuments") }}
             {% endif %}
         </div>
     </div>
@@ -684,6 +751,17 @@ var _chartType = localStorage.getItem('dashChartType') || 'line';
 (function() {
     var ctx = document.getElementById('revenueChart');
     if (!ctx) return;
+    // Chart.js comes from a CDN. If it failed to load (offline, blocked, CDN
+    // down) the chart is skipped rather than thrown — everything further down
+    // this script block still needs to run.
+    if (typeof Chart === 'undefined') {
+        var host = ctx.closest('.dash-chart-body') || ctx.parentNode;
+        if (host) {
+            host.innerHTML = '<div class="empty-state" style="padding:80px 20px">'
+                + 'Grafiks nav pieejams bezsaistē.</div>';
+        }
+        return;
+    }
     var data = dashRangeStats.daily_revenue || [];
     var isLight = document.documentElement.getAttribute('data-theme') === 'light';
     var gridColor = isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.06)';
@@ -738,6 +816,9 @@ var _chartType = localStorage.getItem('dashChartType') || 'line';
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                ? false
+                : { duration: 750, easing: 'easeOutQuart' },
             interaction: {
                 mode: 'index',
                 intersect: false
@@ -800,7 +881,9 @@ function switchChartType(type) {
 
     var today = new Date();
     var thisMonthStart = isoDate(new Date(today.getFullYear(), today.getMonth(), 1));
-    var thisMonthEnd = isoDate(new Date(today.getFullYear(), today.getMonth(), lastDayOfMonth(today.getFullYear(), today.getMonth())));
+    // Month-to-date, not month-end: the rest of the month hasn't happened yet,
+    // and this keeps the button in step with what the server renders on load.
+    var thisMonthEnd = isoDate(today);
     var lastMonthStart = isoDate(new Date(today.getFullYear(), today.getMonth() - 1, 1));
     var lastMonthEnd = isoDate(new Date(today.getFullYear(), today.getMonth() - 1, lastDayOfMonth(today.getFullYear(), today.getMonth() - 1)));
     var thisYearStart = today.getFullYear() + '-01-01';
@@ -814,10 +897,98 @@ function switchChartType(type) {
 
     function fmt(n) { return Number(n).toFixed(2); }
 
+    var _reduceMotion = window.matchMedia
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Counts a stat value up to its new figure. Reads the number already on
+    // screen so an AJAX refresh tweens from the old value rather than from 0.
+    function countUp(el, to, decimals, suffix, fromValue) {
+        if (!el) return;
+        suffix = suffix || '';
+        var render = function(v) { el.innerHTML = Number(v).toFixed(decimals) + suffix; };
+        if (_reduceMotion) { render(to); return; }
+
+        var from = fromValue;
+        if (from === undefined) {
+            from = parseFloat(String(el.textContent).replace(/[^\d.-]/g, ''));
+        }
+        if (!isFinite(from)) from = 0;
+        if (from === to) { render(to); return; }
+
+        if (el._countRAF) cancelAnimationFrame(el._countRAF);
+        var dur = 600, start = null;
+        function step(ts) {
+            if (start === null) start = ts;
+            var p = Math.min((ts - start) / dur, 1);
+            var eased = 1 - Math.pow(1 - p, 3);  // easeOutCubic
+            render(from + (to - from) * eased);
+            if (p < 1) { el._countRAF = requestAnimationFrame(step); }
+            else { el._countRAF = null; render(to); }
+        }
+        el._countRAF = requestAnimationFrame(step);
+    }
+
+    // Must match the server-rendered badge exactly, or the number visibly
+    // changes shape on refresh (Python prints 13.0, JS would print 13).
+    function pctText(v) { return Number(v).toFixed(1); }
+
     function changeHtml(pct) {
-        if (pct > 0) return '<span class="pill pill-success">↑ ' + pct + '%</span>';
-        if (pct < 0) return '<span class="pill pill-danger">↓ ' + Math.abs(pct) + '%</span>';
-        return '<span class="pill pill-neutral">0%</span>';
+        if (pct > 0) return '<span class="pill pill-success">↑ ' + pctText(pct) + '%</span> ';
+        if (pct < 0) return '<span class="pill pill-danger">↓ ' + pctText(Math.abs(pct)) + '%</span> ';
+        return '<span class="pill pill-neutral">0%</span> ';
+    }
+
+    // --- Sparklines -------------------------------------------------------
+    // Inline SVG, no library. Coordinates are computed in a 100x32 box and the
+    // svg scales to the card width; the stroke stays 1.5px via non-scaling-stroke.
+    var SPARK_W = 100, SPARK_H = 32, SPARK_PAD = 3;
+
+    function renderSpark(el, values, animate) {
+        if (!el) return;
+        var vals = (values || []).map(Number).filter(function(v) { return isFinite(v); });
+        // One point can't make a line, and a flat all-zero series is just noise.
+        if (vals.length < 2 || Math.max.apply(null, vals) <= 0) { el.innerHTML = ''; return; }
+
+        var max = Math.max.apply(null, vals);
+        var min = Math.min.apply(null, vals);
+        if (max === min) { max = min + 1; }
+        var stepX = SPARK_W / (vals.length - 1);
+        var usableH = SPARK_H - SPARK_PAD * 2;
+
+        var pts = vals.map(function(v, i) {
+            var x = i * stepX;
+            var y = SPARK_PAD + usableH - ((v - min) / (max - min)) * usableH;
+            return [Math.round(x * 100) / 100, Math.round(y * 100) / 100];
+        });
+
+        var line = pts.map(function(p, i) { return (i ? 'L' : 'M') + p[0] + ' ' + p[1]; }).join(' ');
+        var area = line + ' L' + SPARK_W + ' ' + SPARK_H + ' L0 ' + SPARK_H + ' Z';
+        var last = pts[pts.length - 1];
+
+        // The svg stretches to the card width, so the dot marking the latest
+        // point is an HTML overlay — inside the svg it would squash to an ellipse.
+        el.innerHTML =
+            '<svg viewBox="0 0 ' + SPARK_W + ' ' + SPARK_H + '" preserveAspectRatio="none" aria-hidden="true" focusable="false">'
+            + '<path class="spark-area" d="' + area + '"/>'
+            + '<path class="spark-line" d="' + line + '"/>'
+            + '</svg>'
+            + '<i class="spark-dot" style="left:' + (last[0] / SPARK_W * 100) + '%;top:'
+            + (last[1] / SPARK_H * 100) + '%"></i>';
+
+        el.classList.remove('spark-enter');
+        if (animate) {
+            var path = el.querySelector('.spark-line');
+            var len = path.getTotalLength ? path.getTotalLength() : 200;
+            el.style.setProperty('--spark-len', len);
+            void el.offsetWidth;  // restart the animation on re-render
+            el.classList.add('spark-enter');
+        }
+    }
+
+    function renderAllSparks(s, animate) {
+        renderSpark(document.getElementById('sparkRevenue'), s.spark_revenue, animate);
+        renderSpark(document.getElementById('sparkDocs'), s.spark_docs, animate);
+        renderSpark(document.getElementById('sparkAvg'), s.spark_avg, animate);
     }
 
     var _loadCtrl = null;
@@ -827,7 +998,14 @@ function switchChartType(type) {
         if (_loadCtrl) _loadCtrl.abort();
         _loadCtrl = new AbortController();
         var grid = document.getElementById('dashStatsGrid');
+        var chartCard = document.querySelector('.dash-chart-card');
         if (grid) grid.classList.add('is-loading');
+        if (chartCard) chartCard.classList.add('is-loading');
+        // Keep the range in the URL so a refresh reloads what's on screen
+        // instead of silently snapping back to the server default.
+        try {
+            history.replaceState(null, '', '/?date_from=' + df + '&date_to=' + dt);
+        } catch (e) {}
         fetch('/api/dashboard-stats?date_from=' + df + '&date_to=' + dt, {
             credentials: 'same-origin',
             signal: _loadCtrl.signal
@@ -836,12 +1014,14 @@ function switchChartType(type) {
             .then(function(s) {
                 if (grid) grid.classList.remove('is-loading');
                 dashRangeStats = s;
-                // Update stat cards
+                // Update stat cards. The "Neapmaksāti" card only exists when
+                // status tracking is on, so every lookup here has to be guarded.
                 var sm = ' <small>EUR</small>';
-                document.getElementById('statRevenue').innerHTML = fmt(s.total_revenue) + sm;
-                document.getElementById('statUnpaid').innerHTML = fmt(s.unpaid_total) + sm;
-                document.getElementById('statDocs').textContent = s.doc_count;
-                document.getElementById('statAvg').innerHTML = fmt(s.avg_invoice) + sm;
+                countUp(document.getElementById('statRevenue'), s.total_revenue, 2, sm);
+                countUp(document.getElementById('statUnpaid'), s.unpaid_total, 2, sm);
+                countUp(document.getElementById('statDocs'), s.doc_count, 0, '');
+                countUp(document.getElementById('statAvg'), s.avg_invoice, 2, sm);
+                renderAllSparks(s, true);
 
                 // Update change indicators
                 var cmpLabel = s.compare_mode === 'year' ? 'gads' : 'mēnesis';
@@ -851,7 +1031,7 @@ function switchChartType(type) {
                 }
                 var dcEl = document.getElementById('statDocsChange');
                 if (dcEl) {
-                    dcEl.innerHTML = changeHtml(s.doc_count_change) + '<span>periodā</span>';
+                    dcEl.innerHTML = changeHtml(s.doc_count_change) + '<span>vs iepr. ' + cmpLabel + '</span>';
                 }
 
                 // Revenue vs Expenses
@@ -865,7 +1045,8 @@ function switchChartType(type) {
                 // Top client
                 var tcEl = document.getElementById('cardTopClient');
                 var lbl = '<div style="font-size:12px;color:var(--text-light);margin-bottom:12px">Top klients</div>';
-                if (s.top_client) {
+                if (!tcEl) { /* card hidden for this user */ }
+                else if (s.top_client) {
                     tcEl.innerHTML = lbl + '<div style="font-size:15px;font-weight:600;letter-spacing:-0.2px;color:var(--text)">' + s.top_client.name + '</div>'
                         + '<div style="font-size:12px;color:var(--text-light);margin-top:4px">' + s.top_client.count + ' dok. · ' + fmt(s.top_client.revenue) + ' EUR</div>';
                 } else {
@@ -875,7 +1056,8 @@ function switchChartType(type) {
                 // Overdue
                 var odEl = document.getElementById('cardOverdue');
                 var odLbl = '<div style="font-size:12px;color:var(--text-light);margin-bottom:12px">Kavētie rēķini</div>';
-                if (s.overdue_count > 0) {
+                if (!odEl) { /* card hidden for this user */ }
+                else if (s.overdue_count > 0) {
                     odEl.innerHTML = odLbl + '<div style="font-size:20px;font-weight:600;color:var(--text)">' + s.overdue_count + '</div>'
                         + '<div style="font-size:12px;color:var(--text-light);margin-top:4px">' + fmt(s.overdue_total) + ' EUR</div>';
                 } else {
@@ -885,19 +1067,32 @@ function switchChartType(type) {
 
                 // Update chart
                 var chart = window._revenueChart;
-                var cdata = s.daily_revenue || [];
-                chart.data.labels = cdata.map(function(d) { var p = d.date.split('-'); return p[2] + '/' + p[1]; });
-                var ds = window._makeChartDataset(_chartType);
-                ds.data = cdata.map(function(d) { return d.total; });
-                chart.data.datasets = [ds];
-                chart.config.type = _chartType;
-                chart.update('none');
+                if (chart) {
+                    var cdata = s.daily_revenue || [];
+                    chart.data.labels = cdata.map(function(d) { var p = d.date.split('-'); return p[2] + '/' + p[1]; });
+                    var ds = window._makeChartDataset(_chartType);
+                    ds.data = cdata.map(function(d) { return d.total; });
+                    chart.data.datasets = [ds];
+                    chart.config.type = _chartType;
+                    chart.update();
+                }
+                if (chartCard) chartCard.classList.remove('is-loading');
             })
             .catch(function(e) {
                 if (e.name === 'AbortError') return;
                 if (grid) grid.classList.remove('is-loading');
+                if (chartCard) chartCard.classList.remove('is-loading');
             });
     }
+
+    // First paint: draw the sparklines and count the server-rendered figures
+    // up from zero, so the dashboard arrives rather than just appearing.
+    var sm0 = ' <small>EUR</small>';
+    countUp(document.getElementById('statRevenue'), dashRangeStats.total_revenue, 2, sm0, 0);
+    countUp(document.getElementById('statUnpaid'), dashRangeStats.unpaid_total, 2, sm0, 0);
+    countUp(document.getElementById('statDocs'), dashRangeStats.doc_count, 0, '', 0);
+    countUp(document.getElementById('statAvg'), dashRangeStats.avg_invoice, 2, sm0, 0);
+    renderAllSparks(dashRangeStats, true);
 })();
 
 const dashClientEmailMap = {

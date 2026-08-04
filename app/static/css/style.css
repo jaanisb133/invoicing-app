@@ -1195,6 +1195,65 @@ select.form-control { cursor: pointer; }
     line-height: 1.6;
 }
 
+/* --- Empty states ---------------------------------------------------------
+   Structured variant: a quiet mark, a title, one line of context and a CTA.
+   Used via the empty_state() macro in _empty_state.html. */
+.empty-state-rich {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 56px 24px 60px;
+}
+.empty-state-mark {
+    width: 46px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 13px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-lighter);
+    margin-bottom: 16px;
+}
+.empty-state-mark svg { width: 21px; height: 21px; }
+.empty-state-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.2px;
+    margin-bottom: 5px;
+}
+.empty-state-text {
+    font-size: 13px;
+    color: var(--text-light);
+    line-height: 1.6;
+    max-width: 340px;
+    margin: 0 auto;
+}
+.empty-state-actions { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+/* Inside a table the block needs to span every column and lose the cell padding */
+td > .empty-state-rich { padding: 48px 16px 52px; }
+@media (max-width: 768px) {
+    .empty-state-rich { padding: 40px 16px 44px; }
+    .empty-state-mark { width: 42px; height: 42px; margin-bottom: 14px; }
+}
+
+/* --- Skeleton loading ----------------------------------------------------- */
+@keyframes shimmer { to { background-position: -200% 0; } }
+.skeleton {
+    background: linear-gradient(90deg, var(--bg-card-hover) 25%, var(--border) 37%, var(--bg-card-hover) 63%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+    border-radius: 6px;
+    color: transparent !important;
+    user-select: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; }
+}
+
 /* --- Setup overlay --- */
 .setup-overlay {
     position: fixed;
@@ -2271,3 +2330,49 @@ body.has-bottom-nav .main-content { padding-bottom: calc(var(--bottom-nav-height
 .list-item-side { text-align: right; flex-shrink: 0; }
 .list-item-amount { font-size: 13.5px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
 .list-item-meta { font-size: 11.5px; color: var(--text-lighter); margin-bottom: 4px; }
+
+/* =========================================================================
+   Micro-interactions
+   Small, restrained feedback: press response on controls, calmer hover
+   transitions on rows and cards, and a visible keyboard focus ring.
+   Everything here is disabled under prefers-reduced-motion.
+   ========================================================================= */
+
+/* Press feedback — the control dips slightly under the pointer/finger. */
+.btn:active:not(:disabled),
+.dash-date-pill:active,
+.chart-type-btn:active { transform: translateY(1px); }
+.btn { transition: background var(--transition), border-color var(--transition),
+                   color var(--transition), box-shadow var(--transition),
+                   transform 0.08s ease; }
+
+/* Cards and rows settle in rather than snapping. */
+.card { transition: border-color var(--transition), box-shadow var(--transition); }
+tbody tr { transition: background var(--transition); }
+
+/* Keyboard focus is visible on every interactive surface, not just buttons. */
+.form-control:focus-visible,
+a.dash-stat:focus-visible,
+.list-item:focus-visible,
+.empty-state-actions .btn:focus-visible {
+    outline: none;
+    box-shadow: var(--brand-glow);
+}
+
+/* Stat cards lift a hair on hover; the sparkline underneath brightens. */
+.dash-stat { transition: border-color var(--transition), background var(--transition),
+                         transform var(--transition), box-shadow var(--transition); }
+a.dash-stat:hover { transform: translateY(-1px); }
+
+/* Empty-state mark reacts to hover on its container, so the block feels live. */
+.empty-state-rich .empty-state-mark { transition: border-color var(--transition), color var(--transition); }
+.empty-state-rich:hover .empty-state-mark { border-color: var(--border-strong); color: var(--text-light); }
+
+@media (prefers-reduced-motion: reduce) {
+    .btn:active:not(:disabled),
+    .dash-date-pill:active,
+    .chart-type-btn:active,
+    a.dash-stat:hover { transform: none; }
+    * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

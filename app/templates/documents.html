@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_empty_state.html" import empty_state %}
 
 {% block content %}
 <style>
@@ -250,7 +251,24 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                         </tr>
                         {% endfor %}
                     {% else %}
-                        <tr><td colspan="{{ 7 if settings.get('status_tracking', '0') == '1' else 6 }}" style="text-align:center;padding:32px;color:var(--text-light)">Nav dokumentu ar izvēlētajiem filtriem.</td></tr>
+                        {% set has_filters = filters.doc_type or filters.client_id or filters.date_from or filters.date_to or filters.status %}
+                        <tr><td colspan="{{ 7 if settings.get('status_tracking', '0') == '1' else 6 }}" style="padding:0">
+                            {% if has_filters %}
+                            {{ empty_state(
+                                icon="search",
+                                title="Nav dokumentu ar šiem filtriem",
+                                text="Neviens dokuments neatbilst izvēlētajiem kritērijiem. Pamēģiniet paplašināt meklēšanu.",
+                                cta_href="/documents",
+                                cta_label="Notīrīt filtrus") }}
+                            {% else %}
+                            {{ empty_state(
+                                icon="document",
+                                title="Vēl nav neviena dokumenta",
+                                text="Izveidojiet pirmo rēķinu — tas aizņems mazāk par minūti.",
+                                cta_href="/documents/new",
+                                cta_label="Jauns dokuments") }}
+                            {% endif %}
+                        </td></tr>
                     {% endif %}
                     </tbody>
                 </table>
@@ -446,7 +464,16 @@ function renderDocs(docs) {
     var tbody = document.getElementById('docsBody');
     if (!tbody) return;
     if (!docs.length) {
-        tbody.innerHTML = '<tr><td colspan="' + (statusTracking ? 7 : 6) + '" style="text-align:center;padding:48px 16px;color:var(--text-light)">Nav dokumentu ar izvēlētajiem filtriem.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + (statusTracking ? 7 : 6) + '" style="padding:0">'
+            + '<div class="empty-state-rich">'
+            + '<div class="empty-state-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            + 'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            + '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>'
+            + '<div class="empty-state-title">Nav dokumentu ar šiem filtriem</div>'
+            + '<div class="empty-state-text">Neviens dokuments neatbilst izvēlētajiem kritērijiem. '
+            + 'Pamēģiniet paplašināt meklēšanu.</div>'
+            + '<div class="empty-state-actions"><a href="/documents" class="btn btn-primary btn-sm">Notīrīt filtrus</a></div>'
+            + '</div></td></tr>';
         return;
     }
     var html = '';

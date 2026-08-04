@@ -62,14 +62,26 @@ near-monochrome. User said "looks premium now."
 - **Client/Product/Document templates** updated with `mobile-card-title` and `mobile-card-meta` classes
 
 ### Comparison period logic (`get_dashboard_stats_range` in `app/database.py`)
-**Current behavior:** Equal-length sliding window ending the day before the current period starts.
-- Example: May 1-17 (17 days) → compares to **April 14-30** (17 days)
-- Example: April 1-30 (30 days) → compares to March 3-April 1 (30 days)
+**Current behavior (fixed):** Calendar shift, not a sliding window.
+- `compare_mode='month'` → both endpoints shift back one calendar month
+  (May 1-17 → April 1-17). A *full* calendar month snaps to the full prior
+  month (April 1-30 → March 1-31).
+- `compare_mode='year'` → same, shifted back one calendar year.
+- `compare_mode='auto'` (default) → full-year → year; full-month or span
+  ≤ 31 days → month; else year.
 
-**Known limitation:** The user expected "Šomēnes" mid-May to compare against
-April 1-17 (first half of April / same calendar days of previous month), not
-April 14-30. This is a TODO — better algorithm would be "shift both endpoints
-back by one calendar month, clamp to last day of month if needed."
+**In-progress periods are clamped to today.** A range ending in the future
+(e.g. "Šomēnes" = Aug 1-31 while today is Aug 4) compares only its *elapsed*
+part — Aug 1-4 vs July 1-4, never Aug 1-4 vs all of July. Both sides use the
+same elapsed window, so the percentage is like-for-like. The returned dict
+carries `cmp_from` / `cmp_to` / `period_in_progress` alongside `prev_from` /
+`prev_to` so the window in play is always inspectable.
+
+This fixed a bug where clicking "Šomēnes" reported a ~87% revenue collapse on
+flat data, and the figure changed again on refresh (the button set the range
+to month-end while the server default used today, and AJAX never synced the
+URL). The preset button now uses month-to-date and `loadStats()` writes the
+range into the URL via `history.replaceState`.
 
 ## What still needs work (user's portfolio vision)
 
@@ -79,20 +91,28 @@ compact secondary stats, full-width CTA button, simple list nav with
 chevrons. They said the current dashboard "is still so simple" — they want
 the app to feel **"alive" and "cool"**, not just minimal-but-empty.
 
-### Concrete next steps to make it portfolio-worthy
-1. **Fix comparison period logic** — use calendar-month-shift not sliding window (see above)
-2. **Hero stat treatment** — make the primary revenue card more visually dominant on mobile (larger type, accent color for change %, maybe a sparkline)
-3. **Sparklines on stat cards** — tiny inline charts in each stat card showing trend
-4. **List redesign on mobile** — instead of just card-with-border, consider:
-   - Swipe actions for quick mark-paid / delete
-   - Floating action button (FAB) for "+ new" on mobile instead of static button
-   - Sticky filter bar that collapses on scroll
-5. **Empty states with personality** — current "Nav dokumentu" is bare; add illustration or actionable CTA
-6. **Loading states** — current AJAX has no skeleton/spinner, just blank → populated
-7. **Micro-interactions** — hover/active states, button press animations, chart entrance animation
-8. **Dashboard "alive" feel** — recent activity feed, upcoming due dates highlighted, "X days since last invoice" prompts
-9. **Bottom nav on mobile** — instead of hamburger-only, consider iOS-style bottom tab bar for the 4 main sections (Pārskats / Dokumenti / Klienti / Produkti)
-10. **PWA manifest** — user explicitly requested, simple 20-30 min job (manifest.json + service worker + meta tags in base.html)
+### Done since that list was written
+- ✅ **Comparison period logic** — calendar shift + elapsed-window clamp (see above)
+- ✅ **Sparklines on stat cards** — `renderSpark()` in `dashboard.html` draws inline
+  SVG (no library) for Apgrozījums / Dokumenti / Vid. rēķins from the
+  `spark_revenue` / `spark_docs` / `spark_avg` arrays. Series are gap-free and
+  bucketed to ≤ ~60 points for long ranges. Line draws in on first paint.
+  "Neapmaksāti" deliberately has none — it's a point-in-time snapshot, not a trend.
+- ✅ **Empty states with personality** — `_empty_state.html` macro (mark + title +
+  one line + CTA), used on dashboard, documents, clients, products, offers, stock.
+  `/documents` distinguishes "no documents yet" from "no match for these filters"
+  (the latter offers "Notīrīt filtrus").
+- ✅ **Loading states** — shimmer skeletons on the stat values/badges and a dimmed
+  chart while the date-range fetch is in flight.
+- ✅ **Micro-interactions** — press feedback on controls, stat count-up, sparkline
+  draw-in, chart entrance animation, keyboard focus rings. All of it is gated on
+  `prefers-reduced-motion`.
+- ✅ **Bottom nav on mobile** and **PWA manifest** — already shipped earlier.
+
+### Still open
+1. **Hero stat treatment** — make the primary revenue card more visually dominant on mobile (larger type, accent for change %)
+2. **List redesign on mobile** — swipe actions for mark-paid/delete; sticky filter bar that collapses on scroll (FAB already exists)
+3. **Dashboard "alive" feel** — upcoming due dates highlighted, "X days since last invoice" prompts (recent activity feed exists)
 11. **Document view page** — likely needs mobile work; PDF preview probably overflows
 12. **Settings page** — large form, mobile UX likely needs grouping/accordion
 13. **Invoice templates preview** — the live preview on document_form.html is desktop-only (`@media max-width: 1100px` stacks it)

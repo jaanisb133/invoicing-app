@@ -1348,44 +1348,59 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
       - 'year':  previous period = same date range shifted back 1 calendar year.
                  Full-year periods snap to the full prior calendar year.
       - 'auto':  full-year → year; full-month or span ≤ 31 days → month; else year.
+
+    A period that runs past today (e.g. "Šomēnes" = Aug 1–31 while today is
+    Aug 4) is still in progress, so only the *elapsed* part of it is compared.
+    Both sides of the comparison use that elapsed window, which keeps the
+    percentage like-for-like: Aug 1–4 vs July 1–4, never Aug 1–4 vs all of July.
     """
     import calendar
     conn = get_connection()
-    today_str = datetime.date.today().isoformat()
+    today = datetime.date.today()
+    today_str = today.isoformat()
 
     d_from = datetime.date.fromisoformat(date_from)
     d_to = datetime.date.fromisoformat(date_to)
-    period_days = (d_to - d_from).days + 1
+
+    # The comparison runs on the elapsed slice of the period. A finished period
+    # uses all of itself; one still running stops at today. A period entirely in
+    # the future has no elapsed part, so it is left alone (both sides come out
+    # empty and the change reads 0%).
+    cmp_from = d_from
+    cmp_to = today if d_from <= today < d_to else d_to
+    period_days = (cmp_to - cmp_from).days + 1
 
     if compare_mode == "auto":
-        if _is_full_year(d_from, d_to):
+        if _is_full_year(cmp_from, cmp_to):
             compare_mode = "year"
-        elif _is_full_month(d_from, d_to) or period_days <= 31:
+        elif _is_full_month(cmp_from, cmp_to) or period_days <= 31:
             compare_mode = "month"
         else:
             compare_mode = "year"
 
     if compare_mode == "year":
-        if _is_full_year(d_from, d_to):
-            prev_from = datetime.date(d_from.year - 1, 1, 1)
-            prev_to = datetime.date(d_to.year - 1, 12, 31)
+        if _is_full_year(cmp_from, cmp_to):
+            prev_from = datetime.date(cmp_from.year - 1, 1, 1)
+            prev_to = datetime.date(cmp_to.year - 1, 12, 31)
         else:
-            prev_from = _shift_date_back(d_from, years=1)
-            prev_to = _shift_date_back(d_to, years=1)
+            prev_from = _shift_date_back(cmp_from, years=1)
+            prev_to = _shift_date_back(cmp_to, years=1)
     else:
         compare_mode = "month"
-        if _is_full_month(d_from, d_to):
-            prev_from = _shift_date_back(d_from, months=1)
+        if _is_full_month(cmp_from, cmp_to):
+            prev_from = _shift_date_back(cmp_from, months=1)
             prev_to = datetime.date(
                 prev_from.year, prev_from.month,
                 calendar.monthrange(prev_from.year, prev_from.month)[1],
             )
         else:
-            prev_from = _shift_date_back(d_from, months=1)
-            prev_to = _shift_date_back(d_to, months=1)
+            prev_from = _shift_date_back(cmp_from, months=1)
+            prev_to = _shift_date_back(cmp_to, months=1)
 
     prev_from_str = prev_from.isoformat()
     prev_to_str = prev_to.isoformat()
+    cmp_from_str = cmp_from.isoformat()
+    cmp_to_str = cmp_to.isoformat()
 
     # Revenue, expenses, doc count, and average in one pass
     row = conn.execute("""
@@ -1412,6 +1427,23 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     """, (user_id, prev_from_str, prev_to_str)).fetchone()
     prev_revenue = prev_row["revenue"] if prev_row else 0
     prev_doc_count = prev_row["doc_count"] if prev_row else 0
+
+    # Current side of the comparison. Same as the headline totals unless the
+    # period runs past today, in which case only the elapsed part counts — so
+    # the percentage weighs equal spans of time on both sides.
+    if (cmp_from_str, cmp_to_str) == (date_from, date_to):
+        cmp_revenue, cmp_doc_count = total_revenue, doc_count
+    else:
+        cmp_row = conn.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
+                COUNT(DISTINCT d.id) as doc_count
+            FROM documents d
+            JOIN document_items di ON di.document_id = d.id
+            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
+        """, (user_id, cmp_from_str, cmp_to_str)).fetchone()
+        cmp_revenue = cmp_row["revenue"] if cmp_row else 0
+        cmp_doc_count = cmp_row["doc_count"] if cmp_row else 0
 
     # Average sell invoice value
     row = conn.execute("""
@@ -1470,17 +1502,52 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     """, (user_id, date_from, date_to)).fetchall()
     daily_revenue = [{"date": r["doc_date"], "total": round(r["daily_total"], 2)} for r in rows]
 
+    # Sparkline series. The chart above only plots days that have documents;
+    # a sparkline needs a gap-free line, so fill every day in the range and
+    # bucket longer ranges so the arrays stay small enough to inline.
+    spark_rows = conn.execute("""
+        SELECT d.doc_date,
+               COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
+               COUNT(DISTINCT d.id) as docs,
+               COUNT(DISTINCT CASE WHEN d.doc_type='sell' THEN d.id END) as sell_docs
+        FROM documents d
+        JOIN document_items di ON di.document_id = d.id
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
+        GROUP BY d.doc_date
+    """, (user_id, date_from, date_to)).fetchall()
+    by_day = {r["doc_date"]: r for r in spark_rows}
+
+    total_days = (d_to - d_from).days + 1
+    bucket_days = 1 if total_days <= 62 else max(2, -(-total_days // 60))
+
+    spark_revenue, spark_docs, spark_avg = [], [], []
+    cur = d_from
+    while cur <= d_to:
+        rev = docs = sell = 0
+        for _ in range(bucket_days):
+            if cur > d_to:
+                break
+            r = by_day.get(cur.isoformat())
+            if r:
+                rev += r["revenue"]
+                docs += r["docs"]
+                sell += r["sell_docs"]
+            cur += datetime.timedelta(days=1)
+        spark_revenue.append(round(rev, 2))
+        spark_docs.append(docs)
+        spark_avg.append(round(rev / sell, 2) if sell else 0)
+
     # Revenue change percentage vs previous period
     if prev_revenue > 0:
-        revenue_change = round(((total_revenue - prev_revenue) / prev_revenue) * 100, 1)
-    elif total_revenue > 0:
+        revenue_change = round(((cmp_revenue - prev_revenue) / prev_revenue) * 100, 1)
+    elif cmp_revenue > 0:
         revenue_change = 100.0
     else:
         revenue_change = 0.0
 
     if prev_doc_count > 0:
-        doc_count_change = round(((doc_count - prev_doc_count) / prev_doc_count) * 100, 1)
-    elif doc_count > 0:
+        doc_count_change = round(((cmp_doc_count - prev_doc_count) / prev_doc_count) * 100, 1)
+    elif cmp_doc_count > 0:
         doc_count_change = 100.0
     else:
         doc_count_change = 0.0
@@ -1503,6 +1570,12 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
         "compare_mode": compare_mode,
         "prev_from": prev_from_str,
         "prev_to": prev_to_str,
+        "cmp_from": cmp_from_str,
+        "cmp_to": cmp_to_str,
+        "period_in_progress": cmp_to_str != date_to,
+        "spark_revenue": spark_revenue,
+        "spark_docs": spark_docs,
+        "spark_avg": spark_avg,
     }
 
 

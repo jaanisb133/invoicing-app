@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_empty_state.html" import empty_state %}
 
 {% block content %}
 <style>
@@ -148,7 +149,14 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                         </tr>
                         {% endfor %}
                     {% else %}
-                        <tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-light)">Nav piedāvājumu.</td></tr>
+                        <tr><td colspan="5" style="padding:0">
+                            {{ empty_state(
+                                icon="offer",
+                                title="Vēl nav neviena piedāvājuma",
+                                text="Sagatavojiet klientam cenu piedāvājumu — vēlāk to varēsiet pārvērst par rēķinu.",
+                                cta_href="/documents/new?doc_type=offer",
+                                cta_label="Jauns piedāvājums") }}
+                        </td></tr>
                     {% endif %}
                     </tbody>
                 </table>
