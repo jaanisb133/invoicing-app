@@ -1676,7 +1676,7 @@ TIER_LIMITS = {
     },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": 200,
-        "max_emails_month": 50, "recurring": True, "max_recurring": 3,
+        "max_emails_month": 100, "recurring": True, "max_recurring": 3,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": False,
         "label": "Pamata",
