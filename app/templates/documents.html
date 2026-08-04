@@ -292,6 +292,15 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                 <label>Tēma</label>
                 <input type="text" name="email_subject" id="listSendSubject" class="form-control">
             </div>
+            <div class="form-group">
+                <label>Pielikuma formāts</label>
+                <select name="attachment_format" id="listSendFormat" class="form-control" onchange="updateListAttachmentName()">
+                    <option value="pdf" selected>PDF</option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>
+                        E-rēķins (PEPPOL XML){% if not einvoice_enabled %} — PRO{% endif %}
+                    </option>
+                </select>
+            </div>
             <div style="background:var(--bg);border-radius:var(--radius);padding:10px 16px;font-size:12px;margin-bottom:16px;border:1px solid var(--border);color:var(--text-light)">
                 No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;
                 {% if request.state.user.email %} · Atbildēt uz: {{ request.state.user.email }}{% endif %}
@@ -566,6 +575,14 @@ function listToggleCustomEmail() {
     section.style.display = document.getElementById('listCustomEmailToggle').checked ? 'block' : 'none';
 }
 
+function updateListAttachmentName() {
+    var el = document.getElementById('listSendAttachment');
+    var sel = document.getElementById('listSendFormat');
+    if (!el) return;
+    var base = window._listSendDocNumber || 'dokuments';
+    el.textContent = base + (sel && sel.value === 'xml' ? '.xml' : '.pdf');
+}
+
 function openListSendModal(docId, clientId) {
     var form = document.getElementById('listSendForm');
     form.action = '/documents/' + docId + '/send';
@@ -583,6 +600,9 @@ function openListSendModal(docId, clientId) {
     if (!emailInput.value) setTimeout(function() { emailInput.focus(); }, 50);
     var attachEl = document.getElementById('listSendAttachment');
     if (attachEl) attachEl.textContent = 'dokuments.pdf';
+    window._listSendDocNumber = '';
+    var fmtSel = document.getElementById('listSendFormat');
+    if (fmtSel) fmtSel.value = 'pdf';   // always start from PDF
     fetch('/api/documents/' + docId + '/email-defaults', {credentials: 'same-origin'})
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(d) {
@@ -590,7 +610,10 @@ function openListSendModal(docId, clientId) {
             subjectInput.value = d.subject || '';
             bodyInput.value = d.body || '';
             if (!emailInput.value && d.client_email) emailInput.value = d.client_email;
-            if (attachEl && d.doc_number) attachEl.textContent = d.doc_number + '.pdf';
+            if (d.doc_number) {
+                window._listSendDocNumber = d.doc_number;
+                updateListAttachmentName();
+            }
         })
         .catch(function() {});
 }

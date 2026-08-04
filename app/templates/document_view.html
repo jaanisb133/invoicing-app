@@ -272,10 +272,24 @@ a.btn-download-main:active {
                 <label>Tēma</label>
                 <input type="text" name="email_subject" class="form-control" value="{{ default_email_subject }}">
             </div>
+            {% if doc.doc_type != 'offer' %}
+            <div class="form-group">
+                <label>Pielikuma formāts</label>
+                <select name="attachment_format" id="sendFormat" class="form-control" onchange="updateSendAttachmentHint()">
+                    <option value="pdf" selected>PDF</option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>
+                        E-rēķins (PEPPOL XML){% if not einvoice_enabled %} — PRO{% endif %}
+                    </option>
+                </select>
+                {% if not einvoice_enabled %}
+                <span style="font-size:12px;color:var(--text-light)">E-rēķins pieejams no <a href="/pricing">Pamata plāna</a>.</span>
+                {% endif %}
+            </div>
+            {% endif %}
             <div style="background:var(--bg);border-radius:var(--radius);padding:10px 16px;font-size:12px;margin-bottom:16px;border:1px solid var(--border);color:var(--text-light)">
                 No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;
                 {% if request.state.user.email %} · Atbildēt uz: {{ request.state.user.email }}{% endif %}
-                 · Pielikums: {{ doc.doc_number }}.pdf
+                 · Pielikums: <span id="sendAttachmentName">{{ doc.doc_number }}.pdf</span>
             </div>
             <div class="form-group" style="margin-bottom:12px">
                 <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
@@ -638,6 +652,14 @@ function selectTemplate(key, btn) {
     if (dlPdfLink) dlPdfLink.href = '/documents/' + docId + '/pdf?template=' + key;
     document.getElementById('sendTemplate').value = key;
     renderPreview(key);
+}
+
+function updateSendAttachmentHint() {
+    var sel = document.getElementById('sendFormat');
+    var name = document.getElementById('sendAttachmentName');
+    if (!sel || !name) return;
+    var base = {{ doc.doc_number | tojson }};
+    name.textContent = base + (sel.value === 'xml' ? '.xml' : '.pdf');
 }
 
 function showSendModal() {

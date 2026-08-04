@@ -679,6 +679,15 @@
                 <label>Tēma</label>
                 <input type="text" name="email_subject" id="dashSendSubject" class="form-control">
             </div>
+            <div class="form-group">
+                <label>Pielikuma formāts</label>
+                <select name="attachment_format" id="dashSendFormat" class="form-control" onchange="updateDashAttachmentName()">
+                    <option value="pdf" selected>PDF</option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>
+                        E-rēķins (PEPPOL XML){% if not einvoice_enabled %} — PRO{% endif %}
+                    </option>
+                </select>
+            </div>
             <div style="background:var(--bg);border-radius:var(--radius);padding:10px 16px;font-size:12px;margin-bottom:16px;border:1px solid var(--border);color:var(--text-light)">
                 No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;
                 {% if request.state.user.email %} · Atbildēt uz: {{ request.state.user.email }}{% endif %}
@@ -1252,6 +1261,14 @@ function dashToggleCustomEmail() {
     section.style.display = document.getElementById('dashCustomEmailToggle').checked ? 'block' : 'none';
 }
 
+function updateDashAttachmentName() {
+    var el = document.getElementById('dashSendAttachment');
+    var sel = document.getElementById('dashSendFormat');
+    if (!el) return;
+    var base = window._dashSendDocNumber || 'dokuments';
+    el.textContent = base + (sel && sel.value === 'xml' ? '.xml' : '.pdf');
+}
+
 function dashOpenSendModal(docId, clientId) {
     var form = document.getElementById('dashSendForm');
     form.action = '/documents/' + docId + '/send';
@@ -1269,6 +1286,9 @@ function dashOpenSendModal(docId, clientId) {
     // Reset attachment label until API responds
     var attachEl = document.getElementById('dashSendAttachment');
     if (attachEl) attachEl.textContent = 'dokuments.pdf';
+    window._dashSendDocNumber = '';
+    var dashFmt = document.getElementById('dashSendFormat');
+    if (dashFmt) dashFmt.value = 'pdf';   // always start from PDF
     // Fetch saved-template defaults so user sees what will be sent
     fetch('/api/documents/' + docId + '/email-defaults', {credentials: 'same-origin'})
         .then(function(r) { return r.ok ? r.json() : null; })
@@ -1277,7 +1297,10 @@ function dashOpenSendModal(docId, clientId) {
             subjectInput.value = d.subject || '';
             bodyInput.value = d.body || '';
             if (!emailInput.value && d.client_email) emailInput.value = d.client_email;
-            if (attachEl && d.doc_number) attachEl.textContent = d.doc_number + '.pdf';
+            if (d.doc_number) {
+                window._dashSendDocNumber = d.doc_number;
+                updateDashAttachmentName();
+            }
         })
         .catch(function() {});
 }

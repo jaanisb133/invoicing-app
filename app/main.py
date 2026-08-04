@@ -255,8 +255,14 @@ def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path="", 
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
     if attachment_path and os.path.exists(attachment_path):
+        # Derive the type from the file — the attachment is a PDF most of the
+        # time but can also be a PEPPOL XML e-invoice, and labelling that as
+        # application/pdf makes mail clients refuse to open it.
+        import mimetypes
+        ctype, _enc = mimetypes.guess_type(attachment_path)
+        maintype, _slash, subtype = (ctype or "application/octet-stream").partition("/")
         with open(attachment_path, "rb") as f:
-            part = MIMEBase("application", "pdf")
+            part = MIMEBase(maintype, subtype or "octet-stream")
             part.set_payload(f.read())
             encoders.encode_base64(part)
             part.add_header("Content-Disposition",
@@ -2578,8 +2584,23 @@ async def send_document_email(request: Request, doc_id: int):
         if user.get("tier", "free") == "free":
             return RedirectResponse("/pricing", status_code=303)
 
-    # Generate PDF
-    filepath = generate_invoice_pdf(doc_id, template=template)
+    # Attachment: PDF by default, optionally the PEPPOL XML e-invoice.
+    # XML is a paid feature and only defined for invoices, so anything that
+    # doesn't qualify quietly falls back to the PDF rather than failing.
+    attachment_format = (form.get("attachment_format") or "pdf").strip().lower()
+    if attachment_format == "xml" and (
+        doc.get("doc_type") == "offer" or not _check_tier_feature(user, "einvoice")
+    ):
+        attachment_format = "pdf"
+
+    if attachment_format == "xml":
+        try:
+            filepath, _xml_name = generate_einvoice_file(doc_id)
+        except Exception as e:
+            logger.exception("E-invoice XML generation failed for doc %s", doc_id)
+            return _redirect_with(f"error=E-rēķina izveide neizdevās: {quote(str(e))}")
+    else:
+        filepath = generate_invoice_pdf(doc_id, template=template)
 
     # Get client and company info for email
     settings = _user_settings(user["id"])
@@ -2633,8 +2654,12 @@ async def send_document_email(request: Request, doc_id: int):
 @app.post("/documents/{doc_id}/delete")
 async def delete_document(request: Request, doc_id: int):
     user = request.state.user
+    # Read the type before deleting so an offer sends the user back to the
+    # offers list rather than dumping them in Dokumenti, where it never was.
+    doc, _ = db.get_document(doc_id)
+    is_offer = bool(doc) and doc.get("user_id") == user["id"] and doc.get("doc_type") == "offer"
     db.delete_document(user["id"], doc_id)
-    return RedirectResponse("/documents", status_code=303)
+    return RedirectResponse("/offers" if is_offer else "/documents", status_code=303)
 
 
 @app.get("/trash")
