@@ -52,7 +52,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "24"
+CSS_VERSION = "25"
 templates.env.globals["css_version"] = CSS_VERSION
 
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
@@ -1859,6 +1859,7 @@ async def settings_page(request: Request):
         "has_logo": logo_path is not None,
         "logo_v": logo_v,
         "current_max_seq": db.get_user_max_seq(user["id"]),
+        "templates": TEMPLATES,
     })
     return templates.TemplateResponse("settings.html", ctx)
 

@@ -4,14 +4,14 @@
 <div class="page-header">
     <div>
         <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Iestatījumi</h2>
-        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Uzņēmuma profils, rēķinu numerācija un integrācijas.</p>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Uzņēmuma profils, dokumentu noformējums un numerācija.</p>
     </div>
 </div>
 
 <div class="page-body">
     {% if request.query_params.get('setup') %}
     <div class="alert alert-info" style="font-size:15px;padding:16px 20px">
-        <strong>Laipni lūdzam!</strong> Lai sāktu lietot sistēmu, lūdzu aizpildiet uzņēmuma informāciju zemāk un saglabājiet iestatījumus.
+        <strong>Laipni lūdzam!</strong> Lai sāktu lietot sistēmu, aizpildiet sadaļu <strong>Uzņēmums</strong> un saglabājiet iestatījumus.
     </div>
     {% endif %}
 
@@ -23,28 +23,60 @@
     <div class="alert alert-danger">Neatbalstīts faila formāts. Atļautie formāti: PNG, JPG, GIF.</div>
     {% endif %}
 
-    <form method="post" action="/settings">
-        <div class="card">
-            <div class="card-header">Uzņēmuma informācija</div>
+    <div class="settings-layout">
+        {# Sticky section nav: on desktop a left rail, on mobile a scrollable
+           chip row. Scroll-spy marks the section currently in view. #}
+        <nav class="settings-nav" id="settingsNav">
+            <div class="settings-nav-title">Sadaļas</div>
+            <a href="#s-company" class="active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-5h4v5"/></svg>
+                Uzņēmums
+            </a>
+            <a href="#s-look">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><path d="M12 22a10 10 0 1 1 0-20c1.7 0 2 1.5 1 2.5-1.2 1.2-.4 3 1.3 3H18a4 4 0 0 1 0 8h-2c-2 0-3 1.5-2.3 3 .5 1.2 0 3-1.7 3z"/></svg>
+                Noformējums
+            </a>
+            <a href="#s-defaults">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Dokumenti
+            </a>
+            <a href="#s-numbering">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
+                Numerācija
+            </a>
+            <a href="#s-email">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+                E-pasts
+            </a>
+            <a href="#s-features">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.9 4.9 2.9 2.9"/><path d="m16.2 16.2 2.9 2.9"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.9 19.1 2.9-2.9"/><path d="m16.2 7.8 2.9-2.9"/></svg>
+                Papildu funkcijas
+            </a>
+        </nav>
+
+        <form method="post" action="/settings" id="settingsForm" class="settings-content">
+
+        <!-- ============================ UZŅĒMUMS ============================ -->
+        <section class="card settings-section" id="s-company">
+            <div class="card-header">
+                Uzņēmums
+                <span class="settings-section-hint">Šie dati parādās uz katra dokumenta</span>
+            </div>
             <div class="card-body">
                 <div class="form-group">
                     <label>Veids</label>
-                    <div style="display:flex;gap:8px">
+                    <div style="display:flex;gap:10px">
                         <label class="radio-card {% if settings.get('entity_type', 'business') == 'business' %}selected{% endif %}" style="flex:1;margin:0" id="sTypeBusinessCard">
                             <input type="radio" name="entity_type" value="business"
                                    {% if settings.get('entity_type', 'business') == 'business' %}checked{% endif %}
                                    onchange="toggleSettingsEntityType()">
-                            <div class="radio-card-content" style="padding:10px 14px">
-                                <strong>Uzņēmums</strong>
-                            </div>
+                            <div class="radio-card-content"><strong>Uzņēmums</strong></div>
                         </label>
                         <label class="radio-card {% if settings.get('entity_type') == 'individual' %}selected{% endif %}" style="flex:1;margin:0" id="sTypeIndividualCard">
                             <input type="radio" name="entity_type" value="individual"
                                    {% if settings.get('entity_type') == 'individual' %}checked{% endif %}
                                    onchange="toggleSettingsEntityType()">
-                            <div class="radio-card-content" style="padding:10px 14px">
-                                <strong>Privātpersona</strong>
-                            </div>
+                            <div class="radio-card-content"><strong>Privātpersona</strong></div>
                         </label>
                     </div>
                 </div>
@@ -52,7 +84,7 @@
                     <div class="form-group">
                         <label id="sNameLabel">{% if settings.get('entity_type') == 'individual' %}Vārds, Uzvārds *{% else %}Uzņēmuma nosaukums *{% endif %}</label>
                         <input type="text" name="company_name" class="form-control"
-                               value="{{ settings.get('company_name', '') or current_user.display_name or '' }}" required>
+                               value="{{ settings.get('company_name', '') }}" required>
                     </div>
                     <div class="form-group">
                         <label id="sRegLabel">{% if settings.get('entity_type') == 'individual' %}Personas kods{% else %}Reģistrācijas numurs{% endif %}</label>
@@ -60,19 +92,21 @@
                                value="{{ settings.get('reg_number', '') }}">
                     </div>
                 </div>
-                <div class="form-group">
-                    <div style="margin-top:4px">
-                        <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+
+                {# PVN maksātājs sits directly above PVN numurs and the rate it
+                   controls, instead of two cards apart as it used to. #}
+                <div class="settings-toggle" style="border-bottom:none;padding-bottom:6px">
+                    <div class="settings-toggle-text">
+                        <div class="settings-toggle-name">Esmu PVN maksātājs</div>
+                        <div class="settings-toggle-desc">Ja neesat PVN maksātājs, PVN aprēķini un lauks netiks rādīti dokumentos.</div>
+                    </div>
+                    <div class="settings-toggle-control">
+                        <label style="cursor:pointer;display:flex;align-items:center">
                             <input type="hidden" name="is_vat_payer" value="0">
                             <input type="checkbox" id="vatPayerToggle" name="is_vat_payer" value="1"
                                    {% if settings.get('is_vat_payer', '1') == '1' %}checked{% endif %}
-                                   onchange="toggleVatFields()"
-                                   style="width:18px;height:18px;cursor:pointer">
-                            Esmu PVN maksātājs
+                                   onchange="toggleVatFields()">
                         </label>
-                        <span style="font-size:12px;color:var(--text-light)">
-                            Ja neesat PVN maksātājs, PVN aprēķini un lauks netiks rādīti dokumentos
-                        </span>
                     </div>
                 </div>
                 <div class="form-row">
@@ -81,11 +115,16 @@
                         <input type="text" name="vat_number" class="form-control"
                                value="{{ settings.get('vat_number', '') }}">
                     </div>
-                    <div class="form-group">
-                        <label>Juridiskā adrese</label>
-                        <input type="text" name="legal_address" class="form-control"
-                               value="{{ settings.get('legal_address', '') }}">
+                    <div class="form-group vat-field" style="{% if settings.get('is_vat_payer', '1') != '1' %}display:none{% endif %}">
+                        <label>PVN likme pēc noklusējuma (%)</label>
+                        <input type="text" name="default_vat_rate" class="form-control"
+                               value="{{ settings.get('default_vat_rate', '21') }}">
                     </div>
+                </div>
+                <div class="form-group">
+                    <label>Juridiskā adrese</label>
+                    <input type="text" name="legal_address" class="form-control"
+                           value="{{ settings.get('legal_address', '') }}">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -100,184 +139,174 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Logo upload (separate form) -->
-        <div class="card">
-            <div class="card-header">Uzņēmuma logotips</div>
+        <!-- =========================== NOFORMĒJUMS =========================== -->
+        {# Everything that changes how a PDF looks now lives together: logo,
+           logo size, template and accent colour were previously split across
+           two unrelated cards. #}
+        <section class="card settings-section" id="s-look">
+            <div class="card-header">
+                Noformējums
+                <span class="settings-section-hint">Kā izskatās Jūsu dokumenti</span>
+            </div>
             <div class="card-body">
-                <div class="logo-upload-area">
-                    {% if has_logo %}
-                    <img src="/api/logo?v={{ logo_v }}" alt="Logo" class="logo-preview">
-                    {% else %}
-                    <div style="width:120px;height:60px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--text-lighter);font-size:12px">
-                        Nav logotipa
-                    </div>
-                    {% endif %}
-                    <div>
-                        <p style="font-size:12px;color:var(--text-light);margin-bottom:8px">PNG, JPG vai GIF. Ieteicamais izmērs: 300x150px.</p>
-                        <div style="display:flex;gap:8px;align-items:center">
-                            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('logoFileInput').click()">
-                                {% if has_logo %}Mainīt logotipu{% else %}Augšupielādēt logotipu{% endif %}
-                            </button>
+                <div class="form-group">
+                    <label>Logotips</label>
+                    <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+                        <div style="width:120px;height:64px;border:1px solid var(--border);border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
                             {% if has_logo %}
-                            <button type="button" class="btn btn-danger btn-sm" onclick="deleteLogo()">Dzēst</button>
+                            <img src="/api/logo?v={{ logo_v }}" alt="Logotips" style="max-width:100%;max-height:100%;object-fit:contain">
+                            {% else %}
+                            <span style="font-size:11.5px;color:#9ca3af">Nav logotipa</span>
                             {% endif %}
+                        </div>
+                        <div>
+                            <div style="font-size:12.5px;color:var(--text-light);margin-bottom:8px">PNG, JPG vai GIF. Ieteicamais izmērs: 300x150px.</div>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('logoFileInput').click()">
+                                    {% if has_logo %}Mainīt logotipu{% else %}Augšupielādēt{% endif %}
+                                </button>
+                                {% if has_logo %}
+                                <button type="button" class="btn btn-danger btn-sm" onclick="deleteLogo()">Dzēst</button>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
                 </div>
                 {% if has_logo %}
-                <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
-                    <label style="font-size:13px;font-weight:600;display:block;margin-bottom:8px">Logotipa izmērs dokumentos</label>
-                    <div style="display:flex;align-items:center;gap:12px">
+                <div class="form-group">
+                    <label>Logotipa izmērs dokumentos</label>
+                    <div style="display:flex;align-items:center;gap:14px">
                         <span style="font-size:12px;color:var(--text-light)">Mazāks</span>
                         <input type="range" name="logo_width" min="30" max="200" value="{{ settings.get('logo_width', '100') }}"
-                               style="flex:1;cursor:pointer" oninput="document.getElementById('logoWidthVal').textContent=this.value+'%'">
+                               style="flex:1;cursor:pointer" oninput="document.getElementById('logoWidthVal').textContent = this.value + '%'">
                         <span style="font-size:12px;color:var(--text-light)">Lielāks</span>
-                        <span id="logoWidthVal" style="font-size:13px;font-weight:600;min-width:40px;text-align:center">{{ settings.get('logo_width', '100') }}%</span>
+                        <strong id="logoWidthVal" style="font-size:13px;min-width:44px;text-align:right">{{ settings.get('logo_width', '100') }}%</strong>
                     </div>
                 </div>
+                {% else %}
+                {# No logo, so no slider — but carry the stored size through the
+                   save, otherwise deleting a logo would silently reset it. #}
+                <input type="hidden" name="logo_width" value="{{ settings.get('logo_width', '100') }}">
                 {% endif %}
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">Dokumentu iestatījumi</div>
-            <div class="card-body">
-                <div class="form-group">
-                    <div style="margin-top:4px">
-                        <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                            <input type="hidden" name="use_prefixes" value="0">
-                            <input type="checkbox" id="prefix_toggle" name="use_prefixes" value="1"
-                                   {% if settings.get('use_prefixes', '0') == '1' %}checked{% endif %}
-                                   onchange="document.getElementById('prefix_fields').style.display=this.checked?'':'none';updateNumberPreview()"
-                                   style="width:18px;height:18px;cursor:pointer">
-                            Izmantot dokumentu numuru priedēkļus (prefiksus)
-                        </label>
-                    </div>
-                </div>
-                <div class="form-row" id="prefix_fields" style="{% if settings.get('use_prefixes', '0') != '1' %}display:none{% endif %}">
-                    <div class="form-group">
-                        <label>Pirkuma dokumenta prefikss <span style="font-size:12px;color:var(--text-light)">(Nav obligāts)</span></label>
-                        <input type="text" name="buy_doc_prefix" class="form-control"
-                               value="{{ settings.get('buy_doc_prefix', '') }}">
-                    </div>
-                    <div class="form-group">
-                        <label>Pārdošanas dokumenta prefikss <span style="font-size:12px;color:var(--text-light)">(Nav obligāts)</span></label>
-                        <input type="text" name="sell_doc_prefix" class="form-control"
-                               value="{{ settings.get('sell_doc_prefix', '') }}" oninput="updateNumberPreview()">
-                    </div>
-                </div>
                 <div class="form-row">
+                    <div class="form-group">
+                        <label>Noklusējuma šablons</label>
+                        <select name="default_template" class="form-control">
+                            {% for key, label in templates.items() %}
+                            {% if tier_limits.all_templates or key == 'classic' %}
+                            <option value="{{ key }}" {% if settings.get('default_template', 'classic') == key %}selected{% endif %}>{{ label }}</option>
+                            {% else %}
+                            <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                        {% if not tier_limits.all_templates %}
+                        <span style="font-size:12px;color:var(--text-light)">Pārējie šabloni pieejami no <a href="/pricing">Pamata plāna</a>.</span>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Akcenta krāsa</label>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <input type="color" name="accent_color" value="{{ settings.get('accent_color', '#09090b') }}"
+                                   id="accentColor" style="width:44px;height:38px;padding:2px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);cursor:pointer"
+                                   oninput="document.getElementById('accentHex').textContent = this.value">
+                            <span id="accentHex" style="font-size:13px;color:var(--text-light);font-family:ui-monospace,monospace">{{ settings.get('accent_color', '#09090b') }}</span>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('accentColor').value='#09090b';document.getElementById('accentHex').textContent='#09090b';markSettingsDirty()">Noklusējums</button>
+                        </div>
+                        <span style="font-size:12px;color:var(--text-light)">Modernā šablona tumšās joslas krāsa.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================ DOKUMENTI ============================ -->
+        <section class="card settings-section" id="s-defaults">
+            <div class="card-header">
+                Dokumenti
+                <span class="settings-section-hint">Nosaukumi un noklusējuma vērtības</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Pārdošanas dokumenta nosaukums</label>
+                        <input type="text" name="sell_doc_name" class="form-control"
+                               value="{{ settings.get('sell_doc_name', 'Rēķins') }}">
+                    </div>
                     <div class="form-group">
                         <label>Pirkuma dokumenta nosaukums</label>
                         <input type="text" name="buy_doc_name" class="form-control"
                                value="{{ settings.get('buy_doc_name', 'Rēķins') }}">
                     </div>
                     <div class="form-group">
-                        <label>Pārdošanas dokumenta nosaukums</label>
-                        <input type="text" name="sell_doc_name" class="form-control"
-                               value="{{ settings.get('sell_doc_name', 'Rēķins') }}">
+                        <label>Piedāvājuma nosaukums</label>
+                        <input type="text" name="offer_doc_name" class="form-control"
+                               value="{{ settings.get('offer_doc_name', 'Piedāvājums') }}">
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group vat-field" style="max-width:200px;{% if settings.get('is_vat_payer', '1') != '1' %}display:none{% endif %}">
-                        <label>PVN likme (%)</label>
-                        <input type="text" name="default_vat_rate" class="form-control"
-                               value="{{ settings.get('default_vat_rate', '21') }}">
+
+                <div class="settings-toggle">
+                    <div class="settings-toggle-text">
+                        <div class="settings-toggle-name">Numuru priedēkļi (prefiksi)</div>
+                        <div class="settings-toggle-desc">Pievieno burtu priedēkli dokumenta numuram, piem. <code>R-26-001</code>.</div>
                     </div>
-                    <div class="form-group" style="max-width:200px">
-                        <label>Apmaksas termiņš (dienas)</label>
-                        <input type="number" name="payment_due_days" class="form-control" min="0"
-                               value="{{ settings.get('payment_due_days', '') }}"
-                               placeholder="piem. 7">
-                        <span style="font-size:12px;color:var(--text-light)">Noklusējuma dienu skaits no rēķina datuma</span>
-                    </div>
-                    <div class="form-group" style="max-width:200px">
-                        <label>Noklusējuma šablons</label>
-                        <select name="default_template" class="form-control">
-                            <option value="minimal" {% if settings.get('default_template', 'minimal') == 'minimal' %}selected{% endif %} {% if not tier_limits.all_templates %}disabled{% endif %}>Minimālā{% if not tier_limits.all_templates %} (PRO){% endif %}</option>
-                            <option value="classic" {% if settings.get('default_template') == 'classic' %}selected{% endif %}>Klasiskā</option>
-                            <option value="modern" {% if settings.get('default_template') == 'modern' %}selected{% endif %} {% if not tier_limits.all_templates %}disabled{% endif %}>Modernā{% if not tier_limits.all_templates %} (PRO){% endif %}</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="max-width:280px">
-                        <label>Akcenta krāsa (Modernā šablona galvene)</label>
-                        <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
-                            <input type="color" name="accent_color" value="{{ settings.get('accent_color', '#09090b') }}"
-                                   style="width:40px;height:34px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--bg-card)"
-                                   oninput="document.getElementById('accentHex').value=this.value">
-                            <input type="text" id="accentHex" class="form-control" style="width:90px;font-family:monospace;font-size:13px"
-                                   value="{{ settings.get('accent_color', '#09090b') }}"
-                                   oninput="var v=this.value;if(/^#[0-9a-fA-F]{6}$/.test(v))this.form.accent_color.value=v"
-                                   maxlength="7" placeholder="#09090b">
-                            <button type="button" class="btn btn-outline btn-sm" onclick="this.form.accent_color.value='#09090b';document.getElementById('accentHex').value='#09090b';this.form.accent_color.dispatchEvent(new Event('input'))">Noklusējums</button>
-                        </div>
-                        <span style="font-size:12px;color:var(--text-light)">Modernā šablona tumšās joslas krāsa</span>
-                    </div>
-                    <div class="form-group">
-                        <label>Noliktavas pārvaldība</label>
-                        <div style="margin-top:4px">
-                            <label style="font-weight:400;font-size:14px;{% if tier in ('business', 'admin') %}cursor:pointer;{% else %}opacity:0.5;cursor:not-allowed;{% endif %}display:flex;align-items:center;gap:8px">
-                                <input type="hidden" name="stock_enabled" value="0">
-                                <input type="checkbox" name="stock_enabled" value="1"
-                                       {% if settings.get('stock_enabled', '0') == '1' and tier in ('business', 'admin') %}checked{% endif %}
-                                       {% if tier not in ('business', 'admin') %}disabled{% endif %}
-                                       style="width:18px;height:18px;{% if tier in ('business', 'admin') %}cursor:pointer{% else %}cursor:not-allowed{% endif %}">
-                                Ieslēgt noliktavas uzskaiti
-                                {% if tier not in ('business', 'admin') %}
-                                <span class="tier-badge tier-business" style="font-size:10px;padding:1px 8px">Bizness</span>
-                                {% endif %}
-                            </label>
-                            <span style="font-size:12px;color:var(--text-light)">
-                                {% if tier not in ('business', 'admin') %}
-                                Pieejams tikai Bizness plānā. <a href="/pricing">Uzlabot plānu</a>
-                                {% else %}
-                                Izslēdziet, ja pārdodat pakalpojumus un jums nav preču krājumu
-                                {% endif %}
-                            </span>
-                        </div>
+                    <div class="settings-toggle-control">
+                        <label style="cursor:pointer;display:flex;align-items:center">
+                            <input type="hidden" name="use_prefixes" value="0">
+                            <input type="checkbox" id="prefix_toggle" name="use_prefixes" value="1"
+                                   {% if settings.get('use_prefixes', '0') == '1' %}checked{% endif %}
+                                   onchange="togglePrefixFields();updateNumberPreview()">
+                        </label>
                     </div>
                 </div>
-                <div class="form-row">
+                <div class="form-row" id="prefixFields" style="{% if settings.get('use_prefixes', '0') != '1' %}display:none{% endif %}">
                     <div class="form-group">
-                        <label>Dokumentu statuss</label>
-                        <div style="margin-top:4px">
-                            <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                                <input type="hidden" name="status_tracking" value="0">
-                                <input type="checkbox" name="status_tracking" value="1"
-                                       {% if settings.get('status_tracking', '0') == '1' %}checked{% endif %}
-                                       style="width:18px;height:18px;cursor:pointer">
-                                Ieslēgt dokumentu statusu izsekošanu
-                            </label>
-                            <span style="font-size:12px;color:var(--text-light)">
-                                Ļauj atzīmēt dokumentus kā "Izrakstīts" vai "Apmaksāts"
-                            </span>
-                        </div>
+                        <label>Pārdošanas prefikss</label>
+                        <input type="text" name="sell_doc_prefix" class="form-control" maxlength="6"
+                               value="{{ settings.get('sell_doc_prefix', '') }}" oninput="updateNumberPreview()">
+                    </div>
+                    <div class="form-group">
+                        <label>Pirkuma prefikss</label>
+                        <input type="text" name="buy_doc_prefix" class="form-control" maxlength="6"
+                               value="{{ settings.get('buy_doc_prefix', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Piedāvājuma prefikss</label>
+                        <input type="text" name="offer_doc_prefix" class="form-control" maxlength="6"
+                               value="{{ settings.get('offer_doc_prefix', 'P') }}">
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Parakstu lauks dokumentos</label>
-                        <div style="margin-top:4px">
-                            <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                                <input type="hidden" name="electronic_doc" value="0">
-                                <input type="checkbox" name="electronic_doc" value="1"
-                                       {% if settings.get('electronic_doc', '0') == '1' %}checked{% endif %}
-                                       style="width:18px;height:18px;cursor:pointer">
-                                Elektronisks dokuments (bez paraksta laukiem)
-                            </label>
-                            <span style="font-size:12px;color:var(--text-light)">
-                                Parakstu vietā tiks norādīts: "Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta"
-                            </span>
-                        </div>
+
+                <div class="form-group" style="max-width:240px">
+                    <label>Apmaksas termiņš (dienas)</label>
+                    <input type="number" name="payment_due_days" class="form-control" min="0"
+                           value="{{ settings.get('payment_due_days', '') }}" placeholder="Piem. 14">
+                    <span style="font-size:12px;color:var(--text-light)">Noklusējuma dienu skaits no rēķina datuma.</span>
+                </div>
+
+                <div class="settings-toggle" style="border-top:1px solid var(--border);margin-top:4px;padding-top:14px">
+                    <div class="settings-toggle-text">
+                        <div class="settings-toggle-name">Elektronisks dokuments</div>
+                        <div class="settings-toggle-desc">Paraksta vietā tiks norādīts: “Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta”.</div>
+                    </div>
+                    <div class="settings-toggle-control">
+                        <label style="cursor:pointer;display:flex;align-items:center">
+                            <input type="hidden" name="electronic_doc" value="0">
+                            <input type="checkbox" name="electronic_doc" value="1"
+                                   {% if settings.get('electronic_doc', '0') == '1' %}checked{% endif %}>
+                        </label>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div class="card">
-            <div class="card-header">Rēķinu numerācija</div>
+        <!-- =========================== NUMERĀCIJA =========================== -->
+        <section class="card settings-section" id="s-numbering">
+            <div class="card-header">
+                Numerācija
+                <span class="settings-section-hint">Kā tiek veidoti dokumentu numuri</span>
+            </div>
             <div class="card-body">
                 <div class="form-group">
                     <label>Numerācijas tips</label>
@@ -327,7 +356,7 @@
                         <div class="form-group">
                             <label>Minimālais ciparu skaits</label>
                             <select name="invoice_number_digits" id="numDigits" class="form-control"
-                                    style="max-width:100px" onchange="updateNumberPreview()">
+                                    style="max-width:110px" onchange="updateNumberPreview()">
                                 <option value="2" {% if settings.get('invoice_number_digits') == '2' %}selected{% endif %}>2 (01)</option>
                                 <option value="3" {% if settings.get('invoice_number_digits', '3') == '3' %}selected{% endif %}>3 (001)</option>
                                 <option value="4" {% if settings.get('invoice_number_digits') == '4' %}selected{% endif %}>4 (0001)</option>
@@ -342,7 +371,7 @@
                                    oninput="updateNumberPreview()">
                             <span style="font-size:12px;color:var(--text-light)">
                                 {% if current_max_seq and current_max_seq > 0 %}
-                                Jaunie rēķini sāksies no šī numura. Minimālais: {{ current_max_seq + 1 }} (jau ir izrakstīti dokumenti).
+                                Minimālais: {{ current_max_seq + 1 }} (jau ir izrakstīti dokumenti).
                                 {% else %}
                                 Jaunie rēķini sāksies no šī numura.
                                 {% endif %}
@@ -355,10 +384,14 @@
                     <strong>Piemērs:</strong> <span id="previewText">...</span>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div class="card">
-            <div class="card-header">E-pasta ziņojuma teksts</div>
+        <!-- ============================= E-PASTS ============================= -->
+        <section class="card settings-section" id="s-email">
+            <div class="card-header">
+                E-pasts
+                <span class="settings-section-hint">Teksts, ko klients saņem kopā ar dokumentu</span>
+            </div>
             <div class="card-body">
                 <div class="form-group">
                     <label>Noklusējuma e-pasta teksts</label>
@@ -377,10 +410,68 @@
                     </a>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <button type="submit" class="btn btn-primary" style="font-size:15px;padding:12px 28px">Saglabāt iestatījumus</button>
-    </form>
+        <!-- ======================== PAPILDU FUNKCIJAS ======================== -->
+        {# Feature switches used to be buried at the bottom of the document
+           settings card. They are their own thing, so they get their own
+           section with a plain explanation of what each one turns on. #}
+        <section class="card settings-section" id="s-features">
+            <div class="card-header">
+                Papildu funkcijas
+                <span class="settings-section-hint">Ieslēdziet tikai to, kas Jums vajadzīgs</span>
+            </div>
+            <div class="card-body">
+                <div class="settings-toggle">
+                    <div class="settings-toggle-text">
+                        <div class="settings-toggle-name">Dokumentu statuss</div>
+                        <div class="settings-toggle-desc">Ļauj atzīmēt dokumentus kā “Izrakstīts” vai “Apmaksāts” un rāda neapmaksāto summu pārskatā.</div>
+                    </div>
+                    <div class="settings-toggle-control">
+                        <label style="cursor:pointer;display:flex;align-items:center">
+                            <input type="hidden" name="status_tracking" value="0">
+                            <input type="checkbox" name="status_tracking" value="1"
+                                   {% if settings.get('status_tracking', '0') == '1' %}checked{% endif %}>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-toggle {% if not tier_limits.stock %}is-locked{% endif %}">
+                    <div class="settings-toggle-text">
+                        <div class="settings-toggle-name">
+                            Noliktavas pārvaldība
+                            {% if not tier_limits.stock %}<span class="pill pill-neutral">PRO</span>{% endif %}
+                        </div>
+                        <div class="settings-toggle-desc">
+                            Uzskaita preču atlikumus no pirkuma un pārdošanas dokumentiem.
+                            Ieslēdziet, ja pārdodat preces, nevis pakalpojumus.
+                            {% if not tier_limits.stock %}<a href="/pricing">Pieejams Bizness plānā</a>.{% endif %}
+                        </div>
+                    </div>
+                    <div class="settings-toggle-control">
+                        <label style="display:flex;align-items:center;{% if tier_limits.stock %}cursor:pointer{% else %}cursor:not-allowed{% endif %}">
+                            {# Always 0: an unchecked box sends nothing, so this is the
+                               "off" value. A user who already has stock on can still
+                               turn it off — the server only blocks turning it on. #}
+                            <input type="hidden" name="stock_enabled" value="0">
+                            <input type="checkbox" name="stock_enabled" value="1"
+                                   {% if stock_enabled %}checked{% endif %}
+                                   {% if not tier_limits.stock and not stock_enabled %}disabled{% endif %}>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {# Appears only once something has changed, so the answer to "did I
+           save?" is always on screen and saving never means scrolling. #}
+        <div class="settings-savebar" id="settingsSaveBar">
+            <span class="settings-savebar-text"><strong>Nesaglabātas izmaiņas</strong></span>
+            <button type="button" class="btn btn-outline" onclick="location.reload()">Atcelt</button>
+            <button type="submit" class="btn btn-primary">Saglabāt</button>
+        </div>
+        </form>
+    </div>
 </div>
 
 <!-- Hidden logo upload form -->
@@ -404,7 +495,7 @@ function updateNumberPreview() {
     sepGroup.style.display = (type === 'type3') ? 'none' : '';
 
     // Update radio card selection styling
-    document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.number-type-options .radio-card').forEach(c => c.classList.remove('selected'));
     document.querySelector('input[name="invoice_number_type"]:checked').closest('.radio-card').classList.add('selected');
 
     const today = new Date();
@@ -413,7 +504,8 @@ function updateNumberPreview() {
     const month = String(today.getMonth() + 1).padStart(2, '0');
 
     const usePrefixes = document.getElementById('prefix_toggle').checked;
-    const sellPrefix = usePrefixes ? document.querySelector('input[name="sell_doc_prefix"]').value : '';
+    const sellPrefixEl = document.querySelector('input[name="sell_doc_prefix"]');
+    const sellPrefix = usePrefixes && sellPrefixEl ? sellPrefixEl.value : '';
     const pfx = sellPrefix ? sellPrefix + '-' : '';
 
     let preview = '';
@@ -431,6 +523,11 @@ function updateNumberPreview() {
         preview = `${pfx}${n1}, ${pfx}${n2}, ... ${pfx}${n42}`;
     }
     document.getElementById('previewText').textContent = preview;
+}
+
+function togglePrefixFields() {
+    const on = document.getElementById('prefix_toggle').checked;
+    document.getElementById('prefixFields').style.display = on ? '' : 'none';
 }
 
 function deleteLogo() {
@@ -453,6 +550,57 @@ function toggleSettingsEntityType() {
     document.getElementById('sNameLabel').textContent = isBusiness ? 'Uzņēmuma nosaukums *' : 'Vārds, Uzvārds *';
     document.getElementById('sRegLabel').textContent = isBusiness ? 'Reģistrācijas numurs' : 'Personas kods';
 }
+
+// --- unsaved-changes bar -------------------------------------------------
+var _settingsDirty = false;
+function markSettingsDirty() {
+    if (_settingsDirty) return;
+    _settingsDirty = true;
+    document.getElementById('settingsSaveBar').classList.add('is-visible');
+}
+(function() {
+    var form = document.getElementById('settingsForm');
+    if (!form) return;
+    form.addEventListener('input', markSettingsDirty);
+    form.addEventListener('change', markSettingsDirty);
+    // Don't warn on the way out if the user is actually submitting.
+    form.addEventListener('submit', function() { _settingsDirty = false; });
+    window.addEventListener('beforeunload', function(e) {
+        if (!_settingsDirty) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+})();
+
+// --- section nav scroll-spy ----------------------------------------------
+(function() {
+    var nav = document.getElementById('settingsNav');
+    if (!nav || !('IntersectionObserver' in window)) return;
+    var links = Array.prototype.slice.call(nav.querySelectorAll('a'));
+    var sections = links
+        .map(function(a) { return document.querySelector(a.getAttribute('href')); })
+        .filter(Boolean);
+
+    function activate(id) {
+        links.forEach(function(a) {
+            a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+        });
+    }
+
+    var visible = {};
+    var obs = new IntersectionObserver(function(entries) {
+        entries.forEach(function(en) { visible[en.target.id] = en.isIntersecting; });
+        // Highlight the topmost section currently on screen.
+        for (var i = 0; i < sections.length; i++) {
+            if (visible[sections[i].id]) { activate(sections[i].id); break; }
+        }
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+    sections.forEach(function(s) { obs.observe(s); });
+
+    links.forEach(function(a) {
+        a.addEventListener('click', function() { activate(a.getAttribute('href').slice(1)); });
+    });
+})();
 
 updateNumberPreview();
 </script>
