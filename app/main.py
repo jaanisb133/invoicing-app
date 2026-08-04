@@ -175,24 +175,32 @@ def _smtp_connect():
 
 
 def _send_email(*, to_email: str, subject: str, body: str,
-                reply_to: str = "", attachment_path: str = "", sender_name: str = ""):
-    """Send email via SMTP (preferred) or Brevo API fallback."""
+                reply_to: str = "", attachment_path: str = "", sender_name: str = "",
+                attachment_name: str = ""):
+    """Send email via SMTP (preferred) or Brevo API fallback.
+
+    attachment_name overrides the name the recipient sees. Needed because the
+    e-invoice XML is written to a temp file, so the path's basename is
+    something like tmpah03c_ed.xml rather than the invoice number.
+    """
     if SMTP_PASS:
         logger.info("send_email: provider=SMTP to=%s subject=%r", to_email, subject[:80])
         return _send_via_smtp(
             to_email=to_email, subject=subject, body=body,
             reply_to=reply_to, attachment_path=attachment_path, sender_name=sender_name,
+            attachment_name=attachment_name,
         )
     if BREVO_API_KEY:
         logger.info("send_email: provider=Brevo to=%s subject=%r", to_email, subject[:80])
         return _send_via_brevo(
             to_email=to_email, subject=subject, body=body,
             reply_to=reply_to, attachment_path=attachment_path, sender_name=sender_name,
+            attachment_name=attachment_name,
         )
     raise RuntimeError("E-pasta serviss nav konfigurēts (nav ne SMTP_PASS, ne BREVO_API_KEY).")
 
 
-def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="", sender_name=""):
+def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="", sender_name="", attachment_name=""):
     """Send email using Brevo HTTP API."""
     import httpx
     import base64
@@ -211,7 +219,7 @@ def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="",
             content_b64 = base64.b64encode(f.read()).decode()
         payload["attachment"] = [{
             "content": content_b64,
-            "name": os.path.basename(attachment_path),
+            "name": attachment_name or os.path.basename(attachment_path),
         }]
 
     resp = httpx.post(
@@ -231,7 +239,7 @@ def _send_via_brevo(*, to_email, subject, body, reply_to="", attachment_path="",
         raise RuntimeError(f"Brevo API kļūda ({resp.status_code}): {resp.text}")
 
 
-def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path="", sender_name=""):
+def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path="", sender_name="", attachment_name=""):
     """Send email using SMTP."""
     from email.utils import formataddr, parseaddr
     msg = MIMEMultipart()
@@ -265,8 +273,8 @@ def _send_via_smtp(*, to_email, subject, body, reply_to="", attachment_path="", 
             part = MIMEBase(maintype, subtype or "octet-stream")
             part.set_payload(f.read())
             encoders.encode_base64(part)
-            part.add_header("Content-Disposition",
-                            f"attachment; filename={os.path.basename(attachment_path)}")
+            part.add_header("Content-Disposition", "attachment",
+                            filename=attachment_name or os.path.basename(attachment_path))
             msg.attach(part)
 
     with _smtp_connect() as server:
@@ -2593,9 +2601,12 @@ async def send_document_email(request: Request, doc_id: int):
     ):
         attachment_format = "pdf"
 
+    attachment_name = ""
     if attachment_format == "xml":
         try:
-            filepath, _xml_name = generate_einvoice_file(doc_id)
+            # The XML lands in a temp file, so carry its real name separately
+            # or the client receives something like tmpah03c_ed.xml.
+            filepath, attachment_name = generate_einvoice_file(doc_id)
         except Exception as e:
             logger.exception("E-invoice XML generation failed for doc %s", doc_id)
             return _redirect_with(f"error=E-rēķina izveide neizdevās: {quote(str(e))}")
@@ -2627,6 +2638,7 @@ async def send_document_email(request: Request, doc_id: int):
             body=email_body,
             reply_to=user_email,
             attachment_path=filepath,
+            attachment_name=attachment_name,
             sender_name=company_name,
         )
     except Exception as e:
