@@ -2800,3 +2800,112 @@ a.dash-stat:hover { transform: translateY(-1px); }
         flex: 1 1 auto;
     }
 }
+
+/* ==========================================
+   Admin user overview
+   ========================================== */
+
+.admin-totals {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.admin-total {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.admin-total-label {
+    font-size: 11.5px;
+    color: var(--text-light);
+}
+
+.admin-total-value {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+}
+
+.admin-total-of {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-lighter);
+    letter-spacing: 0;
+}
+
+.admin-users-table .num {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.admin-users-table td.num {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Second line under a cell: company, owner, registration date. */
+.admin-sub {
+    display: block;
+    font-size: 11.5px;
+    color: var(--text-light);
+    font-weight: 400;
+    margin-top: 2px;
+}
+
+/* This month's contribution, next to the running total. */
+.admin-delta {
+    margin-left: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--success);
+}
+
+.admin-nowrap { white-space: nowrap; }
+
+/* Team members are not accounts — dim them so the account list reads clearly. */
+.admin-row-member td:first-child { padding-left: 24px; }
+.admin-row-member .brand-avatar { opacity: 0.55; }
+
+.admin-users-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.admin-users-table th.sortable:hover { color: var(--text); }
+
+.admin-users-table th.sortable::after {
+    content: "";
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-left: 5px;
+    vertical-align: middle;
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    opacity: 0;
+}
+
+.admin-users-table th.sortable:hover::after { opacity: 0.35; }
+.admin-users-table th.sortable[data-dir]::after { opacity: 0.9; }
+.admin-users-table th.sortable[data-dir="desc"]::after { border-top: 4px solid currentColor; }
+.admin-users-table th.sortable[data-dir="asc"]::after { border-bottom: 4px solid currentColor; }
+
+/* Destructive, but there is one on every row — muted until reached for. */
+.admin-delete {
+    color: var(--text-lighter);
+    border-color: var(--border);
+}
+
+.admin-delete:hover {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+}

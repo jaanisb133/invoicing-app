@@ -53,7 +53,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "31"
+CSS_VERSION = "33"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -1783,11 +1783,16 @@ async def billing_cancel(request: Request):
 
 @app.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, error: str = "", success: str = ""):
-    ctx = _base_context(request)
     user = request.state.user
-    users = db.get_all_users() if user["is_admin"] else []
+    # The POST handlers on this path already 403; the GET only rendered an
+    # empty page, which is not a leak but is not an answer either.
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403)
+    ctx = _base_context(request)
+    users = db.get_admin_user_overview()
     ctx.update({
         "users": users,
+        "totals": db.get_admin_totals(users),
         "error": error,
         "success": success,
         "page": "users",

@@ -47,42 +47,89 @@
         </div>
     </div>
 
+    <div class="admin-totals">
+        <div class="admin-total"><span class="admin-total-label">Konti</span><span class="admin-total-value">{{ totals.accounts }}</span></div>
+        <div class="admin-total"><span class="admin-total-label">Iestatīti</span><span class="admin-total-value">{{ totals.setup_done }}<span class="admin-total-of"> / {{ totals.accounts }}</span></span></div>
+        <div class="admin-total"><span class="admin-total-label">Izrakstījuši</span><span class="admin-total-value">{{ totals.activated }}<span class="admin-total-of"> / {{ totals.accounts }}</span></span></div>
+        <div class="admin-total"><span class="admin-total-label">Maksā</span><span class="admin-total-value">{{ totals.paying }}</span></div>
+        <div class="admin-total"><span class="admin-total-label">Komandas lietotāji</span><span class="admin-total-value">{{ totals.members }}</span></div>
+        <div class="admin-total"><span class="admin-total-label">Dokumenti šomēnes</span><span class="admin-total-value">{{ totals.docs_month }}</span></div>
+        <div class="admin-total"><span class="admin-total-label">E-pasti šomēnes</span><span class="admin-total-value">{{ totals.emails_month }}</span></div>
+    </div>
+
     <div class="card">
         <div class="card-header">Reģistrētie lietotāji ({{ users | length }})</div>
         <div class="card-body">
             {% if users %}
             <div class="table-wrapper">
-                <table>
+                <table class="admin-users-table">
                     <thead>
                         <tr>
-                            <th>Lietotājvārds</th>
-                            <th>Vārds</th>
-                            <th>E-pasts</th>
-                            <th>Loma</th>
+                            <th class="sortable" data-type="text">Lietotājs</th>
+                            <th class="sortable" data-type="text">Statuss</th>
+                            <th class="sortable num" data-type="num">Dok.</th>
+                            <th class="sortable num" data-type="num">Piedāv.</th>
+                            <th class="sortable num" data-type="num">Klienti</th>
+                            <th class="sortable num" data-type="num">E-pasti</th>
+                            <th class="sortable" data-type="text">Pēdējā aktivitāte</th>
                             <th>Abonements</th>
-                            <th>Izveidots</th>
                             <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for user in users %}
-                        <tr>
+                        <tr{% if user.is_member %} class="admin-row-member"{% endif %}>
                             <td>
                                 <span class="doc-client-cell">
                                     <span class="brand-avatar sm bg-{{ (user.id or 0) % 10 }}">{{ (user.display_name or user.username)[:2] | upper }}</span>
-                                    <strong>{{ user.username }}</strong>
+                                    <span>
+                                        <strong>{{ user.username }}</strong>
+                                        {% if user.is_admin %}<span class="pill pill-brand">Admin</span>{% endif %}
+                                        <span class="admin-sub">
+                                            {{ user.company_name or user.display_name or '—' }}{% if user.email %} &middot; {{ user.email }}{% endif %}
+                                        </span>
+                                        {% if user.is_member %}
+                                        <span class="admin-sub">komandā: {{ user.owner_name }}</span>
+                                        {% elif user.team_members %}
+                                        <span class="admin-sub">+{{ user.team_members }} komandas lietotāj{{ 's' if user.team_members == 1 else 'i' }}</span>
+                                        {% endif %}
+                                    </span>
                                 </span>
                             </td>
-                            <td>{{ user.display_name }}</td>
-                            <td class="text-muted">{{ user.email or '—' }}</td>
                             <td>
-                                {% if user.is_admin %}
-                                <span class="pill pill-brand">Admin</span>
+                                {% if user.is_member %}
+                                <span class="pill pill-neutral">lietotājs</span>
+                                {% elif user.never_signed_in %}
+                                <span class="pill pill-warning">nav pieslēdzies</span>
+                                {% elif not user.setup_done %}
+                                <span class="pill pill-warning">nav iestatījis</span>
+                                {% elif not user.activated %}
+                                <span class="pill pill-neutral">nav izrakstījis</span>
                                 {% else %}
-                                <span class="pill pill-neutral">Lietotājs</span>
+                                <span class="pill pill-success">aktīvs</span>
+                                {% endif %}
+                                {% if user.recurring_active %}
+                                <span class="pill pill-neutral" title="Aktīvi periodiskie rēķini">↻ {{ user.recurring_active }}</span>
                                 {% endif %}
                             </td>
+                            <td class="num" data-sort="{{ user.docs_total }}">
+                                {{ user.docs_total }}
+                                {% if user.docs_month %}<span class="admin-delta">+{{ user.docs_month }}</span>{% endif %}
+                            </td>
+                            <td class="num" data-sort="{{ user.offers_total }}">{{ user.offers_total or '—' }}</td>
+                            <td class="num" data-sort="{{ user.clients_total }}">{{ user.clients_total or '—' }}</td>
+                            <td class="num" data-sort="{{ user.emails_total }}">
+                                {{ user.emails_total or '—' }}
+                                {% if user.emails_month %}<span class="admin-delta">+{{ user.emails_month }}</span>{% endif %}
+                            </td>
+                            <td class="text-muted admin-nowrap" data-sort="{{ user.last_activity or '' }}">
+                                {% if user.last_activity %}{{ user.last_activity[:10] }}{% else %}&mdash;{% endif %}
+                                <span class="admin-sub">reģ. {{ user.created_at[:10] if user.created_at else '' }}</span>
+                            </td>
                             <td>
+                                {% if user.is_member %}
+                                <span class="text-muted" style="font-size:12px">no īpašnieka</span>
+                                {% else %}
                                 <form method="post" action="/users/{{ user.id }}/tier" style="display:inline">
                                     <select name="tier" class="form-control" style="width:auto;display:inline;padding:4px 8px;font-size:12px"
                                             onchange="this.form.submit()">
@@ -93,14 +140,17 @@
                                         {% endfor %}
                                     </select>
                                 </form>
+                                {% if user.subscription_end and user.tier not in ('free', 'admin') %}
+                                <span class="admin-sub">līdz {{ user.subscription_end[:10] }}</span>
+                                {% endif %}
+                                {% endif %}
                             </td>
-                            <td class="text-muted">{{ user.created_at[:10] if user.created_at else '' }}</td>
                             <td>
                                 {% if user.id != current_user.id %}
                                 <form method="post" action="/users/{{ user.id }}/delete"
-                                      onsubmit="return confirm('Dzēst lietotāju {{ user.username }}?')"
+                                      onsubmit="return confirm('Dzēst lietotāju {{ user.username }}? Visi viņa dokumenti tiks dzēsti.')"
                                       style="display:inline">
-                                    <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
+                                    <button type="submit" class="btn btn-outline btn-sm admin-delete">Dzēst</button>
                                 </form>
                                 {% endif %}
                             </td>
@@ -117,4 +167,41 @@
 
     {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Click a header to sort. data-sort carries the raw value so numbers sort as
+// numbers and the em-dash placeholders do not end up between them.
+(function () {
+    const table = document.querySelector('.admin-users-table');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    let sortedCol = -1, asc = false;
+
+    table.querySelectorAll('th.sortable').forEach((th, i) => {
+        const index = [...th.parentNode.children].indexOf(th);
+        th.addEventListener('click', () => {
+            asc = sortedCol === index ? !asc : false;
+            sortedCol = index;
+            const numeric = th.dataset.type === 'num';
+            const rows = [...tbody.querySelectorAll('tr')];
+            rows.sort((a, b) => {
+                const ca = a.children[index], cb = b.children[index];
+                let va = ca.dataset.sort !== undefined ? ca.dataset.sort : ca.textContent.trim();
+                let vb = cb.dataset.sort !== undefined ? cb.dataset.sort : cb.textContent.trim();
+                if (numeric) {
+                    va = parseFloat(va) || 0;
+                    vb = parseFloat(vb) || 0;
+                    return asc ? va - vb : vb - va;
+                }
+                return asc ? va.localeCompare(vb, 'lv') : vb.localeCompare(va, 'lv');
+            });
+            rows.forEach(r => tbody.appendChild(r));
+            table.querySelectorAll('th.sortable').forEach(h => h.removeAttribute('data-dir'));
+            th.dataset.dir = asc ? 'asc' : 'desc';
+        });
+    });
+})();
+</script>
 {% endblock %}

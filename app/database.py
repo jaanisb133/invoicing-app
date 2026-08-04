@@ -1328,6 +1328,107 @@ def get_all_users():
     return [dict(r) for r in rows]
 
 
+def get_admin_user_overview():
+    """Every user with the activity numbers the admin page shows.
+
+    One aggregate per table rather than a handful of queries per user — the
+    admin list would otherwise issue ~8 queries per row.
+    """
+    conn = get_connection()
+    today = datetime.date.today()
+    month_start = today.replace(day=1).isoformat()
+
+    users = [dict(r) for r in conn.execute(
+        """SELECT id, username, email, display_name, is_admin, tier,
+                  subscription_status, subscription_end, billing_cycle,
+                  must_change_password, account_owner_id, created_at
+           FROM users ORDER BY created_at DESC"""
+    ).fetchall()]
+
+    def index(sql, params=(), key="user_id"):
+        return {row[key]: dict(row) for row in conn.execute(sql, params).fetchall()}
+
+    # Setup is "done" once a company name exists — that is what /setup writes
+    # and what the middleware gates every page on.
+    company = {r["user_id"]: r["value"] for r in conn.execute(
+        "SELECT user_id, value FROM user_settings WHERE key = 'company_name'"
+    ).fetchall()}
+
+    docs = index(
+        """SELECT user_id,
+                  SUM(CASE WHEN doc_type != 'offer' THEN 1 ELSE 0 END) AS docs_total,
+                  SUM(CASE WHEN doc_type != 'offer' AND created_at >= ? THEN 1 ELSE 0 END) AS docs_month,
+                  SUM(CASE WHEN doc_type = 'offer' THEN 1 ELSE 0 END) AS offers_total,
+                  MAX(created_at) AS last_document
+           FROM documents WHERE deleted_at IS NULL GROUP BY user_id""",
+        (month_start,))
+    emails = index(
+        """SELECT user_id, COUNT(*) AS emails_total,
+                  SUM(CASE WHEN sent_at >= ? THEN 1 ELSE 0 END) AS emails_month,
+                  MAX(sent_at) AS last_email
+           FROM email_log GROUP BY user_id""",
+        (month_start,))
+    clients = index("SELECT user_id, COUNT(*) AS clients_total FROM clients "
+                    "WHERE active = 1 AND one_time = 0 GROUP BY user_id")
+    products = index("SELECT user_id, COUNT(*) AS products_total FROM products "
+                     "WHERE active = 1 GROUP BY user_id")
+    recurring = index("SELECT user_id, COUNT(*) AS recurring_active FROM recurring_invoices "
+                      "WHERE active = 1 GROUP BY user_id")
+    members = {r["account_owner_id"]: r["members"] for r in conn.execute(
+        "SELECT account_owner_id, COUNT(*) AS members FROM users "
+        "WHERE account_owner_id IS NOT NULL GROUP BY account_owner_id"
+    ).fetchall()}
+    conn.close()
+
+    owner_names = {u["id"]: (u["display_name"] or u["username"]) for u in users}
+
+    for u in users:
+        uid = u["id"]
+        # A member's activity is recorded against the owner's account, so the
+        # numbers belong to the owner's row, not theirs.
+        u["is_member"] = u["account_owner_id"] is not None
+        u["owner_name"] = owner_names.get(u["account_owner_id"], "") if u["is_member"] else ""
+        u["team_members"] = members.get(uid, 0)
+
+        d = docs.get(uid, {})
+        e = emails.get(uid, {})
+        u["docs_total"] = d.get("docs_total") or 0
+        u["docs_month"] = d.get("docs_month") or 0
+        u["offers_total"] = d.get("offers_total") or 0
+        u["emails_total"] = e.get("emails_total") or 0
+        u["emails_month"] = e.get("emails_month") or 0
+        u["clients_total"] = clients.get(uid, {}).get("clients_total") or 0
+        u["products_total"] = products.get(uid, {}).get("products_total") or 0
+        u["recurring_active"] = recurring.get(uid, {}).get("recurring_active") or 0
+
+        u["company_name"] = company.get(uid, "")
+        u["setup_done"] = bool(u["company_name"])
+        u["never_signed_in"] = bool(u["must_change_password"])
+
+        stamps = [s for s in (d.get("last_document"), e.get("last_email")) if s]
+        u["last_activity"] = max(stamps) if stamps else None
+        u["activated"] = u["docs_total"] > 0 or u["offers_total"] > 0
+
+    return users
+
+
+def get_admin_totals(users):
+    """Headline numbers for the admin page, derived from the same rows."""
+    accounts = [u for u in users if not u["is_member"]]
+    paying = [u for u in accounts
+              if u["tier"] not in ("free", "admin") and u["subscription_status"] == "active"]
+    return {
+        "users": len(users),
+        "accounts": len(accounts),
+        "members": len(users) - len(accounts),
+        "paying": len(paying),
+        "setup_done": sum(1 for u in accounts if u["setup_done"]),
+        "activated": sum(1 for u in accounts if u["activated"]),
+        "docs_month": sum(u["docs_month"] for u in users),
+        "emails_month": sum(u["emails_month"] for u in users),
+    }
+
+
 def update_user_password(user_id: int, new_password: str):
     conn = get_connection()
     conn.execute("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
