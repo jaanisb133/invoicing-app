@@ -1,4 +1,11 @@
-# Trademarked artwork — fetched at deploy time, never committed.
-*
-!.gitignore
-!README.md
+# The card marks (visa/mastercard/applepay/googlepay) are committed — CC0-1.0,
+# see SOURCES.txt. Fetching them at deploy time was the original plan and it
+# failed the first time it ran: every source URL 404'd.
+#
+# The provider marks are not ours to redistribute, so they stay ignored and are
+# copied onto the server by hand.
+everypay.*
+seb.*
+citadele.*
+lhv.*
+*.part

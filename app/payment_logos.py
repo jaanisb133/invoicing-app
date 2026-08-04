@@ -5,11 +5,16 @@ WordPress media reshuffle there would silently break the card logos SEB
 compliance requires, on every public page, with nothing in this repo to show
 why. The files belong here instead.
 
-The marks are third-party trademarks, so the actual image files are not
-committed — they are fetched from the source with scripts/fetch_payment_logos.py
-and served from app/static/img/payments/. Until a file is present the footer
-falls back to the original remote URL, so deploying this change on its own
-cannot make the footer worse than it already was.
+The four card marks (Visa, Mastercard, Apple Pay, Google Pay) ship with the
+repo, from simple-icons under CC0-1.0 — see static/img/payments/SOURCES.txt.
+Committing them reverses the original plan of fetching at deploy time: that
+plan depended on a URL staying alive, and the first time it was exercised all
+eight sources returned 404. A file in git cannot 404.
+
+The provider marks (EveryPay, SEB, Citadele, LHV) are in no public icon set and
+are not ours to redistribute, so they are still copied in by hand. A mark with
+no file renders as its name in text — never as a remote <img>, because the old
+sources are dead and a broken image on every public page is worse than a word.
 """
 
 import os
@@ -18,41 +23,46 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_DIR = os.path.join(BASE_DIR, "static", "img", "payments")
 STATIC_PREFIX = "/static/img/payments"
 
-# (filename, alt, footer height, terms-page height, group, source URL)
+# (filename, alt, footer height, terms-page height, mono?, group, source URL)
+# `mono` marks a single-colour glyph the footer has to tint for the theme.
 # `group` splits the row: "card" = accepted payment methods, "provider" = the
 # payment provider and its banks. A separator is drawn between the two.
 PAYMENT_LOGOS = [
     {
-        "file": "visa.png",
+        "file": "visa.svg",
         "alt": "Visa",
-        "height": 12,
-        "height_lg": 24,
+        "height": 14,
+        "height_lg": 26,
+        "mono": True,
         "group": "card",
-        "source": "https://vnmedia.lv/wp-content/uploads/2026/03/Visa_Brandmark_Blue_RGB_2021.png",
+        "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/visa.svg",
     },
     {
         "file": "mastercard.svg",
         "alt": "Mastercard",
         "height": 16,
         "height_lg": 28,
+        "mono": True,
         "group": "card",
-        "source": "https://vnmedia.lv/wp-content/uploads/2026/03/ma_symbol.svg",
+        "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/mastercard.svg",
     },
     {
-        "file": "googlepay.png",
+        "file": "googlepay.svg",
         "alt": "Google Pay",
-        "height": 12,
-        "height_lg": 24,
+        "height": 14,
+        "height_lg": 26,
+        "mono": True,
         "group": "card",
-        "source": "https://vnmedia.lv/wp-content/uploads/2026/03/Google_Pay_Logo.svg.png",
+        "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/googlepay.svg",
     },
     {
         "file": "applepay.svg",
         "alt": "Apple Pay",
-        "height": 12,
-        "height_lg": 24,
+        "height": 14,
+        "height_lg": 26,
+        "mono": True,
         "group": "card",
-        "source": "https://vnmedia.lv/wp-content/uploads/2026/03/Apple_Pay_Mark_RGB_041619.svg",
+        "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/applepay.svg",
     },
     {
         "file": "everypay.webp",
@@ -102,15 +112,16 @@ def footer_logos():
     """The footer's logo list, each with the URL to actually render.
 
     Resolved once at import time — files arrive during deploy and the app
-    restarts after, so there is nothing to re-check per request.
+    restarts after, so there is nothing to re-check per request. A logo with no
+    file gets url=None and is rendered as text by the templates.
     """
     resolved = []
     for logo in PAYMENT_LOGOS:
         entry = dict(logo)
         entry["self_hosted"] = is_local(logo)
-        entry["url"] = (
-            f"{STATIC_PREFIX}/{logo['file']}" if entry["self_hosted"] else logo["source"]
-        )
+        # No remote fallback: the source URLs are dead, and a broken image is
+        # worse than the mark's name in text.
+        entry["url"] = f"{STATIC_PREFIX}/{logo['file']}" if entry["self_hosted"] else None
         resolved.append(entry)
     return resolved
 

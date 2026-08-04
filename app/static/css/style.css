@@ -2909,3 +2909,32 @@ a.dash-stat:hover { transform: translateY(-1px); }
     border-color: var(--danger);
     color: #fff;
 }
+
+/* Stand-in while a payment mark's file is not on disk. The artwork is
+   trademarked and not in the repo, so a missing file must not become a broken
+   image on every public page. */
+.footer-logo-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-light);
+    letter-spacing: -0.1px;
+    white-space: nowrap;
+}
+
+.logo-box-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+/* Single-colour marks ship as black glyphs. The footer is dark by default, so
+   flip them there and leave them alone in light mode and on the terms page's
+   white boxes. Only marks flagged mono in payment_logos.py get this — a colour
+   logo dropped in later must not be inverted. */
+.public-footer-logos .pay-mono {
+    filter: invert(1);
+}
+
+[data-theme="light"] .public-footer-logos .pay-mono {
+    filter: none;
+}

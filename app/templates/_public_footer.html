@@ -8,14 +8,18 @@
                 <a href="/contacts">Kontakti</a>
             </div>
         </div>
-        {# Sources live in app/payment_logos.py — never paste a URL in here.
-           Files are served from /static once scripts/fetch_payment_logos.py has
-           run; until then each entry falls back to its original remote URL. #}
+        {# The logo list lives in app/payment_logos.py — never paste a URL in
+           here. Files are served from /static; a mark with no file on disk
+           renders as its name in text rather than a broken image. #}
         <div class="public-footer-logos">
             {% for logo in payment_logos %}
             {% if loop.changed(logo.group) and not loop.first %}<span class="footer-sep"></span>{% endif %}
+            {% if logo.url %}
             <img src="{{ logo.url }}" alt="{{ logo.alt }}" height="{{ logo.height }}"
-                 loading="lazy" decoding="async">
+                 class="{% if logo.mono %}pay-mono{% endif %}" loading="lazy" decoding="async">
+            {% else %}
+            <span class="footer-logo-text">{{ logo.alt }}</span>
+            {% endif %}
             {% endfor %}
         </div>
     </div>

@@ -7,9 +7,12 @@ repo. Run this once on the server after deploying, then restart the app:
     python3 scripts/fetch_payment_logos.py
     systemctl restart vrekini
 
-Until a file is present the footer falls back to the original remote URL, so
-running this is what actually stops the hotlinking — nothing breaks if you
-forget, it just stays as it was.
+A mark with no file on disk renders as its name in text, so nothing breaks
+while this directory is empty — the real logos just are not shown.
+
+The original source URLs are dead (404 as of 2026-08-04). Point the `source`
+entries in app/payment_logos.py at working URLs before running this, or simply
+copy the files into app/static/img/payments/ by hand — see the README there.
 
 Options:
     --force     re-download files that already exist
@@ -103,9 +106,9 @@ def main():
 
     print(f"downloaded {counts['ok']}, skipped {counts['skip']}, failed {counts['fail']}")
     if counts["fail"]:
-        print("\nFailed files stay hotlinked. Fix the source URL in "
-              "app/payment_logos.py, or drop the entry if the method is not "
-              "actually offered at checkout.")
+        print("\nFailed marks render as text until a file exists. Point the "
+              "source URL in app/payment_logos.py at something that works, or "
+              "copy the file into app/static/img/payments/ by hand.")
     else:
         print("\nAll logos self-hosted. Restart the app to pick them up.")
     return 1 if counts["fail"] else 0

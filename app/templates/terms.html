@@ -112,7 +112,11 @@
             {% for group in ['card', 'provider'] %}
             <div class="card-logos">
                 {% for logo in payment_logos if logo.group == group %}
+                {% if logo.url %}
                 <div class="logo-box"><img src="{{ logo.url }}" alt="{{ logo.alt }}" height="{{ logo.height_lg }}" loading="lazy" decoding="async"></div>
+                {% else %}
+                <div class="logo-box logo-box-text">{{ logo.alt }}</div>
+                {% endif %}
                 {% endfor %}
             </div>
             {% endfor %}

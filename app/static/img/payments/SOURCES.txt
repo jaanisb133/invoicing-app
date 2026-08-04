@@ -1,0 +1,11 @@
+visa.svg, mastercard.svg, applepay.svg, googlepay.svg
+    simple-icons (https://simple-icons.org), npm package `simple-icons` 16.28.0
+    Licence: CC0-1.0. The marks themselves remain the trademarks of their
+    owners and are used here to state which payment methods are accepted.
+    Monochrome by design — flagged "mono" in app/payment_logos.py so the
+    footer tints them for the current theme.
+
+everypay.webp, seb.jpg, citadele.jpg, lhv.svg
+    NOT PRESENT. No public icon set carries them. Get them from the EveryPay
+    merchant portal (its logo pack has all four) and copy them in here.
+    Until then those four render as their names in text.
