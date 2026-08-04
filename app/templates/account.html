@@ -78,6 +78,7 @@
             </div>
         </div>
 
+        {% if is_owner %}
         <div>
             <div class="card">
                 <div class="card-header">Abonements</div>
@@ -149,6 +150,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

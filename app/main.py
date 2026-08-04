@@ -52,7 +52,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "28"
+CSS_VERSION = "31"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -349,12 +349,14 @@ def _base_context(request):
     return {
         "request": request,
         "current_user": user,
-        "stock_enabled": _stock_enabled(user["id"]),
+        "stock_enabled": _stock_enabled(user["account_id"]),
         "tier": tier,
         "tier_label": db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
         "tier_limits": db.get_tier_limits(tier),
-        "needs_setup": not db.get_user_setting(user["id"], "company_name"),
+        "needs_setup": not db.get_user_setting(user["account_id"], "company_name"),
         "offline_mode": OFFLINE_MODE,
+        # Members work on someone else's account: no settings, billing or team.
+        "is_owner": _is_owner(user),
     }
 
 
@@ -401,7 +403,7 @@ def _resolve_template(user, template=""):
     ask for ?template=modern. The tier check has to live here, not in the UI.
     """
     if not template or template not in TEMPLATES:
-        template = _user_settings(user["id"]).get("default_template", FREE_TEMPLATE)
+        template = _user_settings(user["account_id"]).get("default_template", FREE_TEMPLATE)
     if template not in TEMPLATES:
         template = FREE_TEMPLATE
     limits = db.get_tier_limits(user.get("tier", "free"))
@@ -420,7 +422,7 @@ def _check_tier_limit(user, resource_type):
     """Check if user has reached their tier limit for a resource type.
     Returns (allowed: bool, current_count: int, max_count: int)."""
     limits = db.get_tier_limits(user.get("tier", "free"))
-    usage = db.get_user_resource_counts(user["id"])
+    usage = db.get_user_resource_counts(user["account_id"])
     key_map = {
         "documents": "max_documents",
         "clients": "max_clients",
@@ -432,6 +434,22 @@ def _check_tier_limit(user, resource_type):
     # maximum is None on unlimited tiers — never blocked, and callers that
     # format "current/maximum" only run on the blocked branch.
     return not db.limit_reached(current, maximum), current, maximum
+
+
+def _is_owner(user):
+    """True when this user owns the account rather than being a member of it."""
+    return bool(user) and user.get("is_account_owner", True)
+
+
+def _owner_only(user):
+    """Redirect for a member who reached an owner-only page, else None.
+
+    Company settings, billing and team management belong to whoever pays.
+    Members do the daily work: documents, clients, products, stock.
+    """
+    if _is_owner(user):
+        return None
+    return RedirectResponse("/?error=owner_only", status_code=303)
 
 
 def _get_logo_path(user_id):
@@ -484,7 +502,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # Skip setup redirect — let user access everything
                 setup_exempt = {"/settings", "/setup", "/logout", "/set-password"}
                 if path not in setup_exempt and not path.startswith("/static") and not path.startswith("/api/") and not path.startswith("/settings/logo"):
-                    if not db.get_user_setting(user["id"], "company_name"):
+                    if not db.get_user_setting(user["account_id"], "company_name"):
                         return RedirectResponse("/setup", status_code=303)
                 return await call_next(request)
 
@@ -505,7 +523,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Check if user needs to complete initial business setup
         setup_exempt = {"/settings", "/setup", "/logout", "/set-password"}
         if path not in setup_exempt and not path.startswith("/static") and not path.startswith("/api/") and not path.startswith("/settings/logo"):
-            if not db.get_user_setting(user["id"], "company_name"):
+            if not db.get_user_setting(user["account_id"], "company_name"):
                 return RedirectResponse("/setup", status_code=303)
 
         request.state.user = user
@@ -1106,14 +1124,17 @@ async def logout(request: Request):
 @app.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
     user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
     # If already set up, go to dashboard
-    if db.get_user_setting(user["id"], "company_name"):
+    if db.get_user_setting(user["account_id"], "company_name"):
         return RedirectResponse("/", status_code=303)
-    settings = db.get_all_user_settings(user["id"])
+    settings = db.get_all_user_settings(user["account_id"])
     # Use _reg_company_name from registration as the company name for pre-fill
     if not settings.get("company_name") and settings.get("_reg_company_name"):
         settings["company_name"] = settings["_reg_company_name"]
-    has_logo = bool(_get_logo_path(user["id"]))
+    has_logo = bool(_get_logo_path(user["account_id"]))
     return templates.TemplateResponse("setup.html", {
         "request": request,
         "display_name": user.get("display_name") or "",
@@ -1142,6 +1163,9 @@ async def save_setup(
     payment_due_days: str = Form(""),
 ):
     user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
     settings_dict = {
         "entity_type": entity_type,
         "company_name": company_name,
@@ -1158,20 +1182,20 @@ async def save_setup(
         "electronic_doc": electronic_doc,
         "payment_due_days": payment_due_days,
     }
-    db.save_all_user_settings(user["id"], settings_dict)
+    db.save_all_user_settings(user["account_id"], settings_dict)
 
     # Offline mode: already on business tier, go straight to dashboard
     if OFFLINE_MODE:
         return RedirectResponse("/", status_code=303)
 
     # After onboarding, check if user has a pending plan from registration
-    all_settings = db.get_all_user_settings(user["id"])
+    all_settings = db.get_all_user_settings(user["account_id"])
     pending_plan = all_settings.get("_pending_plan", "")
     pending_cycle = all_settings.get("_pending_plan_cycle", "monthly")
 
     if pending_plan in ("starter", "business"):
         # Clear the pending plan and redirect to checkout
-        db.save_all_user_settings(user["id"], {
+        db.save_all_user_settings(user["account_id"], {
             "_pending_plan": "",
             "_pending_plan_cycle": "",
         })
@@ -1192,10 +1216,12 @@ async def save_setup(
 
 @app.get("/account", response_class=HTMLResponse)
 async def account_page(request: Request):
+    # Not owner-gated: this is where anyone changes their own password and
+    # profile. The subscription card inside is hidden from members instead.
     ctx = _base_context(request)
     user = request.state.user
     limits = db.get_tier_limits(user.get("tier", "free"))
-    usage = db.get_user_resource_counts(user["id"])
+    usage = db.get_user_resource_counts(user["account_id"])
     ctx.update({
         "page": "account",
         "limits": limits,
@@ -1323,9 +1349,13 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
     user = _get_current_user(request)
     if user:
         request.state.user = user
+        # Members cannot buy — every button here would bounce at checkout.
+        gate = _owner_only(user)
+        if gate:
+            return gate
         ctx = _base_context(request)
         limits = db.get_tier_limits(user.get("tier", "free"))
-        usage = db.get_user_resource_counts(user["id"])
+        usage = db.get_user_resource_counts(user["account_id"])
         ctx.update({
             "page": "pricing",
             "limits": limits,
@@ -1348,6 +1378,9 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
 async def billing_checkout(request: Request, tier: str = Form(...), cycle: str = Form("monthly")):
     """Initiate an EveryPay payment and redirect to hosted payment page."""
     user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
     if tier == "lifetime":
         cycle = "lifetime"
     if tier not in ("mini", "starter", "business", "lifetime") or cycle not in ("monthly", "yearly", "lifetime"):
@@ -1391,7 +1424,7 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
         return RedirectResponse("/pricing?error=payment_error", status_code=303)
 
     # Store pending payment info in user settings for verification on return
-    db.save_all_user_settings(user["id"], {
+    db.save_all_user_settings(user["account_id"], {
         "_pending_payment_ref": payment_ref,
         "_pending_order_ref": order_ref,
         "_pending_tier": tier,
@@ -1432,7 +1465,7 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
             sub_product_id = sub_product["id"]
 
         # Ensure paying user exists as a client in admin's account
-        paying_settings = db.get_all_user_settings(paying_user["id"])
+        paying_settings = db.get_all_user_settings(paying_user["account_id"])
         client_name = (paying_settings.get("company_name", "")
                        or paying_user.get("display_name", "")
                        or paying_user["username"])
@@ -1541,7 +1574,7 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
 async def billing_return(request: Request, payment_reference: str = ""):
     """Handle customer return from EveryPay payment page."""
     user = request.state.user
-    settings = db.get_all_user_settings(user["id"])
+    settings = db.get_all_user_settings(user["account_id"])
     pending_ref = settings.get("_pending_payment_ref", "")
     pending_tier = settings.get("_pending_tier", "")
     pending_cycle = settings.get("_pending_cycle", "")
@@ -1597,7 +1630,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
             )
 
         # Clean up pending settings and mark invoiced
-        db.save_all_user_settings(user["id"], {
+        db.save_all_user_settings(user["account_id"], {
             "_pending_payment_ref": "",
             "_pending_order_ref": "",
             "_pending_tier": "",
@@ -1623,7 +1656,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
 
     else:
         # Payment failed or abandoned
-        db.save_all_user_settings(user["id"], {
+        db.save_all_user_settings(user["account_id"], {
             "_pending_payment_ref": "",
             "_pending_order_ref": "",
             "_pending_tier": "",
@@ -1713,6 +1746,9 @@ async def everypay_callback(request: Request,
 async def billing_cancel(request: Request):
     """Cancel the current subscription."""
     user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
     if user.get("tier", "free") == "free":
         return RedirectResponse("/account?error=no_subscription", status_code=303)
 
@@ -1821,7 +1857,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
             "page": "landing",
         })
     ctx = _base_context(request)
-    uid = user["id"]
+    uid = user["account_id"]
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
 
@@ -1864,7 +1900,7 @@ async def api_dashboard_stats(request: Request, date_from: str = "", date_to: st
     user = request.state.user
     if not user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    uid = user["id"]
+    uid = user["account_id"]
     today = datetime.date.today()
     if not date_from:
         date_from = today.replace(day=1).isoformat()
@@ -1882,15 +1918,18 @@ async def api_dashboard_stats(request: Request, date_from: str = "", date_to: st
 async def settings_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
-    settings = _user_settings(user["id"])
-    logo_path = _get_logo_path(user["id"])
+    gate = _owner_only(user)
+    if gate:
+        return gate
+    settings = _user_settings(user["account_id"])
+    logo_path = _get_logo_path(user["account_id"])
     logo_v = int(os.path.getmtime(logo_path)) if logo_path else 0
     ctx.update({
         "settings": settings,
         "page": "settings",
         "has_logo": logo_path is not None,
         "logo_v": logo_v,
-        "current_max_seq": db.get_user_max_seq(user["id"]),
+        "current_max_seq": db.get_user_max_seq(user["account_id"]),
         "templates": TEMPLATES,
     })
     return templates.TemplateResponse("settings.html", ctx)
@@ -1929,6 +1968,9 @@ async def save_settings(
     email_template: str = Form(""),
 ):
     user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
     settings_dict = {
         "entity_type": entity_type,
         "company_name": company_name,
@@ -1951,7 +1993,7 @@ async def save_settings(
         # keep it (turning it off under them would hide their existing data),
         # but it cannot be switched on without the tier.
         "stock_enabled": stock_enabled if (
-            _check_tier_feature(user, "stock") or _stock_enabled(user["id"])
+            _check_tier_feature(user, "stock") or _stock_enabled(user["account_id"])
         ) else "0",
         "electronic_doc": electronic_doc,
         "status_tracking": status_tracking,
@@ -1962,7 +2004,7 @@ async def save_settings(
 
     # When stock is first enabled, record the date so stock counts from 0
     if stock_enabled == "1":
-        existing = db.get_user_setting(user["id"], "stock_enabled_date", "")
+        existing = db.get_user_setting(user["account_id"], "stock_enabled_date", "")
         if not existing:
             settings_dict["stock_enabled_date"] = datetime.date.today().isoformat()
     else:
@@ -1974,7 +2016,7 @@ async def save_settings(
         start_int = max(1, int(invoice_number_start or "1"))
     except (TypeError, ValueError):
         start_int = 1
-    current_max = db.get_user_max_seq(user["id"])
+    current_max = db.get_user_max_seq(user["account_id"])
     if start_int <= current_max:
         start_int = current_max + 1
 
@@ -1985,14 +2027,17 @@ async def save_settings(
         "invoice_number_start": str(start_int),
         "email_template": email_template,
     })
-    db.save_all_user_settings(user["id"], settings_dict)
+    db.save_all_user_settings(user["account_id"], settings_dict)
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
 @app.post("/settings/logo")
 async def upload_logo(request: Request, logo: UploadFile = File(...)):
     user = request.state.user
-    uid = user["id"]
+    gate = _owner_only(user)
+    if gate:
+        return gate
+    uid = user["account_id"]
     allowed = {".png", ".jpg", ".jpeg", ".gif"}
     ext = os.path.splitext(logo.filename or "")[1].lower()
     if ext not in allowed:
@@ -2021,7 +2066,10 @@ async def upload_logo(request: Request, logo: UploadFile = File(...)):
 @app.post("/settings/logo/delete")
 async def delete_logo(request: Request):
     user = request.state.user
-    uid = user["id"]
+    gate = _owner_only(user)
+    if gate:
+        return gate
+    uid = user["account_id"]
     path = _get_logo_path(uid)
     if path and os.path.exists(path):
         os.remove(path)
@@ -2033,7 +2081,7 @@ async def delete_logo(request: Request):
 @app.get("/api/logo")
 async def get_user_logo(request: Request):
     user = request.state.user
-    path = _get_logo_path(user["id"])
+    path = _get_logo_path(user["account_id"])
     if path:
         return FileResponse(path, headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -2050,8 +2098,8 @@ async def get_user_logo(request: Request):
 async def products_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
-    products = db.get_all_products(user["id"])
-    usage = db.get_user_resource_counts(user["id"])
+    products = db.get_all_products(user["account_id"])
+    usage = db.get_user_resource_counts(user["account_id"])
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "products": products,
@@ -2069,7 +2117,7 @@ async def add_product(request: Request, name: str = Form(...), unit: str = Form(
     allowed, current, maximum = _check_tier_limit(user, "products")
     if not allowed:
         return RedirectResponse(f"/products?error=limit", status_code=303)
-    db.add_product(user["id"], name, unit)
+    db.add_product(user["account_id"], name, unit)
     return RedirectResponse("/products", status_code=303)
 
 
@@ -2077,14 +2125,14 @@ async def add_product(request: Request, name: str = Form(...), unit: str = Form(
 async def edit_product(request: Request, product_id: int,
                        name: str = Form(...), unit: str = Form(...)):
     user = request.state.user
-    db.update_product(user["id"], product_id, name, unit)
+    db.update_product(user["account_id"], product_id, name, unit)
     return RedirectResponse("/products", status_code=303)
 
 
 @app.post("/products/{product_id}/delete")
 async def delete_product(request: Request, product_id: int):
     user = request.state.user
-    db.delete_product(user["id"], product_id)
+    db.delete_product(user["account_id"], product_id)
     return RedirectResponse("/products", status_code=303)
 
 
@@ -2096,8 +2144,8 @@ async def delete_product(request: Request, product_id: int):
 async def clients_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
-    clients = db.get_all_clients(user["id"])
-    usage = db.get_user_resource_counts(user["id"])
+    clients = db.get_all_clients(user["account_id"])
+    usage = db.get_user_resource_counts(user["account_id"])
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "clients": clients,
@@ -2125,13 +2173,13 @@ async def add_client(
 ):
     user = request.state.user
     if reg_number:
-        existing = db.get_client_by_reg_number(user["id"], reg_number)
+        existing = db.get_client_by_reg_number(user["account_id"], reg_number)
         if existing:
             return RedirectResponse(f"/clients?error=duplicate&name={quote(existing['name'])}", status_code=303)
     allowed, current, maximum = _check_tier_limit(user, "clients")
     if not allowed:
         return RedirectResponse(f"/clients?error=limit", status_code=303)
-    db.add_client(user["id"], name, reg_number, vat_number, int(vat_payer), legal_address,
+    db.add_client(user["account_id"], name, reg_number, vat_number, int(vat_payer), legal_address,
                   bank_name, bank_account, contact_person, phone, email, client_type=client_type)
     return RedirectResponse("/clients", status_code=303)
 
@@ -2153,7 +2201,7 @@ async def edit_client(
     client_type: str = Form("business"),
 ):
     user = request.state.user
-    db.update_client(user["id"], client_id, name=name, reg_number=reg_number,
+    db.update_client(user["account_id"], client_id, name=name, reg_number=reg_number,
                      vat_number=vat_number, vat_payer=int(vat_payer), legal_address=legal_address,
                      bank_name=bank_name, bank_account=bank_account,
                      contact_person=contact_person, phone=phone, email=email,
@@ -2164,7 +2212,7 @@ async def edit_client(
 @app.post("/clients/{client_id}/delete")
 async def delete_client(request: Request, client_id: int):
     user = request.state.user
-    db.delete_client(user["id"], client_id)
+    db.delete_client(user["account_id"], client_id)
     return RedirectResponse("/clients", status_code=303)
 
 
@@ -2178,7 +2226,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
     ctx = _base_context(request)
     user = request.state.user
     docs = db.get_documents(
-        user["id"],
+        user["account_id"],
         doc_type=doc_type or None,
         client_id=int(client_id) if client_id else None,
         date_from=date_from or None,
@@ -2186,9 +2234,9 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         status=status or None,
         exclude_doc_types=["offer"],
     )
-    clients = db.get_all_clients(user["id"])
-    settings = _user_settings(user["id"])
-    usage = db.get_user_resource_counts(user["id"])
+    clients = db.get_all_clients(user["account_id"])
+    settings = _user_settings(user["account_id"])
+    usage = db.get_user_resource_counts(user["account_id"])
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "documents": docs,
@@ -2216,15 +2264,15 @@ async def offers_page(request: Request, client_id: str = "",
     ctx = _base_context(request)
     user = request.state.user
     docs = db.get_documents(
-        user["id"],
+        user["account_id"],
         doc_type="offer",
         client_id=int(client_id) if client_id else None,
         date_from=date_from or None,
         date_to=date_to or None,
         status=status if status in OFFER_STATUSES else None,
     )
-    clients = db.get_all_clients(user["id"])
-    settings = _user_settings(user["id"])
+    clients = db.get_all_clients(user["account_id"])
+    settings = _user_settings(user["account_id"])
     ctx.update({
         "documents": docs,
         "clients": clients,
@@ -2232,7 +2280,7 @@ async def offers_page(request: Request, client_id: str = "",
         "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "filters": {"client_id": client_id, "date_from": date_from,
                     "date_to": date_to, "status": status},
-        "converted_offer_ids": db.get_converted_offer_ids(user["id"]),
+        "converted_offer_ids": db.get_converted_offer_ids(user["account_id"]),
         "offer_statuses": OFFER_STATUSES,
         "offer_status_pill": OFFER_STATUS_PILL,
         "page": "offers",
@@ -2244,7 +2292,7 @@ async def offers_page(request: Request, client_id: str = "",
 async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0):
     ctx = _base_context(request)
     user = request.state.user
-    uid = user["id"]
+    uid = user["account_id"]
 
     # Converting an accepted offer into an invoice: load the offer and hand its
     # client, items and notes to the form as starting values. Nothing is saved
@@ -2309,7 +2357,7 @@ async def create_document(request: Request):
                 status_code=303)
 
     # Block buy doc creation if stock management is off
-    if doc_type == "buy" and not _stock_enabled(user["id"]):
+    if doc_type == "buy" and not _stock_enabled(user["account_id"]):
         return RedirectResponse("/documents?error=Iegādes dokumenti nav pieejami bez noliktavas pārvaldības.", status_code=303)
     client_id = int(form.get("client_id", 0))
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
@@ -2355,14 +2403,15 @@ async def create_document(request: Request):
     converted_from = None
     if from_offer_raw.isdigit() and doc_type == "sell":
         src, _ = db.get_document(int(from_offer_raw))
-        if src and src.get("user_id") == user["id"] and src.get("doc_type") == "offer":
+        if src and src.get("user_id") == user["account_id"] and src.get("doc_type") == "offer":
             converted_from = src["id"]
 
     try:
         doc_id, doc_number = db.create_document(
-            user["id"], doc_type, client_id, doc_date, items, vat_rate, notes,
+            user["account_id"], doc_type, client_id, doc_date, items, vat_rate, notes,
             payment_due_date=payment_due_date, reverse_charge=reverse_charge,
             converted_from_offer_id=converted_from,
+            created_by_user_id=user["id"],
         )
     except ValueError as e:
         logger.warning("Document creation error: %s", e)
@@ -2376,12 +2425,12 @@ async def create_document(request: Request):
     # Invoicing an offer is the clearest possible signal the client said yes.
     if converted_from:
         try:
-            db.update_document_status(user["id"], converted_from, "accepted")
+            db.update_document_status(user["account_id"], converted_from, "accepted")
         except Exception:
             logger.exception("Failed to mark offer %s accepted", converted_from)
 
     try:
-        db.log_event(user["id"], "document_created",
+        db.log_event(user["account_id"], "document_created",
                      document_id=doc_id, client_id=client_id,
                      meta={"doc_number": doc_number, "doc_type": doc_type})
     except Exception:
@@ -2394,7 +2443,7 @@ async def create_document(request: Request):
 async def edit_document_page(request: Request, doc_id: int):
     ctx = _base_context(request)
     user = request.state.user
-    uid = user["id"]
+    uid = user["account_id"]
     doc, items = db.get_document(doc_id)
     if not doc or doc.get("user_id") != uid:
         raise HTTPException(status_code=404, detail="Dokuments nav atrasts")
@@ -2472,7 +2521,7 @@ async def update_document(request: Request, doc_id: int):
         return RedirectResponse(f"/documents/{doc_id}/edit?error=no_items", status_code=303)
 
     try:
-        db.update_document(user["id"], doc_id, client_id, doc_date, items, vat_rate, notes,
+        db.update_document(user["account_id"], doc_id, client_id, doc_date, items, vat_rate, notes,
                            payment_due_date=payment_due_date, reverse_charge=reverse_charge)
     except ValueError as e:
         logger.warning("Document update error: %s", e)
@@ -2491,10 +2540,10 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
     ctx = _base_context(request)
     user = request.state.user
     doc, items = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["id"]:
+    if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404, detail="Dokuments nav atrasts")
     client = db.get_client(doc["client_id"])
-    settings = _user_settings(user["id"])
+    settings = _user_settings(user["account_id"])
 
     subtotal = sum(item["quantity"] * item["price_per_unit"] for item in items)
     vat_amount = subtotal * (doc["vat_rate"] / 100)
@@ -2517,7 +2566,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "total": total,
         "templates": TEMPLATES,
         "selected_template": template,
-        "has_logo": _get_logo_path(user["id"]) is not None,
+        "has_logo": _get_logo_path(user["account_id"]) is not None,
         "default_email_subject": default_subject,
         "default_email_body": default_email_body,
         "all_templates": _check_tier_feature(user, "all_templates"),
@@ -2526,7 +2575,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
         "page": "offers" if doc["doc_type"] == "offer" else "documents",
         # An offer shows the invoices it produced; an invoice shows its source offer.
-        "offer_invoices": (db.get_invoices_from_offer(user["id"], doc_id)
+        "offer_invoices": (db.get_invoices_from_offer(user["account_id"], doc_id)
                            if doc["doc_type"] == "offer" else []),
         "offer_statuses": OFFER_STATUSES,
         "offer_status_pill": OFFER_STATUS_PILL,
@@ -2540,7 +2589,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
 async def download_pdf(request: Request, doc_id: int, template: str = ""):
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["id"]:
+    if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     template = _resolve_template(user, template)
     filepath = generate_invoice_pdf(doc_id, template=template)
@@ -2556,9 +2605,9 @@ async def api_document_email_defaults(request: Request, doc_id: int):
     """
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["id"]:
+    if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
-    settings = _user_settings(user["id"])
+    settings = _user_settings(user["account_id"])
     subject, body = _build_email_defaults(doc, settings)
     client = db.get_client(doc["client_id"]) if doc.get("client_id") else None
     return JSONResponse({
@@ -2588,7 +2637,7 @@ async def send_document_email(request: Request, doc_id: int):
         )
 
     doc, items = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["id"]:
+    if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
 
     if not recipient_email:
@@ -2603,7 +2652,7 @@ async def send_document_email(request: Request, doc_id: int):
     if max_emails is not None:
         if max_emails <= 0:
             return RedirectResponse("/pricing", status_code=303)
-        sent_count = db.get_emails_sent_this_month(user["id"])
+        sent_count = db.get_emails_sent_this_month(user["account_id"])
         if sent_count >= max_emails:
             return _redirect_with(
                 f"error=Sasniegts e-pastu limits šim mēnesim ({max_emails})."
@@ -2631,7 +2680,7 @@ async def send_document_email(request: Request, doc_id: int):
         filepath = generate_invoice_pdf(doc_id, template=template)
 
     # Get client and company info for email
-    settings = _user_settings(user["id"])
+    settings = _user_settings(user["account_id"])
     client = db.get_client(doc["client_id"])
     company_name = settings.get("company_name", "")
     user_email = user.get("email", "")
@@ -2662,11 +2711,11 @@ async def send_document_email(request: Request, doc_id: int):
         return _redirect_with(f"error=E-pasta sūtīšanas kļūda: {quote(str(e))}")
 
     # Log the email send
-    db.log_email_sent(user["id"], doc_id, recipient_email)
+    db.log_email_sent(user["account_id"], doc_id, recipient_email)
 
     # Log activity event
     try:
-        db.log_event(user["id"], "document_sent",
+        db.log_event(user["account_id"], "document_sent",
                      document_id=doc_id, client_id=doc.get("client_id"),
                      meta={"recipient": recipient_email, "send_type": "manual",
                            "doc_number": doc["doc_number"]})
@@ -2675,7 +2724,7 @@ async def send_document_email(request: Request, doc_id: int):
 
     # Save the email as client's email if not already set
     if client and not client.get("email"):
-        db.update_client(user["id"], client["id"], email=recipient_email)
+        db.update_client(user["account_id"], client["id"], email=recipient_email)
 
     return _redirect_with("sent=1")
 
@@ -2686,15 +2735,103 @@ async def delete_document(request: Request, doc_id: int):
     # Read the type before deleting so an offer sends the user back to the
     # offers list rather than dumping them in Dokumenti, where it never was.
     doc, _ = db.get_document(doc_id)
-    is_offer = bool(doc) and doc.get("user_id") == user["id"] and doc.get("doc_type") == "offer"
-    db.delete_document(user["id"], doc_id)
+    is_offer = bool(doc) and doc.get("user_id") == user["account_id"] and doc.get("doc_type") == "offer"
+    db.delete_document(user["account_id"], doc_id)
     return RedirectResponse("/offers" if is_offer else "/documents", status_code=303)
+
+
+# =============================================================================
+# Team — extra people working on the same account
+# =============================================================================
+
+NEW_MEMBER_COOKIE = "vr_new_member"
+
+
+@app.get("/komanda", response_class=HTMLResponse)
+async def team_page(request: Request, error: str = ""):
+    user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
+    ctx = _base_context(request)
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    members = db.get_account_members(user["id"])
+
+    # The temporary password travels in a short-lived signed cookie rather than
+    # the query string, so it never lands in browser history or access logs.
+    created = None
+    raw = request.cookies.get(NEW_MEMBER_COOKIE)
+    if raw:
+        try:
+            created = _get_serializer().loads(raw, max_age=300)
+        except Exception:
+            created = None
+
+    ctx.update({
+        "page": "team",
+        "members": members,
+        "max_users": limits.get("max_users", 1),
+        "can_add": not db.limit_reached(len(members), limits.get("max_users", 1)),
+        "error": error,
+        # Shown once — there is no way to read it again afterwards.
+        "created": created,
+    })
+    response = templates.TemplateResponse("team.html", ctx)
+    if raw:
+        response.delete_cookie(NEW_MEMBER_COOKIE)
+    return response
+
+
+@app.post("/komanda/add")
+async def team_add(request: Request,
+                   username: str = Form(...),
+                   display_name: str = Form(""),
+                   email: str = Form("")):
+    user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
+
+    limits = db.get_tier_limits(user.get("tier", "free"))
+    max_users = limits.get("max_users", 1)
+    if db.limit_reached(db.count_account_members(user["id"]), max_users):
+        return RedirectResponse("/komanda?error=limit", status_code=303)
+
+    username = (username or "").strip().lower()
+    if len(username) < 3:
+        return RedirectResponse("/komanda?error=username_short", status_code=303)
+    if db.get_user_by_username(username) or (email and db.get_user_by_email(email)):
+        return RedirectResponse("/komanda?error=taken", status_code=303)
+
+    # A readable one-time password. must_change_password forces a reset on
+    # first login, so it only has to survive being handed over once.
+    temp_password = secrets.token_urlsafe(9)
+    db.add_account_member(user["id"], username, temp_password,
+                          display_name=display_name.strip(), email=email.strip())
+    response = RedirectResponse("/komanda", status_code=303)
+    response.set_cookie(
+        NEW_MEMBER_COOKIE,
+        _get_serializer().dumps({"username": username, "password": temp_password}),
+        max_age=300, httponly=True, samesite="lax",
+    )
+    return response
+
+
+@app.post("/komanda/{member_id}/remove")
+async def team_remove(request: Request, member_id: int):
+    user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
+    # Scoped to this owner, so it can only ever remove your own people.
+    db.remove_account_member(user["id"], member_id)
+    return RedirectResponse("/komanda", status_code=303)
 
 
 @app.get("/trash")
 async def trash_page(request: Request):
     user = request.state.user
-    deleted_docs = db.get_deleted_documents(user["id"])
+    deleted_docs = db.get_deleted_documents(user["account_id"])
     return templates.TemplateResponse("trash.html", {
         "request": request, "current_user": user, "page": "trash",
         "documents": deleted_docs,
@@ -2706,14 +2843,14 @@ async def trash_page(request: Request):
 @app.post("/trash/{doc_id}/restore")
 async def restore_document(request: Request, doc_id: int):
     user = request.state.user
-    db.restore_document(user["id"], doc_id)
+    db.restore_document(user["account_id"], doc_id)
     return RedirectResponse("/trash", status_code=303)
 
 
 @app.post("/trash/{doc_id}/delete")
 async def permanently_delete_document(request: Request, doc_id: int):
     user = request.state.user
-    db.permanently_delete_document(user["id"], doc_id)
+    db.permanently_delete_document(user["account_id"], doc_id)
     return RedirectResponse("/trash", status_code=303)
 
 
@@ -2721,10 +2858,10 @@ async def permanently_delete_document(request: Request, doc_id: int):
 async def toggle_document_status(request: Request, doc_id: int):
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["id"]:
+    if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     new_status = "paid" if doc.get("status", "issued") == "issued" else "issued"
-    db.update_document_status(user["id"], doc_id, new_status)
+    db.update_document_status(user["account_id"], doc_id, new_status)
     # Return JSON for AJAX requests, fall back to redirect
     accept = request.headers.get("accept", "")
     if "application/json" in accept:
@@ -2737,13 +2874,13 @@ async def set_offer_status(request: Request, doc_id: int):
     """Mark an offer as waiting / accepted / rejected."""
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["id"] or doc.get("doc_type") != "offer":
+    if not doc or doc.get("user_id") != user["account_id"] or doc.get("doc_type") != "offer":
         raise HTTPException(status_code=404)
     form = await request.form()
     status = form.get("status", "")
     if status not in OFFER_STATUSES:
         raise HTTPException(status_code=400, detail="Nederīgs statuss")
-    db.update_document_status(user["id"], doc_id, status)
+    db.update_document_status(user["account_id"], doc_id, status)
     return RedirectResponse(f"/documents/{doc_id}", status_code=303)
 
 
@@ -2752,10 +2889,10 @@ async def toggle_document_stats(request: Request, doc_id: int):
     """Toggle whether a document is counted in dashboard analytics and totals."""
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["id"]:
+    if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     new_excluded = 0 if doc.get("excluded_from_stats", 0) else 1
-    db.set_document_excluded(user["id"], doc_id, new_excluded)
+    db.set_document_excluded(user["account_id"], doc_id, new_excluded)
     accept = request.headers.get("accept", "")
     if "application/json" in accept:
         return JSONResponse({"excluded_from_stats": new_excluded})
@@ -2770,8 +2907,8 @@ async def toggle_document_stats(request: Request, doc_id: int):
 async def stock_page(request: Request, date_from: str = "", date_to: str = ""):
     ctx = _base_context(request)
     user = request.state.user
-    stock_on = _stock_enabled(user["id"])
-    stock = db.get_stock(user["id"], date_from=date_from or None,
+    stock_on = _stock_enabled(user["account_id"])
+    stock = db.get_stock(user["account_id"], date_from=date_from or None,
                          date_to=date_to or None) if stock_on else []
     ctx.update({
         "stock": stock,
@@ -2806,7 +2943,7 @@ DEFAULT_RECURRING_EMAIL_BODY = (
 async def recurring_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
-    recurring = db.get_recurring_invoices(user["id"])
+    recurring = db.get_recurring_invoices(user["account_id"])
     for rec in recurring:
         try:
             items = json.loads(rec.get("items_json") or "[]")
@@ -2827,7 +2964,7 @@ def _render_recurring_form(request: Request, recurring=None, error: str = ""):
     """Render the create/edit recurring invoice form."""
     ctx = _base_context(request)
     user = request.state.user
-    settings = _user_settings(user["id"])
+    settings = _user_settings(user["account_id"])
 
     items_pre = []
     if recurring:
@@ -2859,8 +2996,8 @@ def _render_recurring_form(request: Request, recurring=None, error: str = ""):
     ctx.update({
         "recurring": recurring,
         "edit_mode": recurring is not None,
-        "clients": db.get_all_clients(user["id"]),
-        "products": db.get_all_products(user["id"]),
+        "clients": db.get_all_clients(user["account_id"]),
+        "products": db.get_all_products(user["account_id"]),
         "templates": TEMPLATES,
         "frequency_labels": FREQUENCY_LABELS,
         "settings": settings,
@@ -2891,7 +3028,7 @@ async def edit_recurring_page(request: Request, recurring_id: int):
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
     rec = db.get_recurring_invoice(recurring_id)
-    if not rec or rec.get("user_id") != user["id"]:
+    if not rec or rec.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     return _render_recurring_form(request, recurring=rec)
 
@@ -3001,7 +3138,7 @@ async def create_recurring(request: Request):
     limits = db.get_tier_limits(user.get("tier", "free"))
     max_rec = limits.get("max_recurring")
     if max_rec:
-        active_count = db.count_active_recurring(user["id"])
+        active_count = db.count_active_recurring(user["account_id"])
         if db.limit_reached(active_count, max_rec):
             return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
@@ -3011,10 +3148,10 @@ async def create_recurring(request: Request):
         return _render_recurring_form(request, error=str(e))
     data["template"] = _resolve_template(user, data["template"])
 
-    _sync_client_email(user["id"], data["client_id"], data["client_email"])
+    _sync_client_email(user["account_id"], data["client_id"], data["client_email"])
 
     db.create_recurring_invoice(
-        user["id"], data["doc_type"], data["client_id"], data["vat_rate"],
+        user["account_id"], data["doc_type"], data["client_id"], data["vat_rate"],
         data["notes"], data["template"], data["frequency"], data["next_run"],
         data["send_email"], json.dumps(data["items"]),
         email_subject=data["email_subject"], email_body=data["email_body"],
@@ -3029,7 +3166,7 @@ async def update_recurring(request: Request, recurring_id: int):
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
     rec = db.get_recurring_invoice(recurring_id)
-    if not rec or rec.get("user_id") != user["id"]:
+    if not rec or rec.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     form = await request.form()
     try:
@@ -3038,10 +3175,10 @@ async def update_recurring(request: Request, recurring_id: int):
         return _render_recurring_form(request, recurring=rec, error=str(e))
     data["template"] = _resolve_template(user, data["template"])
 
-    _sync_client_email(user["id"], data["client_id"], data["client_email"])
+    _sync_client_email(user["account_id"], data["client_id"], data["client_email"])
 
     db.update_recurring_invoice(
-        user["id"], recurring_id, data["doc_type"], data["client_id"],
+        user["account_id"], recurring_id, data["doc_type"], data["client_id"],
         data["vat_rate"], data["notes"], data["template"], data["frequency"],
         data["next_run"], data["send_email"], json.dumps(data["items"]),
         email_subject=data["email_subject"], email_body=data["email_body"],
@@ -3060,7 +3197,7 @@ async def create_recurring_from_document(request: Request, doc_id: int):
     limits = db.get_tier_limits(user.get("tier", "free"))
     max_rec = limits.get("max_recurring")
     if max_rec:
-        active_count = db.count_active_recurring(user["id"])
+        active_count = db.count_active_recurring(user["account_id"])
         if db.limit_reached(active_count, max_rec):
             return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
@@ -3070,7 +3207,7 @@ async def create_recurring_from_document(request: Request, doc_id: int):
     next_run = form.get("next_run", "")
 
     doc, items = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["id"]:
+    if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
 
     if not next_run:
@@ -3087,7 +3224,7 @@ async def create_recurring_from_document(request: Request, doc_id: int):
     ]
 
     db.create_recurring_invoice(
-        user["id"], doc["doc_type"], doc["client_id"], doc["vat_rate"],
+        user["account_id"], doc["doc_type"], doc["client_id"], doc["vat_rate"],
         doc.get("notes", ""), template, frequency, next_run, send_email,
         json.dumps(items_data)
     )
@@ -3105,9 +3242,9 @@ async def toggle_recurring(request: Request, recurring_id: int):
     if rec and not rec.get("active"):
         limits = db.get_tier_limits(user.get("tier", "free"))
         max_rec = limits.get("max_recurring")
-        if max_rec and db.limit_reached(db.count_active_recurring(user["id"]), max_rec):
+        if max_rec and db.limit_reached(db.count_active_recurring(user["account_id"]), max_rec):
             return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
-    db.toggle_recurring_invoice(user["id"], recurring_id)
+    db.toggle_recurring_invoice(user["account_id"], recurring_id)
     return RedirectResponse("/recurring", status_code=303)
 
 
@@ -3116,7 +3253,7 @@ async def delete_recurring(request: Request, recurring_id: int):
     user = request.state.user
     if not _check_tier_feature(user, "recurring"):
         return RedirectResponse("/pricing", status_code=303)
-    db.delete_recurring_invoice(user["id"], recurring_id)
+    db.delete_recurring_invoice(user["account_id"], recurring_id)
     return RedirectResponse("/recurring", status_code=303)
 
 
@@ -3131,7 +3268,7 @@ async def email_log_page(request: Request):
     source = request.query_params.get("source")
     if source not in ("manual", "recurring"):
         source = None
-    emails = db.get_email_log(user["id"], source=source)
+    emails = db.get_email_log(user["account_id"], source=source)
     ctx.update({
         "emails": emails,
         "active_source": source,
@@ -3148,8 +3285,8 @@ async def email_log_page(request: Request):
 async def export_page(request: Request):
     ctx = _base_context(request)
     user = request.state.user
-    docs = db.get_documents(user["id"], exclude_doc_types=["offer"])
-    settings = _user_settings(user["id"])
+    docs = db.get_documents(user["account_id"], exclude_doc_types=["offer"])
+    settings = _user_settings(user["account_id"])
     # Load saved accounting export presets
     raw_presets = settings.get("accounting_export_presets", "[]")
     try:
@@ -3181,7 +3318,7 @@ async def export_pdf_bulk(
     user = request.state.user
     template = _resolve_template(user, template)
     docs = db.get_documents(
-        user["id"],
+        user["account_id"],
         doc_type=doc_type or None,
         date_from=date_from or None,
         date_to=date_to or None,
@@ -3220,7 +3357,7 @@ async def download_einvoice(request: Request, doc_id: int):
     if not _check_tier_feature(user, "einvoice"):
         return RedirectResponse("/pricing", status_code=303)
     doc, _ = db.get_document(doc_id)
-    if not doc or doc["user_id"] != user["id"]:
+    if not doc or doc["user_id"] != user["account_id"]:
         raise HTTPException(status_code=404)
     filepath, filename = generate_einvoice_file(doc_id)
     return FileResponse(
@@ -3245,7 +3382,7 @@ async def export_einvoice_bulk(
     if not _check_tier_feature(user, "einvoice"):
         return RedirectResponse("/pricing", status_code=303)
     docs = db.get_documents(
-        user["id"],
+        user["account_id"],
         doc_type=doc_type or None,
         date_from=date_from or None,
         date_to=date_to or None,
@@ -3521,7 +3658,7 @@ async def export_accounting(request: Request):
     doc_type = form.get("acc_doc_type", "")
     preset_key = form.get("acc_preset", "")
 
-    settings = _user_settings(user["id"])
+    settings = _user_settings(user["account_id"])
 
     # Load preset config
     if preset_key in ACCOUNTING_PRESETS:
@@ -3557,7 +3694,7 @@ async def export_accounting(request: Request):
         return RedirectResponse("/export?error=no_columns", status_code=303)
 
     docs = db.get_documents_for_export(
-        user["id"],
+        user["account_id"],
         doc_type=doc_type or None,
         date_from=date_from or None,
         date_to=date_to or None,
@@ -3676,7 +3813,7 @@ async def save_accounting_presets(request: Request):
             "doc_columns": doc_cols,
             "item_columns": item_cols,
         })
-    db.set_user_setting(user["id"], "accounting_export_presets", json.dumps(presets))
+    db.set_user_setting(user["account_id"], "accounting_export_presets", json.dumps(presets))
     return JSONResponse({"ok": True, "presets": presets})
 
 
@@ -3684,7 +3821,7 @@ async def save_accounting_presets(request: Request):
 async def get_accounting_presets(request: Request):
     """Get built-in and custom presets."""
     user = request.state.user
-    settings = _user_settings(user["id"])
+    settings = _user_settings(user["account_id"])
     raw = settings.get("accounting_export_presets", "[]")
     try:
         custom = json.loads(raw) if raw else []
@@ -3718,7 +3855,7 @@ async def api_add_product(request: Request):
     if not allowed:
         return JSONResponse({"error": f"Produktu limits sasniegts ({current}/{maximum})"}, status_code=403)
     data = await request.json()
-    product_id = db.add_product(user["id"], data["name"], data["unit"])
+    product_id = db.add_product(user["account_id"], data["name"], data["unit"])
     product = db.get_product(product_id)
     return JSONResponse(product)
 
@@ -3728,7 +3865,7 @@ async def api_documents(request: Request, doc_type: str = "", client_id: str = "
                         date_from: str = "", date_to: str = "", status: str = ""):
     user = request.state.user
     docs = db.get_documents(
-        user["id"],
+        user["account_id"],
         doc_type=doc_type or None,
         client_id=int(client_id) if client_id else None,
         date_from=date_from or None,
@@ -3736,7 +3873,7 @@ async def api_documents(request: Request, doc_type: str = "", client_id: str = "
         status=status or None,
         exclude_doc_types=["offer"],
     )
-    settings = _user_settings(user["id"])
+    settings = _user_settings(user["account_id"])
     status_tracking = settings.get("status_tracking", "0") == "1"
     rows = []
     for d in docs:
@@ -3765,14 +3902,14 @@ async def api_add_client(request: Request):
     # against the tier quota.
     if not one_time:
         if reg_number:
-            existing = db.get_client_by_reg_number(user["id"], reg_number)
+            existing = db.get_client_by_reg_number(user["account_id"], reg_number)
             if existing:
                 return JSONResponse({"error": f"Klients ar reģ. nr. {reg_number} jau eksistē ({existing['name']})", "duplicate": True, "client": existing}, status_code=409)
         allowed, current, maximum = _check_tier_limit(user, "clients")
         if not allowed:
             return JSONResponse({"error": f"Klientu limits sasniegts ({current}/{maximum})"}, status_code=403)
     client_id = db.add_client(
-        user["id"],
+        user["account_id"],
         name=data["name"],
         reg_number=data.get("reg_number", ""),
         vat_number=data.get("vat_number", ""),
@@ -3790,7 +3927,7 @@ async def api_add_client(request: Request):
 @app.get("/api/stock/{product_id}")
 async def api_product_stock(request: Request, product_id: int):
     user = request.state.user
-    stock = db.get_product_stock(user["id"], product_id)
+    stock = db.get_product_stock(user["account_id"], product_id)
     return JSONResponse({"stock": stock})
 
 

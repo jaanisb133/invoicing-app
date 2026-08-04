@@ -223,6 +223,10 @@ def _run_migrations():
         "phone": "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
         "renewal_attempts": "ALTER TABLE users ADD COLUMN renewal_attempts INTEGER NOT NULL DEFAULT 0",
         "last_renewal_attempt": "ALTER TABLE users ADD COLUMN last_renewal_attempt TIMESTAMP",
+        # NULL means this user owns their account. A value points at the owner
+        # whose data this member works on — business rows stay keyed to the
+        # owner's id, so every existing user_id query keeps working.
+        "account_owner_id": "ALTER TABLE users ADD COLUMN account_owner_id INTEGER",
     }
     for col, sql in migrations.items():
         if col not in cols:
@@ -246,6 +250,10 @@ def _run_migrations():
         cursor.execute("ALTER TABLE documents ADD COLUMN reverse_charge INTEGER NOT NULL DEFAULT 0")
     if "deleted_at" not in doc_cols:
         cursor.execute("ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP")
+    if "created_by_user_id" not in doc_cols:
+        # Who issued it. Ownership stays on user_id (the account); this is the
+        # audit trail once more than one person can issue documents.
+        cursor.execute("ALTER TABLE documents ADD COLUMN created_by_user_id INTEGER")
     if "excluded_from_stats" not in doc_cols:
         # When 1, the document is kept out of all dashboard analytics and totals
         # (revenue, expenses, averages, top client/product, charts) while still
@@ -766,7 +774,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
 
-def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None, created_by_user_id=None):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id (int or None), description (str, used
@@ -793,12 +801,12 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
 
         cursor = conn.execute(
-            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge, converted_from_offer_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge, converted_from_offer_id, created_by_user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
              payment_due_date or None, vat_rate, notes, int(reverse_charge),
-             converted_from_offer_id or None)
+             converted_from_offer_id or None, created_by_user_id or user_id)
         )
         doc_id = cursor.lastrowid
 
@@ -1192,31 +1200,122 @@ def authenticate_user(username: str, password: str):
                            (username.strip().lower(),)).fetchone()
     conn.close()
     if row and _check_password(password, row["password_hash"]):
-        return dict(row)
+        return get_user(row["id"])
     return None
+
+
+# Billing belongs to the account, not the person — a member works under the
+# owner's plan, so these come from the owner's row.
+_ACCOUNT_FIELDS = ("tier", "subscription_status", "subscription_start",
+                   "subscription_end", "billing_cycle")
+
+
+def _with_account(conn, row):
+    """Attach account scope to a user row.
+
+    account_id is the id every business query must use. For an owner that is
+    their own id; for a member it is the owner's, which is why no query in this
+    module had to change.
+    """
+    user = dict(row)
+    owner_id = user.get("account_owner_id")
+    user["is_account_owner"] = owner_id is None
+    if owner_id is None:
+        user["account_id"] = user["id"]
+        return user
+
+    owner = conn.execute("SELECT * FROM users WHERE id = ?", (owner_id,)).fetchone()
+    if not owner:
+        # Owner row is gone. Fail closed: no data, no plan.
+        user["account_id"] = user["id"]
+        user["is_account_owner"] = True
+        user["tier"] = "free"
+        return user
+    user["account_id"] = owner["id"]
+    user["account_owner_name"] = owner["display_name"] or owner["username"]
+    for field in _ACCOUNT_FIELDS:
+        user[field] = owner[field]
+    # A member never inherits admin rights from the account owner.
+    user["is_admin"] = 0
+    return user
 
 
 def get_user(user_id: int):
     conn = get_connection()
     row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = _with_account(conn, row) if row else None
     conn.close()
-    return dict(row) if row else None
+    return user
+
+
+def get_account_members(owner_id: int):
+    """Everyone on an account, owner first."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT id, username, email, display_name, must_change_password,
+                  account_owner_id, created_at
+           FROM users
+           WHERE id = ? OR account_owner_id = ?
+           ORDER BY (account_owner_id IS NOT NULL), created_at""",
+        (owner_id, owner_id)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def count_account_members(owner_id: int) -> int:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM users WHERE id = ? OR account_owner_id = ?",
+        (owner_id, owner_id)
+    ).fetchone()
+    conn.close()
+    return row["cnt"] if row else 0
+
+
+def add_account_member(owner_id: int, username: str, password: str,
+                       display_name: str = "", email: str = "") -> int:
+    """Create a member working on owner_id's data. Members always start with a
+    forced password change so the temporary password cannot linger."""
+    user_id = create_user(username, password, display_name=display_name,
+                          email=email, must_change_password=True)
+    conn = get_connection()
+    conn.execute("UPDATE users SET account_owner_id = ? WHERE id = ?", (owner_id, user_id))
+    conn.commit()
+    conn.close()
+    return user_id
+
+
+def remove_account_member(owner_id: int, member_id: int) -> bool:
+    """Delete a member. Scoped to the owner so one account cannot remove
+    another's people, and an owner can never delete themselves this way."""
+    conn = get_connection()
+    cur = conn.execute(
+        "DELETE FROM users WHERE id = ? AND account_owner_id = ?",
+        (member_id, owner_id)
+    )
+    conn.commit()
+    removed = cur.rowcount > 0
+    conn.close()
+    return removed
 
 
 def get_user_by_username(username: str):
     conn = get_connection()
     row = conn.execute("SELECT * FROM users WHERE username = ?",
                        (username.lower().strip(),)).fetchone()
+    user = _with_account(conn, row) if row else None
     conn.close()
-    return dict(row) if row else None
+    return user
 
 
 def get_user_by_email(email: str):
     conn = get_connection()
     row = conn.execute("SELECT * FROM users WHERE email = ?",
                        (email.strip().lower(),)).fetchone()
+    user = _with_account(conn, row) if row else None
     conn.close()
-    return dict(row) if row else None
+    return user
 
 
 def get_all_users():
@@ -1676,6 +1775,7 @@ TIER_LIMITS = {
         "max_emails_month": 3, "recurring": False, "max_recurring": 0,
         "all_templates": False,
         "einvoice": False, "accounting_export": False, "stock": False,
+        "max_users": 1,
         "label": "Bezmaksas",
         "price_monthly": 0, "price_yearly": 0,
     },
@@ -1687,6 +1787,7 @@ TIER_LIMITS = {
         # E-invoice XML costs nothing marginal, and a paid plan that cannot
         # produce one stops being fit for purpose when the mandate lands.
         "einvoice": True, "accounting_export": False, "stock": False,
+        "max_users": 1,
         "label": "Mini",
         "price_monthly": 299, "price_yearly": 2900,
     },
@@ -1695,6 +1796,7 @@ TIER_LIMITS = {
         "max_emails_month": 100, "recurring": True, "max_recurring": 3,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": False,
+        "max_users": 1,
         "label": "Pamata",
         "price_monthly": 599, "price_yearly": 5900,
     },
@@ -1703,6 +1805,7 @@ TIER_LIMITS = {
         "max_emails_month": UNLIMITED, "recurring": True, "max_recurring": UNLIMITED,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": True,
+        "max_users": 5,
         "label": "Bizness",
         # Was 19.99/199. A 3.3x jump from Pamata bought volume nobody in this
         # market uses; at 12.99 stock management alone can justify the step.
@@ -1715,6 +1818,7 @@ TIER_LIMITS = {
         "max_emails_month": UNLIMITED, "recurring": True, "max_recurring": UNLIMITED,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": True,
+        "max_users": UNLIMITED,
         "label": "Mūža licence",
         "price_monthly": 0, "price_yearly": 0, "price_lifetime": 49900,
     },
@@ -1723,6 +1827,7 @@ TIER_LIMITS = {
         "max_emails_month": UNLIMITED, "recurring": True, "max_recurring": UNLIMITED,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": True,
+        "max_users": UNLIMITED,
         "label": "Administrators",
         "price_monthly": 0, "price_yearly": 0,
     },

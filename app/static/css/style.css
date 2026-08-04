@@ -2735,3 +2735,68 @@ a.dash-stat:hover { transform: translateY(-1px); }
     .settings-savebar-text { font-size: 12px; }
     .settings-toggle { flex-wrap: nowrap; }
 }
+
+/* ==========================================
+   Team — one-time credentials handover
+   ========================================== */
+
+.team-credentials {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding: 14px 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.team-cred-label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-light);
+    margin-bottom: 4px;
+}
+
+.team-credentials code {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.2px;
+    user-select: all;
+}
+
+@media (max-width: 768px) {
+    .team-credentials {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+}
+
+/* mobile-card-title/meta are only styled under 768px, so on desktop the name
+   and the username ran together on one line. */
+.team-table .mobile-card-title {
+    display: block;
+    font-weight: 600;
+}
+
+.team-table .mobile-card-meta {
+    display: block;
+    font-size: 12px;
+    color: var(--text-light);
+    margin-top: 2px;
+}
+
+/* Identity is one block; role and the remove button share the row below it. */
+@media (max-width: 768px) {
+    .team-table tbody tr {
+        align-items: center;
+    }
+    .team-table .mobile-card-meta {
+        margin-bottom: 8px;
+    }
+    .team-table td[data-label="Loma"] {
+        flex: 1 1 auto;
+    }
+}
