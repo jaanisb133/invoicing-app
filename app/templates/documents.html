@@ -81,9 +81,9 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
         <div class="usage-item">
             <div class="usage-label">Dokumenti (šomēnes)</div>
             <div class="usage-bar">
-                <div class="usage-fill" style="width: {{ [(usage.documents / limits.max_documents * 100) | int, 100] | min }}%"></div>
+                <div class="usage-fill" style="width: {{ usage_pct(usage.documents, limits.max_documents) }}%"></div>
             </div>
-            <div class="usage-count">{{ usage.documents }} / {{ limits.max_documents }}</div>
+            <div class="usage-count">{{ usage.documents }} / {{ limits.max_documents | limit_text }}</div>
         </div>
     </div>
     {% endif %}

@@ -1657,10 +1657,23 @@ def ensure_default_admin():
 
 # --- Tier limits ---
 
+# `None` means unlimited; a number is a real cap and 0 genuinely means none.
+# This used to be overloaded — max_emails_month was 0 for both "no email at all"
+# (free) and "unlimited" (business), and the send route told them apart by
+# checking an unrelated feature flag. Any tier added with no email allowance
+# would silently have been granted unlimited sending.
+UNLIMITED = None
+
+# Prices in cents, and this table is the ONLY place they are defined. They used
+# to also live in everypay.PLAN_PRICES (which is what actually charged the
+# card), hardcoded twice in _pricing_content.html, and in pricing.html's meta
+# tags — four copies, so a price change could show one number and charge another.
 TIER_LIMITS = {
     "free": {
         "max_documents": 5, "max_clients": 5, "max_products": 5,
-        "max_emails_month": 0, "recurring": False, "max_recurring": 0,
+        # A few real sends, so the "invoice sent, done" moment is reachable
+        # before paying — it is the best part of the product.
+        "max_emails_month": 3, "recurring": False, "max_recurring": 0,
         "all_templates": False,
         "einvoice": False, "accounting_export": False, "stock": False,
         "label": "Bezmaksas",
@@ -1668,11 +1681,14 @@ TIER_LIMITS = {
     },
     "mini": {
         "max_documents": 50, "max_clients": 25, "max_products": 25,
-        "max_emails_month": 10, "recurring": False, "max_recurring": 0,
+        # 50 documents but 10 emails read as an arbitrary punishment.
+        "max_emails_month": 30, "recurring": False, "max_recurring": 0,
         "all_templates": False,
-        "einvoice": False, "accounting_export": False, "stock": False,
+        # E-invoice XML costs nothing marginal, and a paid plan that cannot
+        # produce one stops being fit for purpose when the mandate lands.
+        "einvoice": True, "accounting_export": False, "stock": False,
         "label": "Mini",
-        "price_monthly": 299, "price_yearly": 2900,  # cents
+        "price_monthly": 299, "price_yearly": 2900,
     },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": 200,
@@ -1680,27 +1696,31 @@ TIER_LIMITS = {
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": False,
         "label": "Pamata",
-        "price_monthly": 599, "price_yearly": 5900,  # cents
+        "price_monthly": 599, "price_yearly": 5900,
     },
     "business": {
         "max_documents": 5000, "max_clients": 500, "max_products": 1000,
-        "max_emails_month": 0, "recurring": True, "max_recurring": 0,  # 0 = unlimited
+        "max_emails_month": UNLIMITED, "recurring": True, "max_recurring": UNLIMITED,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": True,
         "label": "Bizness",
-        "price_monthly": 1999, "price_yearly": 19900,  # cents
+        # Was 19.99/199. A 3.3x jump from Pamata bought volume nobody in this
+        # market uses; at 12.99 stock management alone can justify the step.
+        "price_monthly": 1299, "price_yearly": 12900,
     },
     "lifetime": {
-        "max_documents": 5000, "max_clients": 500, "max_products": 1000,
-        "max_emails_month": 0, "recurring": True, "max_recurring": 0,  # 0 = unlimited
+        # Genuinely unlimited — the pricing card says "Neierobežots" and this
+        # tier used to carry the same 5000/500/1000 caps as Bizness.
+        "max_documents": UNLIMITED, "max_clients": UNLIMITED, "max_products": UNLIMITED,
+        "max_emails_month": UNLIMITED, "recurring": True, "max_recurring": UNLIMITED,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": True,
         "label": "Mūža licence",
-        "price_monthly": 0, "price_yearly": 0, "price_lifetime": 49900,  # cents
+        "price_monthly": 0, "price_yearly": 0, "price_lifetime": 49900,
     },
     "admin": {
-        "max_documents": 999999, "max_clients": 999999, "max_products": 999999,
-        "max_emails_month": 0, "recurring": True, "max_recurring": 0,
+        "max_documents": UNLIMITED, "max_clients": UNLIMITED, "max_products": UNLIMITED,
+        "max_emails_month": UNLIMITED, "recurring": True, "max_recurring": UNLIMITED,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": True,
         "label": "Administrators",
@@ -1708,9 +1728,45 @@ TIER_LIMITS = {
     },
 }
 
+# users.max_documents/max_clients/max_products are NOT NULL columns kept in sync
+# on subscription changes. Nothing reads them (checks go through TIER_LIMITS),
+# but NULL would raise, so unlimited is stored as a sentinel.
+_UNLIMITED_COLUMN_VALUE = 999999999
+
+_PRICE_KEY_BY_CYCLE = {
+    "monthly": "price_monthly",
+    "yearly": "price_yearly",
+    "lifetime": "price_lifetime",
+}
+
 
 def get_tier_limits(tier):
     return TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
+
+def limit_reached(current, maximum):
+    """True when a cap applies and has been hit. None means unlimited."""
+    return maximum is not None and current >= maximum
+
+
+def get_plan_price(tier, cycle):
+    """Price in EUR for a tier + billing cycle, 0.0 if that pair isn't sold."""
+    limits = TIER_LIMITS.get(tier)
+    if not limits:
+        return 0.0
+    cents = limits.get(_PRICE_KEY_BY_CYCLE.get(cycle, ""), 0) or 0
+    return round(cents / 100, 2)
+
+
+def format_price(cents):
+    """Cents -> display string: 1299 -> '12.99', 12900 -> '129'."""
+    whole, rem = divmod(int(cents or 0), 100)
+    return str(whole) if rem == 0 else f"{whole}.{rem:02d}"
+
+
+def _column_limit(value):
+    """Coerce an unlimited (None) cap for the NOT NULL users columns."""
+    return _UNLIMITED_COLUMN_VALUE if value is None else value
 
 
 def count_active_recurring(user_id):
@@ -1746,7 +1802,8 @@ def update_user_subscription(user_id: int, tier: str, billing_cycle: str = "",
            WHERE id = ?""",
         (tier, billing_cycle, everypay_token, everypay_payment_ref,
          subscription_status, datetime.date.today().isoformat(),
-         limits["max_documents"], limits["max_clients"], limits["max_products"],
+         _column_limit(limits["max_documents"]), _column_limit(limits["max_clients"]),
+         _column_limit(limits["max_products"]),
          user_id)
     )
     conn.commit()
@@ -1837,7 +1894,8 @@ def cancel_user_subscription(user_id: int):
            max_documents = ?, max_clients = ?, max_products = ?
            WHERE id = ?""",
         (datetime.date.today().isoformat(),
-         limits["max_documents"], limits["max_clients"], limits["max_products"],
+         _column_limit(limits["max_documents"]), _column_limit(limits["max_clients"]),
+         _column_limit(limits["max_products"]),
          user_id)
     )
     conn.commit()

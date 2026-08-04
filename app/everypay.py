@@ -19,16 +19,9 @@ API_SECRET = os.getenv("EVERYPAY_API_SECRET", "")
 ACCOUNT_NAME = os.getenv("EVERYPAY_ACCOUNT_NAME", "")
 API_URL = os.getenv("EVERYPAY_API_URL", "https://igw-seb-demo.every-pay.com/api/v4")
 
-# Plan prices (EUR)
-PLAN_PRICES = {
-    "mini_monthly": 2.99,
-    "mini_yearly": 29.00,
-    "starter_monthly": 5.99,
-    "starter_yearly": 59.00,
-    "business_monthly": 19.99,
-    "business_yearly": 199.00,
-    "lifetime_lifetime": 499.00,
-}
+# Plan prices used to be duplicated here. They now live only in
+# database.TIER_LIMITS — see database.get_plan_price() — so the price shown on
+# the pricing page and the price charged to the card cannot drift apart.
 
 
 def _auth():
@@ -49,12 +42,6 @@ def _nonce():
 def is_configured():
     """Return True if EveryPay credentials are set."""
     return bool(API_USERNAME and API_SECRET and ACCOUNT_NAME)
-
-
-def get_plan_price(tier: str, cycle: str) -> float:
-    """Return the price for a given tier and billing cycle."""
-    key = f"{tier}_{cycle}"
-    return PLAN_PRICES.get(key, 0.0)
 
 
 def initiate_payment(

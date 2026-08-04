@@ -52,8 +52,24 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "27"
+CSS_VERSION = "28"
 templates.env.globals["css_version"] = CSS_VERSION
+
+# Plans and prices are rendered from the tier table, never typed into a
+# template — the pricing page used to hardcode every figure twice.
+templates.env.globals["tiers"] = db.TIER_LIMITS
+templates.env.filters["price"] = db.format_price
+
+
+def _usage_pct(current, maximum):
+    """Usage-bar width. An unlimited cap (None) never fills the bar."""
+    if not maximum:
+        return 0
+    return min(int((current or 0) / maximum * 100), 100)
+
+
+templates.env.globals["usage_pct"] = _usage_pct
+templates.env.filters["limit_text"] = lambda v: "∞" if v is None else v
 
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
 
@@ -413,7 +429,9 @@ def _check_tier_limit(user, resource_type):
     max_key = key_map.get(resource_type, "max_documents")
     current = usage.get(resource_type, 0)
     maximum = limits.get(max_key, 50)
-    return current < maximum, current, maximum
+    # maximum is None on unlimited tiers — never blocked, and callers that
+    # format "current/maximum" only run on the blocked branch.
+    return not db.limit_reached(current, maximum), current, maximum
 
 
 def _get_logo_path(user_id):
@@ -695,7 +713,7 @@ def _charge_subscription_renewal(user: dict) -> bool:
     token = user.get("everypay_token", "")
     email = user.get("email", "")
 
-    amount = everypay.get_plan_price(tier, cycle)
+    amount = db.get_plan_price(tier, cycle)
     if not amount or not token:
         logger.warning("renewal: skip user %s — missing amount(%s) or token", user_id, amount)
         return False
@@ -1341,7 +1359,7 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
         if lifetime_count >= 10:
             return RedirectResponse("/pricing?error=lifetime_sold_out", status_code=303)
 
-    amount = everypay.get_plan_price(tier, cycle)
+    amount = db.get_plan_price(tier, cycle)
     if not amount or not everypay.is_configured():
         return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
@@ -1570,7 +1588,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
 
         # Generate subscription invoice and email to user (idempotent — runs once)
         pending_order_ref = settings.get("_pending_order_ref", "")
-        amount = everypay.get_plan_price(pending_tier, pending_cycle)
+        amount = db.get_plan_price(pending_tier, pending_cycle)
         already_invoiced = settings.get("_subscription_invoiced_ref", "") == payment_reference
         if amount and not already_invoiced:
             _generate_subscription_invoice(
@@ -1675,7 +1693,7 @@ async def everypay_callback(request: Request,
         paying_user = db.get_user(user_id)
         user_settings = db.get_all_user_settings(user_id)
         already_invoiced = user_settings.get("_subscription_invoiced_ref", "") == payment_reference
-        amount = everypay.get_plan_price(tier, cycle)
+        amount = db.get_plan_price(tier, cycle)
         if paying_user and amount and not already_invoiced:
             _generate_subscription_invoice(
                 paying_user, tier, cycle, amount,
@@ -2579,18 +2597,17 @@ async def send_document_email(request: Request, doc_id: int):
     if not BREVO_API_KEY and not SMTP_PASS:
         return _redirect_with("error=E-pasta serviss nav konfigurēts.")
 
-    # Check email tier limit
+    # Check email tier limit. None = unlimited, 0 = this tier cannot send.
     limits = db.get_tier_limits(user.get("tier", "free"))
-    max_emails = limits.get("max_emails_month", 0)
-    if max_emails > 0:
+    max_emails = limits.get("max_emails_month")
+    if max_emails is not None:
+        if max_emails <= 0:
+            return RedirectResponse("/pricing", status_code=303)
         sent_count = db.get_emails_sent_this_month(user["id"])
         if sent_count >= max_emails:
             return _redirect_with(
                 f"error=Sasniegts e-pastu limits šim mēnesim ({max_emails})."
             )
-    elif not _check_tier_feature(user, "recurring"):
-        if user.get("tier", "free") == "free":
-            return RedirectResponse("/pricing", status_code=303)
 
     # Attachment: PDF by default, optionally the PEPPOL XML e-invoice.
     # XML is a paid feature and only defined for invoices, so anything that
@@ -2982,10 +2999,10 @@ async def create_recurring(request: Request):
         return RedirectResponse("/pricing", status_code=303)
     # Check recurring invoice limit for tier
     limits = db.get_tier_limits(user.get("tier", "free"))
-    max_rec = limits.get("max_recurring", 0)
-    if max_rec > 0:
+    max_rec = limits.get("max_recurring")
+    if max_rec:
         active_count = db.count_active_recurring(user["id"])
-        if active_count >= max_rec:
+        if db.limit_reached(active_count, max_rec):
             return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
     try:
@@ -3041,10 +3058,10 @@ async def create_recurring_from_document(request: Request, doc_id: int):
         return RedirectResponse("/pricing", status_code=303)
     # Check recurring invoice limit for tier
     limits = db.get_tier_limits(user.get("tier", "free"))
-    max_rec = limits.get("max_recurring", 0)
-    if max_rec > 0:
+    max_rec = limits.get("max_recurring")
+    if max_rec:
         active_count = db.count_active_recurring(user["id"])
-        if active_count >= max_rec:
+        if db.limit_reached(active_count, max_rec):
             return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
     frequency = form.get("frequency", "monthly")
@@ -3087,8 +3104,8 @@ async def toggle_recurring(request: Request, recurring_id: int):
     rec = db.get_recurring_invoice(recurring_id)
     if rec and not rec.get("active"):
         limits = db.get_tier_limits(user.get("tier", "free"))
-        max_rec = limits.get("max_recurring", 0)
-        if max_rec > 0 and db.count_active_recurring(user["id"]) >= max_rec:
+        max_rec = limits.get("max_recurring")
+        if max_rec and db.limit_reached(db.count_active_recurring(user["id"]), max_rec):
             return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     db.toggle_recurring_invoice(user["id"], recurring_id)
     return RedirectResponse("/recurring", status_code=303)

@@ -8,10 +8,10 @@
     </div>
 </div>
 
-<div class="page-body{% if not tier_limits.accounting_export %} page-gated{% endif %}">
-    {% if not tier_limits.accounting_export %}
+<div class="page-body{% if not tier_limits.einvoice %} page-gated{% endif %}">
+    {% if not tier_limits.einvoice %}
     {% set gate_feature = "Dokumentu eksports" %}
-    {% set gate_description = "Eksportējiet dokumentus PDF, e-rēķinu un grāmatvedības formātos. Pieejams Pamata un Bizness plānos." %}
+    {% set gate_description = "Eksportējiet dokumentus PDF, e-rēķinu un grāmatvedības formātos. Pieejams visos maksas plānos." %}
     {% include "_upgrade_gate.html" %}
     {% endif %}
     {% if request.query_params.get('error') == 'no_docs' %}
@@ -137,9 +137,12 @@
     <!-- ============================================================= -->
     <!-- Accounting Excel export — layout is fully user-defined         -->
     <!-- ============================================================= -->
-    <div class="card" style="margin-top:24px">
+    <div class="card{% if not tier_limits.accounting_export %} card-locked{% endif %}" style="margin-top:24px">
         <div class="card-header">
             <span>Grāmatvedības eksports (Excel)</span>
+            {% if not tier_limits.accounting_export %}
+            <a href="/pricing" class="card-lock-badge">Pieejams no Pamata plāna</a>
+            {% endif %}
         </div>
         <div class="card-body">
             <p style="font-size:13px;color:var(--text-light);margin-bottom:16px">

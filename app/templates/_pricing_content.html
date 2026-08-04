@@ -29,9 +29,10 @@
             </div>
             <p class="pricing-tagline">Izmēģiniet platformu bez maksas.</p>
             <ul class="pricing-features">
-                <li>5 dokumenti mēnesī</li>
+                <li>{{ tiers.free.max_documents }} dokumenti mēnesī</li>
                 <li>5 klienti</li>
                 <li>5 produkti</li>
+                <li>{{ tiers.free.max_emails_month }} e-pasti mēnesī</li>
                 <li>Pamata veidne</li>
                 <li>Rezerves kopiju veidošana</li>
             </ul>
@@ -52,16 +53,17 @@
                 <span class="tier-badge tier-mini">Mini</span>
             </div>
             <div class="pricing-price">
-                <span class="pricing-amount" id="price-mini">2.99€</span>
+                <span class="pricing-amount" id="price-mini">{{ tiers.mini.price_monthly | price }}€</span>
                 <span class="pricing-period" id="price-mini-period">/ mēnesī</span>
             </div>
             <p class="pricing-tagline">Pašnodarbinātajiem un sīkuzņēmumiem.</p>
             <ul class="pricing-features">
-                <li>50 dokumenti mēnesī</li>
+                <li>{{ tiers.mini.max_documents }} dokumenti mēnesī</li>
                 <li>25 klienti</li>
                 <li>25 produkti</li>
-                <li>10 e-pasti mēnesī</li>
+                <li>{{ tiers.mini.max_emails_month }} e-pasti mēnesī</li>
                 <li>Pamata veidne</li>
+                <li>E-rēķinu ģenerēšana</li>
                 <li>Rezerves kopiju veidošana</li>
             </ul>
             {% if current_user %}
@@ -88,17 +90,17 @@
                 <span class="tier-badge tier-starter">Pamata</span>
             </div>
             <div class="pricing-price">
-                <span class="pricing-amount" id="price-starter">5.99€</span>
+                <span class="pricing-amount" id="price-starter">{{ tiers.starter.price_monthly | price }}€</span>
                 <span class="pricing-period" id="price-starter-period">/ mēnesī</span>
             </div>
             <p class="pricing-tagline">Maziem uzņēmumiem un individuālajiem komersantiem.</p>
             <ul class="pricing-features">
-                <li>500 dokumenti mēnesī</li>
+                <li>{{ tiers.starter.max_documents }} dokumenti mēnesī</li>
                 <li>100 klienti</li>
                 <li>200 produkti</li>
-                <li>100 e-pasti mēnesī</li>
+                <li>{{ tiers.starter.max_emails_month }} e-pasti mēnesī</li>
                 <li>Visas veidnes</li>
-                <li>3 periodiskie rēķini</li>
+                <li>{{ tiers.starter.max_recurring }} periodiskie rēķini</li>
                 <li>E-rēķinu ģenerēšana</li>
                 <li>Grāmatvedības eksports</li>
                 <li>Rezerves kopiju veidošana</li>
@@ -126,12 +128,12 @@
                 <span class="tier-badge tier-business">Bizness</span>
             </div>
             <div class="pricing-price">
-                <span class="pricing-amount" id="price-business">19.99€</span>
+                <span class="pricing-amount" id="price-business">{{ tiers.business.price_monthly | price }}€</span>
                 <span class="pricing-period" id="price-business-period">/ mēnesī</span>
             </div>
-            <p class="pricing-tagline">Augošiem uzņēmumiem ar lielāku dokumentu apjomu.</p>
+            <p class="pricing-tagline">Uzņēmumiem ar preču uzskaiti un lielāku apjomu.</p>
             <ul class="pricing-features">
-                <li>5 000 dokumenti mēnesī</li>
+                <li>{{ "{:,}".format(tiers.business.max_documents).replace(",", " ") }} dokumenti mēnesī</li>
                 <li>500 klienti</li>
                 <li>1 000 produkti</li>
                 <li>Neierobežoti e-pasti</li>
@@ -168,7 +170,7 @@
             <div class="pricing-lifetime-info">
                 <span class="tier-badge" style="background:linear-gradient(135deg,#b8860b,#daa520);color:white;border:none">Mūža licence</span>
                 <div style="margin-top:14px;display:flex;align-items:baseline;gap:8px">
-                    <span style="font-size:42px;font-weight:700;letter-spacing:-1.2px;color:var(--text)">499€</span>
+                    <span style="font-size:42px;font-weight:700;letter-spacing:-1.2px;color:var(--text)">{{ tiers.lifetime.price_lifetime | price }}€</span>
                     <span style="color:var(--text-light);font-size:14px">/ vienreiz</span>
                 </div>
                 <p style="color:var(--text-light);font-size:14px;margin:8px 0 12px;line-height:1.5">
@@ -369,6 +371,13 @@
 </style>
 
 <script>
+// Same figures the checkout charges — see database.TIER_LIMITS.
+const TIER_PRICES = {
+{%- for key in ['mini', 'starter', 'business'] %}
+    {{ key }}: {monthly: "{{ tiers[key].price_monthly | price }}", yearly: "{{ tiers[key].price_yearly | price }}"},
+{%- endfor %}
+};
+
 function switchCycle(cycle) {
     var monthly = document.getElementById('btn-monthly');
     var yearly = document.getElementById('btn-yearly');
@@ -391,9 +400,9 @@ function switchCycle(cycle) {
         yearly.style.background = 'var(--brand)';
         yearly.style.color = '#fff';
         yearly.style.boxShadow = '0 2px 6px rgba(59,130,246,0.32)';
-        if (priceMini) priceMini.textContent = '29€';
-        if (priceStarter) priceStarter.textContent = '59€';
-        if (priceBusiness) priceBusiness.textContent = '199€';
+        if (priceMini) priceMini.textContent = TIER_PRICES.mini.yearly + '€';
+        if (priceStarter) priceStarter.textContent = TIER_PRICES.starter.yearly + '€';
+        if (priceBusiness) priceBusiness.textContent = TIER_PRICES.business.yearly + '€';
         if (periodMini) periodMini.textContent = '/ gadā';
         if (periodStarter) periodStarter.textContent = '/ gadā';
         if (periodBusiness) periodBusiness.textContent = '/ gadā';
@@ -407,9 +416,9 @@ function switchCycle(cycle) {
         monthly.style.background = 'var(--brand)';
         monthly.style.color = '#fff';
         monthly.style.boxShadow = '0 2px 6px rgba(59,130,246,0.32)';
-        if (priceMini) priceMini.textContent = '2.99€';
-        if (priceStarter) priceStarter.textContent = '5.99€';
-        if (priceBusiness) priceBusiness.textContent = '19.99€';
+        if (priceMini) priceMini.textContent = TIER_PRICES.mini.monthly + '€';
+        if (priceStarter) priceStarter.textContent = TIER_PRICES.starter.monthly + '€';
+        if (priceBusiness) priceBusiness.textContent = TIER_PRICES.business.monthly + '€';
         if (periodMini) periodMini.textContent = '/ mēnesī';
         if (periodStarter) periodStarter.textContent = '/ mēnesī';
         if (periodBusiness) periodBusiness.textContent = '/ mēnesī';
