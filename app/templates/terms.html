@@ -107,18 +107,15 @@
                 Maksājumu apstrādi nodrošina <strong>EveryPay</strong> sadarbībā ar <strong>SEB banku</strong>.
                 Mēs pieņemam šādus maksājumu veidus (kartes un digitālie maki):
             </p>
+            {# Same manifest as the footer (app/payment_logos.py), so the two
+               pages cannot drift to different sets of accepted methods. #}
+            {% for group in ['card', 'provider'] %}
             <div class="card-logos">
-                <div class="logo-box"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Visa_Brandmark_Blue_RGB_2021.png" alt="Visa" height="24"></div>
-                <div class="logo-box"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/ma_symbol.svg" alt="Mastercard" height="28"></div>
-                <div class="logo-box"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Google_Pay_Logo.svg.png" alt="Google Pay" height="24"></div>
-                <div class="logo-box"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Apple_Pay_Mark_RGB_041619.svg" alt="Apple Pay" height="24"></div>
+                {% for logo in payment_logos if logo.group == group %}
+                <div class="logo-box"><img src="{{ logo.url }}" alt="{{ logo.alt }}" height="{{ logo.height_lg }}" loading="lazy" decoding="async"></div>
+                {% endfor %}
             </div>
-            <div class="card-logos">
-                <div class="logo-box"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Our_logotype_626px.webp" alt="EveryPay" height="20"></div>
-                <div class="logo-box"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/seb_k_45mm150dpi.jpg" alt="SEB" height="26"></div>
-                <div class="logo-box"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/Citadele_logo_bg.jpg" alt="Citadele" height="26"></div>
-                <div class="logo-box"><img src="https://vnmedia.lv/wp-content/uploads/2026/03/lhv-logo.svg" alt="LHV" height="22"></div>
-            </div>
+            {% endfor %}
             <p>
                 Maksājumu drošību garantē:
             </p>

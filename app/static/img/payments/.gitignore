@@ -1,0 +1,4 @@
+# Trademarked artwork — fetched at deploy time, never committed.
+*
+!.gitignore
+!README.md

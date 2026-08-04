@@ -8,16 +8,15 @@
                 <a href="/contacts">Kontakti</a>
             </div>
         </div>
+        {# Sources live in app/payment_logos.py — never paste a URL in here.
+           Files are served from /static once scripts/fetch_payment_logos.py has
+           run; until then each entry falls back to its original remote URL. #}
         <div class="public-footer-logos">
-            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Visa_Brandmark_Blue_RGB_2021.png" alt="Visa" height="12">
-            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/ma_symbol.svg" alt="Mastercard" height="16">
-            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Google_Pay_Logo.svg.png" alt="Google Pay" height="12">
-            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Apple_Pay_Mark_RGB_041619.svg" alt="Apple Pay" height="12">
-            <span class="footer-sep"></span>
-            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Our_logotype_626px.webp" alt="EveryPay" height="11">
-            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/seb_k_45mm150dpi.jpg" alt="SEB" height="14">
-            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/Citadele_logo_bg.jpg" alt="Citadele" height="14">
-            <img src="https://vnmedia.lv/wp-content/uploads/2026/03/lhv-logo.svg" alt="LHV" height="12">
+            {% for logo in payment_logos %}
+            {% if loop.changed(logo.group) and not loop.first %}<span class="footer-sep"></span>{% endif %}
+            <img src="{{ logo.url }}" alt="{{ logo.alt }}" height="{{ logo.height }}"
+                 loading="lazy" decoding="async">
+            {% endfor %}
         </div>
     </div>
 </footer>

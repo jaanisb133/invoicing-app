@@ -40,6 +40,7 @@ from app import database as db
 from app import registry
 from app.pdf_generator import generate_invoice_pdf, TEMPLATES
 from app.einvoice import generate_einvoice_xml, generate_einvoice_file
+from app import payment_logos
 
 app = FastAPI(title="V-Rēķini")
 
@@ -70,6 +71,17 @@ def _usage_pct(current, maximum):
 
 templates.env.globals["usage_pct"] = _usage_pct
 templates.env.filters["limit_text"] = lambda v: "∞" if v is None else v
+
+# Footer payment logos. Resolved once — files land during deploy and the app
+# restarts after, so there is nothing to re-check per request.
+templates.env.globals["payment_logos"] = payment_logos.footer_logos()
+_missing_logos = payment_logos.missing_logos()
+if _missing_logos:
+    logger.warning(
+        "Payment logos still hotlinked from a third-party host: %s. "
+        "Run scripts/fetch_payment_logos.py and restart to self-host them.",
+        ", ".join(_missing_logos),
+    )
 
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "").lower() in ("1", "true", "yes")
 
