@@ -156,6 +156,56 @@
                     </div>
                 </div>
 
+                {% if doc_type == 'offer' and branded_offers %}
+                <div class="card">
+                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                        <span>Tāmes saturs</span>
+                        <a href="/tames" class="btn btn-outline btn-sm">Pārvaldīt veidnes</a>
+                    </div>
+                    <div class="card-body">
+                        <input type="hidden" name="offer_branded" id="offerBranded" value="0">
+                        <input type="hidden" name="offer_preset_id" id="offerPresetId" value="">
+                        <div class="form-group">
+                            <label>Veidne</label>
+                            <select id="offerPresetSelect" class="form-control" onchange="applyOfferPreset(this.value)">
+                                <option value="">— Standarta PDF izskats —</option>
+                                {% for p in offer_presets %}
+                                <option value="{{ p.id }}">{{ p.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <span style="font-size:12px;color:var(--text-light)">Izvēloties veidni, tāme tiks noformēta jūsu firmas dizainā. Tekstus zemāk var pielāgot šim piedāvājumam — veidne paliek neskarta.</span>
+                        </div>
+                        <div id="offerBrandedFields" style="display:none">
+                            <div class="form-group">
+                                <label>Virsraksts uz tāmes</label>
+                                <input type="text" name="offer_title" id="offerTitle" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label style="display:flex;justify-content:space-between;align-items:center">Tehniskā specifikācija
+                                    <button type="button" class="btn btn-outline btn-sm" onclick="addOfferRow('offerSpecRows', offerSpecRowHtml)">+ Rinda</button>
+                                </label>
+                                <div id="offerSpecRows" class="tame-rows"></div>
+                            </div>
+                            <div class="form-group">
+                                <label style="display:flex;justify-content:space-between;align-items:center">Priekšrocības
+                                    <button type="button" class="btn btn-outline btn-sm" onclick="addOfferRow('offerBenefitRows', offerBenefitRowHtml)">+ Rinda</button>
+                                </label>
+                                <div id="offerBenefitRows" class="tame-rows"></div>
+                            </div>
+                            <div class="form-group">
+                                <label>Papildus nosacījumi</label>
+                                <textarea name="offer_conditions" id="offerConditions" class="form-control" rows="2"></textarea>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0">
+                                <label>Foto (no veidnes)</label>
+                                <div id="offerPhotoInputs"></div>
+                                <div id="offerPhotoThumbs" class="offer-preset-photos"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
                 <div class="card">
                     <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
                         <span>Preces / Pakalpojumi</span>
@@ -1257,4 +1307,105 @@ if (editItems.length > 0) {
 }
 setTimeout(updatePreview, 100);
 </script>
+
+{% if doc_type == 'offer' and branded_offers %}
+<script>
+// Branded tāme section — kept in its own script block so a failure here can
+// never take down the main form logic above.
+(function () {
+    const offerPresets = {{ offer_presets | tojson }};
+    const existingMeta = {{ offer_meta | tojson }};
+
+    const esc = s => String(s ?? '').replace(/[&<>"']/g,
+        ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+    window.offerSpecRowHtml = `<div class="tame-row">
+        <input type="text" name="spec_label" class="form-control" placeholder="Apraksts">
+        <input type="text" name="spec_value" class="form-control tame-row-value" placeholder="Vērtība">
+        <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
+    </div>`;
+    window.offerBenefitRowHtml = `<div class="tame-row tame-row-benefit">
+        <input type="text" name="benefit_title" class="form-control" placeholder="Virsraksts">
+        <input type="text" name="benefit_text" class="form-control" placeholder="Paskaidrojums">
+        <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
+    </div>`;
+
+    window.addOfferRow = function (containerId, html) {
+        document.getElementById(containerId).insertAdjacentHTML('beforeend', html);
+    };
+
+    function fillRows(containerId, rows, build) {
+        const box = document.getElementById(containerId);
+        box.innerHTML = '';
+        (rows || []).forEach(r => box.insertAdjacentHTML('beforeend', build(r)));
+    }
+
+    function fillFields(meta) {
+        document.getElementById('offerTitle').value = meta.title || '';
+        document.getElementById('offerConditions').value = meta.conditions || '';
+        fillRows('offerSpecRows', meta.specs, r => `<div class="tame-row">
+            <input type="text" name="spec_label" class="form-control" placeholder="Apraksts" value="${esc(r.label)}">
+            <input type="text" name="spec_value" class="form-control tame-row-value" placeholder="Vērtība" value="${esc(r.value)}">
+            <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
+        </div>`);
+        fillRows('offerBenefitRows', meta.benefits, r => `<div class="tame-row tame-row-benefit">
+            <input type="text" name="benefit_title" class="form-control" placeholder="Virsraksts" value="${esc(r.title)}">
+            <input type="text" name="benefit_text" class="form-control" placeholder="Paskaidrojums" value="${esc(r.text)}">
+            <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
+        </div>`);
+        const inputs = document.getElementById('offerPhotoInputs');
+        const thumbs = document.getElementById('offerPhotoThumbs');
+        inputs.innerHTML = '';
+        thumbs.innerHTML = '';
+        (meta.photos || []).forEach(f => {
+            const fn = String(f);
+            inputs.insertAdjacentHTML('beforeend',
+                `<input type="hidden" name="offer_photos" value="${esc(fn)}">`);
+            thumbs.insertAdjacentHTML('beforeend',
+                `<img src="/preset-photos/${encodeURIComponent(fn)}" alt="" loading="lazy">`);
+        });
+        if (!(meta.photos || []).length) {
+            thumbs.innerHTML = '<span style="font-size:12.5px;color:var(--text-lighter)">Veidnei nav foto — tāme tiks izveidota bez foto rindas.</span>';
+        }
+    }
+
+    function setBranded(on) {
+        document.getElementById('offerBranded').value = on ? '1' : '0';
+        document.getElementById('offerBrandedFields').style.display = on ? '' : 'none';
+        // The standard template picker is meaningless for a branded tāme
+        const tpl = document.getElementById('templateSelect');
+        if (tpl && tpl.closest('.form-group')) tpl.closest('.form-group').style.display = on ? 'none' : '';
+    }
+
+    window.applyOfferPreset = function (presetId) {
+        if (presetId === 'custom') { setBranded(true); return; }
+        document.getElementById('offerPresetId').value = presetId || '';
+        if (!presetId) { setBranded(false); return; }
+        const preset = offerPresets.find(p => String(p.id) === String(presetId));
+        if (!preset) { setBranded(false); return; }
+        fillFields(preset);
+        setBranded(true);
+    };
+
+    // Edit mode: restore the document's own copy of the content
+    if (existingMeta) {
+        fillFields(existingMeta);
+        setBranded(true);
+        const sel = document.getElementById('offerPresetSelect');
+        if (existingMeta.preset_id
+                && offerPresets.some(p => String(p.id) === String(existingMeta.preset_id))) {
+            sel.value = String(existingMeta.preset_id);
+        } else {
+            // Preset was deleted since — keep content, mark the picker custom
+            const opt = document.createElement('option');
+            opt.value = 'custom';
+            opt.textContent = 'Pielāgots saturs';
+            sel.appendChild(opt);
+            sel.value = 'custom';
+        }
+        document.getElementById('offerPresetId').value = existingMeta.preset_id || '';
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}

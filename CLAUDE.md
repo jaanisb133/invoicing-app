@@ -133,6 +133,32 @@ the app to feel **"alive" and "cool"**, not just minimal-but-empty.
    `vnmedia.lv/wp-content/uploads/2026/03/...`. A WordPress media reshuffle silently
    breaks the card logos SEB compliance requires, on every public page.
 
+### Branded tāmes (custom offer PDF design, per-account)
+Built for the TT Konstrukcijas client: a premium dark/gold offer PDF
+replicating their mockup (diagonal header with logo + photo + contacts, spec
+and priekšrocības boxes with drawn line icons, product table, totals band,
+conditions strip, photo row). Architecture is three layers:
+- **Template** (`app/pdf_branded.py`) — hardcoded layout/colors, drawn on the
+  raw ReportLab canvas with manual pagination; every section measures itself,
+  so free-form text lengths page-break gracefully. Icons are drawn as stroke
+  primitives (`_icon()`), keyword-matched from labels. Brand assets live in
+  `app/custom_assets/tt/`. Photos embed as JPEG + white corner patches
+  (`_round_corners`) — never PNG w/ alpha, that ballooned the PDF to 5MB.
+- **Presets** ("Tāmju veidnes", `/tames`) — per-account rows in
+  `offer_presets` (title, spec rows, benefit rows, conditions, up to 5 photos
+  in `data/preset_photos/{uid}_*`). Client duplicates + edits text per
+  product. First visit seeds a full example preset from the bundled assets.
+- **Per-offer copy** — picking a preset on the offer form copies its content
+  into `documents.offer_meta` (JSON); later preset edits never rewrite sent
+  offers. `offer_branded` hidden field: absent=keep, "0"=clear, "1"=save.
+Gated by user setting `branded_offers` ("Tāmju dizains" toggle on the admin
+/users page); not tier-tied. `_generate_doc_pdf()` in main.py routes offer
+PDFs (download/send/create/update) to the branded generator when meta is
+present. Header contacts come from settings keys `company_phone`,
+`company_website`, `offer_tagline` (fields show on /settings when enabled).
+Branded form JS is a separate `<script>` block in document_form.html so it
+can't kill the main form logic.
+
 ## Gotchas worth remembering
 - **`dashboard.html` is one ~490-line `<script>` block.** An uncaught error anywhere
   in it kills every feature below — this already happened once when Chart.js failed to
