@@ -128,6 +128,11 @@ a.btn-download-main:active {
     {% endif %}
 
     <div class="doc-actions-bar">
+        {% if branded_doc %}
+        <div class="template-tabs">
+            <span class="template-tab active" style="cursor:default">Tāmes dizains</span>
+        </div>
+        {% else %}
         <div class="template-tabs">
             {% for key, label in templates.items() %}
             <button type="button" class="template-tab {% if key == selected_template %}active{% endif %}"
@@ -137,6 +142,7 @@ a.btn-download-main:active {
             </button>
             {% endfor %}
         </div>
+        {% endif %}
 
         {% if doc.doc_type == 'offer' %}
         <a href="/documents/new?from_offer={{ doc.id }}"
@@ -252,7 +258,17 @@ a.btn-download-main:active {
 
     <div class="card">
         <div class="card-body" style="padding:0">
+            {% if branded_doc %}
+            {# Branded tāme: embed the real PDF — the JS replicas below only
+               model the three standard templates. #}
+            <iframe src="/documents/{{ doc.id }}/pdf#toolbar=0&navpanes=0" class="branded-pdf-frame"
+                    title="Tāmes priekšskatījums"></iframe>
+            <div class="branded-pdf-fallback">
+                Ja priekšskatījums nav redzams, <a href="/documents/{{ doc.id }}/pdf" target="_blank">atveriet PDF šeit</a>.
+            </div>
+            {% else %}
             <div class="doc-view-preview" id="docPreview"></div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -616,6 +632,7 @@ function renderMinimal(d) {
 
 function renderPreview(template) {
     const preview = document.getElementById('docPreview');
+    if (!preview) return;   // branded tāme: the real PDF is embedded instead
     const d = docData;
 
     if (template === 'modern') {

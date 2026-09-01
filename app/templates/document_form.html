@@ -268,6 +268,16 @@
                         <div class="invoice-preview-wrapper" id="invoicePreview">
                             <p class="text-muted text-center" style="padding:24px">Aizpildiet dokumenta datus, lai redzētu priekšskatījumu</p>
                         </div>
+                        {% if doc_type == 'offer' and branded_offers %}
+                        <div id="brandedPreviewCard" style="display:none;padding:16px">
+                            <img src="/static/img/tame_sample.jpg?v={{ css_version }}" alt="Tāmes dizaina paraugs"
+                                 style="width:100%;border:1px solid var(--border);border-radius:8px;display:block">
+                            <p class="text-muted" style="font-size:12.5px;margin:10px 2px 0">
+                                Tāme tiks noformēta firmas dizainā (paraugs augstāk ar veidnes tekstiem).
+                                Precīzs PDF būs redzams pēc saglabāšanas.
+                            </p>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -1014,6 +1024,11 @@ function updatePreview() {
     const preview = document.getElementById('invoicePreview');
     const d = getPreviewData();
 
+    // Branded tāme active: the sample card is shown instead — don't fight
+    // its label or repaint the hidden standard preview
+    const brandedFlag = document.getElementById('offerBranded');
+    if (brandedFlag && brandedFlag.value === '1') return;
+
     // Update template label
     document.getElementById('previewTemplateLabel').textContent = templateLabels[d.template] || d.template;
 
@@ -1375,6 +1390,20 @@ setTimeout(updatePreview, 100);
         // The standard template picker is meaningless for a branded tāme
         const tpl = document.getElementById('templateSelect');
         if (tpl && tpl.closest('.form-group')) tpl.closest('.form-group').style.display = on ? 'none' : '';
+        // The live preview only models the standard templates — swap in the
+        // branded design sample so it doesn't show the wrong look
+        const std = document.getElementById('invoicePreview');
+        const branded = document.getElementById('brandedPreviewCard');
+        if (std) std.style.display = on ? 'none' : '';
+        if (branded) branded.style.display = on ? '' : 'none';
+        const label = document.getElementById('previewTemplateLabel');
+        if (label && on) label.textContent = 'Tāmes dizains';
+        if (label && !on) {
+            const t = document.getElementById('templateSelect');
+            if (t && typeof templateLabels !== 'undefined') label.textContent = templateLabels[t.value] || '';
+        }
+        // Coming back from branded, the hidden standard preview is stale
+        if (!on && typeof updatePreview === 'function') setTimeout(updatePreview, 0);
     }
 
     window.applyOfferPreset = function (presetId) {
