@@ -374,10 +374,58 @@ HEADER_H = 42 * mm                      # straight part of the black band
 HEADER_DIAG = 10 * mm                   # extra drop of the diagonal on the left
 
 
+def _header_bg_reader():
+    """Header background: the photo cover-cropped (center-center) to the full
+    band, with a horizontal dark overlay baked in — near-opaque behind the
+    logo and contact column, lighter in the middle so the photo shows
+    through, like the client's mockup."""
+    photo = _asset("header.jpg")
+    if not photo:
+        return None
+    bw_pt = PAGE_W
+    bh_pt = HEADER_H + HEADER_DIAG
+    img = PILImage.open(photo).convert("RGB")
+    target = bw_pt / bh_pt
+    w, h = img.size
+    if w / h > target:                      # cover, center-center
+        nw = int(h * target)
+        x0 = (w - nw) // 2
+        img = img.crop((x0, 0, x0 + nw, h))
+    else:
+        nh = int(w / target)
+        y0 = (h - nh) // 2
+        img = img.crop((0, y0, w, y0 + nh))
+    max_px = int(bw_pt / 72 * 96 * 2)
+    if img.width > max_px:
+        img = img.resize((max_px, round(img.height * max_px / img.width)),
+                         PILImage.LANCZOS)
+    # Overlay opacity across the width (0..255): dark - light - dark
+    stops = [(0.00, 255), (0.34, 252), (0.44, 195), (0.52, 118),
+             (0.62, 118), (0.70, 200), (0.78, 246), (1.00, 250)]
+
+    def alpha_at(t):
+        for (t0, a0), (t1, a1) in zip(stops, stops[1:]):
+            if t <= t1:
+                return round(a0 + (a1 - a0) * ((t - t0) / (t1 - t0)))
+        return stops[-1][1]
+
+    mask = PILImage.new("L", (img.width, 1))
+    strip = mask.load()
+    for x in range(img.width):
+        strip[x, 0] = alpha_at(x / (img.width - 1))
+    mask = mask.resize(img.size)
+    dark = PILImage.new("RGB", img.size, (16, 15, 14))
+    img = PILImage.composite(dark, img, mask)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=80)
+    buf.seek(0)
+    return ImageReader(buf)
+
+
 def _draw_header(pg, data):
     c = pg.c
     settings = data["settings"]
-    # Black band with a diagonal lower edge (deeper on the left, like the
+    # Band with a diagonal lower edge (deeper on the left, like the
     # roofline in the logo mirrored).
     p = c.beginPath()
     p.moveTo(0, PAGE_H)
@@ -387,37 +435,26 @@ def _draw_header(pg, data):
     p.close()
     c.setFillColor(BLACK)
     c.drawPath(p, stroke=0, fill=1)
+    # Full-bleed photo background with the overlay baked in, clipped to the
+    # band so the diagonal edge cuts through the image
+    bg = _header_bg_reader()
+    if bg:
+        c.saveState()
+        cp = c.beginPath()
+        cp.moveTo(0, PAGE_H)
+        cp.lineTo(PAGE_W, PAGE_H)
+        cp.lineTo(PAGE_W, PAGE_H - HEADER_H)
+        cp.lineTo(0, PAGE_H - HEADER_H - HEADER_DIAG)
+        cp.close()
+        c.clipPath(cp, stroke=0, fill=0)
+        c.drawImage(bg, 0, PAGE_H - HEADER_H - HEADER_DIAG,
+                    PAGE_W, HEADER_H + HEADER_DIAG)
+        c.restoreState()
     # Gold hairline tracing the diagonal edge
     c.setStrokeColor(GOLD)
     c.setLineWidth(1.1)
     c.line(0, PAGE_H - HEADER_H - HEADER_DIAG - 1.4,
            PAGE_W, PAGE_H - HEADER_H - 1.4)
-
-    # Header photo: center column, cover-cropped to the straight band part
-    photo = _asset("header.jpg")
-    px0, px1 = 96 * mm, 150 * mm
-    if photo:
-        bw, bh = px1 - px0, HEADER_H
-        img = PILImage.open(photo).convert("RGB")
-        iw, ih = img.size
-        target = bw / bh
-        if iw / ih > target:
-            nw = int(ih * target)
-            x0 = (iw - nw) // 2
-            img = img.crop((x0, 0, x0 + nw, ih))
-        else:
-            nh = int(iw / target)
-            # Bias the crop toward the top — that's where the pergola is
-            y0 = int((ih - nh) * 0.25)
-            img = img.crop((0, y0, iw, y0 + nh))
-        max_px = int(bw / 72 * 96 * 2)
-        if img.width > max_px:
-            img = img.resize((max_px, round(img.height * max_px / img.width)),
-                             PILImage.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=82)
-        buf.seek(0)
-        c.drawImage(ImageReader(buf), px0, PAGE_H - HEADER_H, bw, bh)
 
     # Logo + tagline, left
     logo = _asset("logo_white.png")
