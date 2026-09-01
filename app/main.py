@@ -54,7 +54,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "36"
+CSS_VERSION = "37"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -2923,6 +2923,10 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "offer_status_pill": OFFER_STATUS_PILL,
         "source_offer": (db.get_document(doc["converted_from_offer_id"])[0]
                          if doc.get("converted_from_offer_id") else None),
+        # Branded tāme: the HTML preview replicas below only know the three
+        # standard templates, so the view embeds the real PDF instead.
+        "branded_doc": (_decode_offer_meta(doc) is not None
+                        and _branded_offers_enabled(user["account_id"])),
     })
     return templates.TemplateResponse("document_view.html", ctx)
 

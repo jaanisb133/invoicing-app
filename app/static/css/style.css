@@ -2965,3 +2965,9 @@ a.dash-stat:hover { transform: translateY(-1px); }
     .tame-row { flex-wrap: wrap; }
     .tame-row .tame-row-value { max-width: none; }
 }
+
+/* Branded tāme: real-PDF preview on the document view page */
+.branded-pdf-frame { width: 100%; height: 1050px; border: 0; display: block; background: #525659; }
+.branded-pdf-fallback { padding: 10px 14px; font-size: 12.5px; color: var(--text-light); border-top: 1px solid var(--border); }
+.branded-pdf-fallback a { color: var(--text); }
+@media (max-width: 768px) { .branded-pdf-frame { height: 480px; } }
