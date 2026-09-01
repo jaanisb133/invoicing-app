@@ -261,7 +261,7 @@ a.btn-download-main:active {
             {% if branded_doc %}
             {# Branded tāme: embed the real PDF — the JS replicas below only
                model the three standard templates. #}
-            <iframe src="/documents/{{ doc.id }}/pdf#toolbar=0&navpanes=0" class="branded-pdf-frame"
+            <iframe src="/documents/{{ doc.id }}/pdf?inline=1#toolbar=0&navpanes=0" class="branded-pdf-frame"
                     title="Tāmes priekšskatījums"></iframe>
             <div class="branded-pdf-fallback">
                 Ja priekšskatījums nav redzams, <a href="/documents/{{ doc.id }}/pdf" target="_blank">atveriet PDF šeit</a>.

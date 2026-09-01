@@ -2932,15 +2932,18 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
 
 
 @app.get("/documents/{doc_id}/pdf")
-async def download_pdf(request: Request, doc_id: int, template: str = ""):
+async def download_pdf(request: Request, doc_id: int, template: str = "", inline: int = 0):
     user = request.state.user
     doc, _ = db.get_document(doc_id)
     if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     template = _resolve_template(user, template)
     filepath = _generate_doc_pdf(doc_id, template)
+    # inline=1: render in the browser (the embedded preview on the document
+    # view) instead of forcing a download.
     return FileResponse(filepath, media_type="application/pdf",
-                        filename=os.path.basename(filepath))
+                        filename=os.path.basename(filepath),
+                        content_disposition_type="inline" if inline else "attachment")
 
 
 @app.get("/api/documents/{doc_id}/email-defaults")
