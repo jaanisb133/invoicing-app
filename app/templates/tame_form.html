@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">{{ preset.name }}</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Veidnes teksti un foto. Izkārtojums, krāsas un logo paliek nemainīgi.</p>
+    </div>
+    <a href="/tames" class="btn btn-outline">← Visas veidnes</a>
+</div>
+
+<div class="page-body">
+    {% if request.query_params.get('saved') %}
+    <div class="alert alert-success">Saglabāts.</div>
+    {% endif %}
+
+    <form method="post" action="/tames/{{ preset.id }}/save" id="tameForm">
+        <div class="card">
+            <div class="card-header">Pamatinformācija</div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Veidnes nosaukums (iekšējais)</label>
+                        <input type="text" name="name" class="form-control" value="{{ preset.name }}" required>
+                        <span style="font-size:12px;color:var(--text-light)">Redzams tikai jums, sarakstā un piedāvājuma formā.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Virsraksts uz tāmes</label>
+                        <input type="text" name="title" class="form-control" value="{{ preset.title }}"
+                               placeholder="piem., Alumīnija nojumes piedāvājums">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                <span>Tehniskā specifikācija</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="addRow('specRows', specRowHtml)">+ Rinda</button>
+            </div>
+            <div class="card-body">
+                <p style="font-size:12.5px;color:var(--text-light);margin:0 0 10px">Kreisā kolonna uz tāmes. Vērtība (piem., izmērs) nav obligāta — to var mainīt arī katram piedāvājumam atsevišķi.</p>
+                <div id="specRows" class="tame-rows">
+                    {% for s in preset.specs %}
+                    <div class="tame-row">
+                        <input type="text" name="spec_label" class="form-control" placeholder="Apraksts" value="{{ s.label }}">
+                        <input type="text" name="spec_value" class="form-control tame-row-value" placeholder="Vērtība" value="{{ s.value }}">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                <span>Piedāvājuma priekšrocības</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="addRow('benefitRows', benefitRowHtml)">+ Rinda</button>
+            </div>
+            <div class="card-body">
+                <p style="font-size:12.5px;color:var(--text-light);margin:0 0 10px">Labā kolonna uz tāmes — virsraksts treknrakstā un īss paskaidrojums zem tā.</p>
+                <div id="benefitRows" class="tame-rows">
+                    {% for b in preset.benefits %}
+                    <div class="tame-row tame-row-benefit">
+                        <input type="text" name="benefit_title" class="form-control" placeholder="Virsraksts" value="{{ b.title }}">
+                        <input type="text" name="benefit_text" class="form-control" placeholder="Paskaidrojums" value="{{ b.text }}">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Papildus nosacījumi</div>
+            <div class="card-body">
+                <textarea name="conditions" class="form-control" rows="3"
+                          placeholder="piem., * Izgatavošana - 6 nedēļas">{{ preset.conditions }}</textarea>
+            </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin:4px 0 20px">
+            <button type="submit" class="btn btn-primary">Saglabāt veidni</button>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-header">Foto piemēri ({{ preset.photos | length }}/5)</div>
+        <div class="card-body">
+            <p style="font-size:12.5px;color:var(--text-light);margin:0 0 10px">Līdz 5 foto tāmes apakšā. Attēli tiek automātiski samazināti.</p>
+            {% if preset.photos %}
+            <div class="tame-photo-grid">
+                {% for ph in preset.photos %}
+                <div class="tame-photo">
+                    <img src="/preset-photos/{{ ph }}" alt="" loading="lazy">
+                    <form method="post" action="/tames/{{ preset.id }}/photos/delete">
+                        <input type="hidden" name="filename" value="{{ ph }}">
+                        <button type="submit" class="tame-photo-remove" aria-label="Noņemt foto">×</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if preset.photos | length < 5 %}
+            <form method="post" action="/tames/{{ preset.id }}/photos" enctype="multipart/form-data"
+                  style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+                <input type="file" name="photos" accept="image/*" multiple class="form-control" style="max-width:320px">
+                <button type="submit" class="btn btn-outline">Augšupielādēt</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+const specRowHtml = `<div class="tame-row">
+    <input type="text" name="spec_label" class="form-control" placeholder="Apraksts">
+    <input type="text" name="spec_value" class="form-control tame-row-value" placeholder="Vērtība">
+    <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
+</div>`;
+const benefitRowHtml = `<div class="tame-row tame-row-benefit">
+    <input type="text" name="benefit_title" class="form-control" placeholder="Virsraksts">
+    <input type="text" name="benefit_text" class="form-control" placeholder="Paskaidrojums">
+    <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
+</div>`;
+function addRow(containerId, html) {
+    const box = document.getElementById(containerId);
+    box.insertAdjacentHTML('beforeend', html);
+    const inputs = box.lastElementChild.querySelectorAll('input');
+    if (inputs.length) inputs[0].focus();
+}
+</script>
+{% endblock %}

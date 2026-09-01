@@ -39,6 +39,7 @@ if not logger.handlers:
 from app import database as db
 from app import registry
 from app.pdf_generator import generate_invoice_pdf, TEMPLATES
+from app import pdf_branded
 from app.einvoice import generate_einvoice_xml, generate_einvoice_file
 from app import payment_logos
 
@@ -53,7 +54,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "35"
+CSS_VERSION = "36"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -369,6 +370,9 @@ def _base_context(request):
         "offline_mode": OFFLINE_MODE,
         # Members work on someone else's account: no settings, billing or team.
         "is_owner": _is_owner(user),
+        # Account-level custom offer design (branded tāmes). Enabled per
+        # account by an admin, not tied to a tier.
+        "branded_offers": _branded_offers_enabled(user["account_id"]),
     }
 
 
@@ -422,6 +426,77 @@ def _resolve_template(user, template=""):
     if not limits.get("all_templates", False):
         template = FREE_TEMPLATE
     return template
+
+
+def _branded_offers_enabled(uid):
+    """Account has the custom branded offer (tāme) design switched on."""
+    return db.get_user_setting(uid, "branded_offers") == "1"
+
+
+def _parse_offer_meta_form(form, uid):
+    """Build offer_meta from the branded-offer form fields.
+
+    Returns None when the form carries no branded section at all (a plain
+    invoice, or the feature is off — keep whatever the document has), {} when
+    the user explicitly switched the offer back to the standard look (clear),
+    or the populated dict to store.
+    """
+    flag = form.get("offer_branded")
+    if flag is None:
+        return None
+    if flag != "1":
+        return {}
+    specs = [
+        {"label": label.strip(), "value": value.strip()}
+        for label, value in zip(form.getlist("spec_label"), form.getlist("spec_value"))
+        if label.strip() or value.strip()
+    ]
+    benefits = [
+        {"title": title.strip(), "text": text.strip()}
+        for title, text in zip(form.getlist("benefit_title"), form.getlist("benefit_text"))
+        if title.strip() or text.strip()
+    ]
+    # Photo values arrive from hidden inputs the preset filled in; accept only
+    # bare filenames that belong to this account and actually exist.
+    photos = []
+    pdir = pdf_branded.photos_dir()
+    for fname in form.getlist("offer_photos"):
+        fname = os.path.basename((fname or "").strip())
+        if (fname and fname.startswith(f"{uid}_")
+                and os.path.exists(os.path.join(pdir, fname))):
+            photos.append(fname)
+    preset_raw = (form.get("offer_preset_id") or "").strip()
+    return {
+        "preset_id": int(preset_raw) if preset_raw.isdigit() else None,
+        "title": (form.get("offer_title") or "").strip(),
+        "specs": specs[:12],
+        "benefits": benefits[:8],
+        "conditions": (form.get("offer_conditions") or "").strip(),
+        "photos": photos[:5],
+    }
+
+
+def _decode_offer_meta(doc):
+    """documents.offer_meta JSON -> dict (None when absent or corrupt)."""
+    raw = (doc or {}).get("offer_meta") or ""
+    if not raw.strip():
+        return None
+    try:
+        meta = json.loads(raw)
+    except ValueError:
+        return None
+    return meta if isinstance(meta, dict) and meta else None
+
+
+def _generate_doc_pdf(doc_id, template):
+    """Branded offers render with the account's custom design; everything
+    else falls through to the standard templates."""
+    doc, _ = db.get_document(doc_id)
+    if (doc and doc.get("doc_type") == "offer"
+            and (doc.get("offer_meta") or "").strip()
+            and _branded_offers_enabled(doc["user_id"])):
+        return pdf_branded.generate_branded_offer_pdf(doc_id)
+    return generate_invoice_pdf(doc_id, template=template)
 
 
 def _check_tier_feature(user, feature_key):
@@ -1797,6 +1872,8 @@ async def users_page(request: Request, error: str = "", success: str = ""):
         "success": success,
         "page": "users",
         "tiers": db.TIER_LIMITS,
+        "branded_ids": {u["id"] for u in users
+                        if db.get_user_setting(u["id"], "branded_offers") == "1"},
     })
     return templates.TemplateResponse("users.html", ctx)
 
@@ -1856,6 +1933,20 @@ async def change_user_tier(request: Request, user_id: int, tier: str = Form(...)
     name = target["username"] if target else str(user_id)
     label = db.TIER_LIMITS[tier]["label"]
     return RedirectResponse(f"/users?success=Lietotāja {name} plāns mainīts uz {label}", status_code=303)
+
+
+@app.post("/users/{user_id}/branded-offers")
+async def toggle_branded_offers(request: Request, user_id: int):
+    """Admin switch for the custom tāme design — per account, not per tier."""
+    user = request.state.user
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403)
+    enabled = db.get_user_setting(user_id, "branded_offers") == "1"
+    db.set_user_setting(user_id, "branded_offers", "0" if enabled else "1")
+    target = db.get_user(user_id)
+    name = target["username"] if target else str(user_id)
+    state = "izslēgts" if enabled else "ieslēgts"
+    return RedirectResponse(f"/users?success=Tāmju dizains lietotājam {name} {state}", status_code=303)
 
 
 # =============================================================================
@@ -1983,6 +2074,9 @@ async def save_settings(
     invoice_number_digits: str = Form("3"),
     invoice_number_start: str = Form("1"),
     email_template: str = Form(""),
+    company_phone: str = Form(""),
+    company_website: str = Form(""),
+    offer_tagline: str = Form(""),
 ):
     user = request.state.user
     gate = _owner_only(user)
@@ -2043,6 +2137,11 @@ async def save_settings(
         "invoice_number_digits": invoice_number_digits,
         "invoice_number_start": str(start_int),
         "email_template": email_template,
+        # Branded offer header contacts + tagline (harmless keys when the
+        # feature is off — the standard templates never read them)
+        "company_phone": company_phone,
+        "company_website": company_website,
+        "offer_tagline": offer_tagline,
     })
     db.save_all_user_settings(user["account_id"], settings_dict)
     return RedirectResponse("/settings?saved=1", status_code=303)
@@ -2105,6 +2204,216 @@ async def get_user_logo(request: Request):
             "Pragma": "no-cache",
         })
     raise HTTPException(404)
+
+
+# =============================================================================
+# Tāmju veidnes — branded offer presets (accounts with branded_offers only)
+# =============================================================================
+
+_TT_SEED_PHOTOS = ["bukulti_2.jpg", "jaunma_rupe_2.jpg", "ju_rmala_1.jpg",
+                   "katlakalns_3.jpg", "saulkrasti_1.jpg"]
+
+
+def _require_branded(user):
+    """Preset pages 404 for accounts without the feature — they are not
+    advertised anywhere, so there is nothing to upsell."""
+    if not _branded_offers_enabled(user["account_id"]):
+        raise HTTPException(status_code=404)
+
+
+def _seed_default_preset(uid):
+    """One-time example preset so the first visit shows the full design in
+    action instead of an empty form. Copies the bundled sample photos into
+    the account's photo pool."""
+    import shutil
+    photos = []
+    pdir = pdf_branded.photos_dir()
+    src_dir = os.path.join(BASE_DIR, "custom_assets", "tt")
+    for name in _TT_SEED_PHOTOS:
+        src = os.path.join(src_dir, name)
+        if not os.path.exists(src):
+            continue
+        dst_name = f"{uid}_{name}"
+        dst = os.path.join(pdir, dst_name)
+        if not os.path.exists(dst):
+            shutil.copyfile(src, dst)
+        photos.append(dst_name)
+    db.create_offer_preset(
+        uid, "Alumīnija nojume",
+        title="Alumīnija nojumes piedāvājums",
+        specs=[
+            {"label": "Alumīnija nojumes garums", "value": "440"},
+            {"label": "Alumīnija nojumes platums", "value": "310"},
+            {"label": "Konstrukcijas tonis - RAL7006 vai jebkurš cits", "value": ""},
+            {"label": "Jumta segums - 8mm, rūdīts stikls - standarta", "value": ""},
+            {"label": "Integrēta ūdens noteksistēma", "value": ""},
+            {"label": "LED apgaismojums - papildus opcija", "value": ""},
+        ],
+        benefits=[
+            {"title": "Individuāls risinājums",
+             "text": "Pielāgots jūsu mājas arhitektūrai un vajadzībām"},
+            {"title": "8 mm rūdīts stikls",
+             "text": "Drošs, izturīgs un noturīgs pret laika apstākļiem"},
+            {"title": "Integrēta ūdens noteksistēma",
+             "text": "Efektīva ūdens novadīšana bez redzamām notekcaurulēm"},
+            {"title": "Cena spēkā 30 dienas",
+             "text": "Piedāvājums derīgs 30 dienas no izdošanas"},
+        ],
+        conditions="* Izgatavošana - 6 nedēļas",
+        photos=photos,
+    )
+
+
+@app.get("/tames", response_class=HTMLResponse)
+async def tames_page(request: Request):
+    user = request.state.user
+    _require_branded(user)
+    uid = user["account_id"]
+    if (not db.get_offer_presets(uid)
+            and db.get_user_setting(uid, "tames_seeded") != "1"):
+        _seed_default_preset(uid)
+        db.set_user_setting(uid, "tames_seeded", "1")
+    ctx = _base_context(request)
+    ctx.update({
+        "presets": db.get_offer_presets(uid),
+        "page": "tames",
+    })
+    return templates.TemplateResponse("tames.html", ctx)
+
+
+@app.post("/tames/create")
+async def tame_create(request: Request, name: str = Form("")):
+    user = request.state.user
+    _require_branded(user)
+    name = name.strip() or "Jauna veidne"
+    preset_id = db.create_offer_preset(
+        user["account_id"], name, title=name,
+        specs=[{"label": "", "value": ""}],
+        benefits=[{"title": "", "text": ""}],
+    )
+    return RedirectResponse(f"/tames/{preset_id}/edit", status_code=303)
+
+
+@app.get("/tames/{preset_id}/edit", response_class=HTMLResponse)
+async def tame_edit_page(request: Request, preset_id: int):
+    user = request.state.user
+    _require_branded(user)
+    preset = db.get_offer_preset(user["account_id"], preset_id)
+    if not preset:
+        raise HTTPException(status_code=404)
+    ctx = _base_context(request)
+    ctx.update({"preset": preset, "page": "tames"})
+    return templates.TemplateResponse("tame_form.html", ctx)
+
+
+@app.post("/tames/{preset_id}/save")
+async def tame_save(request: Request, preset_id: int):
+    user = request.state.user
+    _require_branded(user)
+    uid = user["account_id"]
+    if not db.get_offer_preset(uid, preset_id):
+        raise HTTPException(status_code=404)
+    form = await request.form()
+    specs = [
+        {"label": label.strip(), "value": value.strip()}
+        for label, value in zip(form.getlist("spec_label"), form.getlist("spec_value"))
+        if label.strip() or value.strip()
+    ]
+    benefits = [
+        {"title": title.strip(), "text": text.strip()}
+        for title, text in zip(form.getlist("benefit_title"), form.getlist("benefit_text"))
+        if title.strip() or text.strip()
+    ]
+    db.update_offer_preset(
+        uid, preset_id,
+        name=(form.get("name") or "").strip() or "Veidne",
+        title=(form.get("title") or "").strip(),
+        specs=specs[:12],
+        benefits=benefits[:8],
+        conditions=(form.get("conditions") or "").strip(),
+    )
+    return RedirectResponse(f"/tames/{preset_id}/edit?saved=1", status_code=303)
+
+
+@app.post("/tames/{preset_id}/duplicate")
+async def tame_duplicate(request: Request, preset_id: int):
+    user = request.state.user
+    _require_branded(user)
+    new_id = db.duplicate_offer_preset(user["account_id"], preset_id)
+    if not new_id:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"/tames/{new_id}/edit", status_code=303)
+
+
+@app.post("/tames/{preset_id}/delete")
+async def tame_delete(request: Request, preset_id: int):
+    user = request.state.user
+    _require_branded(user)
+    # Photo files stay on disk: duplicated presets and already-issued offers
+    # reference them by filename, and re-rendering those PDFs must keep working.
+    db.delete_offer_preset(user["account_id"], preset_id)
+    return RedirectResponse("/tames", status_code=303)
+
+
+@app.post("/tames/{preset_id}/photos")
+async def tame_upload_photos(request: Request, preset_id: int):
+    user = request.state.user
+    _require_branded(user)
+    uid = user["account_id"]
+    preset = db.get_offer_preset(uid, preset_id)
+    if not preset:
+        raise HTTPException(status_code=404)
+    form = await request.form()
+    uploads = [f for f in form.getlist("photos") if getattr(f, "filename", "")]
+    photos = list(preset["photos"])
+    pdir = pdf_branded.photos_dir()
+    from PIL import Image as PILImage
+    import io as _io
+    for upload in uploads:
+        if len(photos) >= 5:
+            break
+        content = await upload.read()
+        if len(content) > 15 * 1024 * 1024:
+            continue
+        try:
+            img = PILImage.open(_io.BytesIO(content)).convert("RGB")
+        except Exception:
+            continue
+        if img.width > 1200:
+            img = img.resize((1200, round(img.height * 1200 / img.width)))
+        fname = f"{uid}_{secrets.token_hex(6)}.jpg"
+        img.save(os.path.join(pdir, fname), quality=84, optimize=True)
+        photos.append(fname)
+    db.set_offer_preset_photos(uid, preset_id, photos)
+    return RedirectResponse(f"/tames/{preset_id}/edit?saved=1", status_code=303)
+
+
+@app.post("/tames/{preset_id}/photos/delete")
+async def tame_delete_photo(request: Request, preset_id: int, filename: str = Form("")):
+    user = request.state.user
+    _require_branded(user)
+    uid = user["account_id"]
+    preset = db.get_offer_preset(uid, preset_id)
+    if not preset:
+        raise HTTPException(status_code=404)
+    filename = os.path.basename(filename)
+    photos = [p for p in preset["photos"] if p != filename]
+    db.set_offer_preset_photos(uid, preset_id, photos)
+    return RedirectResponse(f"/tames/{preset_id}/edit?saved=1", status_code=303)
+
+
+@app.get("/preset-photos/{filename}")
+async def serve_preset_photo(request: Request, filename: str):
+    """Preset photo thumbnails for the editor and offer form. Filenames are
+    prefixed with the owning account id — that prefix is the access check."""
+    user = request.state.user
+    filename = os.path.basename(filename)
+    if not filename.startswith(f"{user['account_id']}_"):
+        raise HTTPException(status_code=404)
+    path = os.path.join(pdf_branded.photos_dir(), filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404)
+    return FileResponse(path)
 
 
 # =============================================================================
@@ -2353,6 +2662,9 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         "prefill": prefill_doc is not None,
         "from_offer": prefill_doc["id"] if prefill_doc else 0,
         "from_offer_number": prefill_doc["doc_number"] if prefill_doc else "",
+        "offer_presets": (db.get_offer_presets(uid)
+                          if doc_type == "offer" and _branded_offers_enabled(uid) else []),
+        "offer_meta": None,
     })
     return templates.TemplateResponse("document_form.html", ctx)
 
@@ -2423,19 +2735,24 @@ async def create_document(request: Request):
         if src and src.get("user_id") == user["account_id"] and src.get("doc_type") == "offer":
             converted_from = src["id"]
 
+    offer_meta = None
+    if doc_type == "offer" and _branded_offers_enabled(user["account_id"]):
+        offer_meta = _parse_offer_meta_form(form, user["account_id"]) or None
+
     try:
         doc_id, doc_number = db.create_document(
             user["account_id"], doc_type, client_id, doc_date, items, vat_rate, notes,
             payment_due_date=payment_due_date, reverse_charge=reverse_charge,
             converted_from_offer_id=converted_from,
             created_by_user_id=user["id"],
+            offer_meta=offer_meta,
         )
     except ValueError as e:
         logger.warning("Document creation error: %s", e)
         return RedirectResponse(f"/documents/new?doc_type={doc_type}&error={quote(str(e))}", status_code=303)
 
     try:
-        generate_invoice_pdf(doc_id, template=template)
+        _generate_doc_pdf(doc_id, template)
     except Exception as e:
         logger.exception("PDF generation failed for doc %s", doc_id)
 
@@ -2491,6 +2808,9 @@ async def edit_document_page(request: Request, doc_id: int):
         "prefill": True,
         "doc": doc,
         "edit_items": items,
+        "offer_presets": (db.get_offer_presets(uid)
+                          if doc["doc_type"] == "offer" and _branded_offers_enabled(uid) else []),
+        "offer_meta": _decode_offer_meta(doc),
     })
     return templates.TemplateResponse("document_form.html", ctx)
 
@@ -2537,15 +2857,20 @@ async def update_document(request: Request, doc_id: int):
     if not items:
         return RedirectResponse(f"/documents/{doc_id}/edit?error=no_items", status_code=303)
 
+    offer_meta = None
+    if doc_type == "offer" and _branded_offers_enabled(user["account_id"]):
+        offer_meta = _parse_offer_meta_form(form, user["account_id"])
+
     try:
         db.update_document(user["account_id"], doc_id, client_id, doc_date, items, vat_rate, notes,
-                           payment_due_date=payment_due_date, reverse_charge=reverse_charge)
+                           payment_due_date=payment_due_date, reverse_charge=reverse_charge,
+                           offer_meta=offer_meta)
     except ValueError as e:
         logger.warning("Document update error: %s", e)
         return RedirectResponse(f"/documents/{doc_id}/edit?error={quote(str(e))}", status_code=303)
 
     try:
-        generate_invoice_pdf(doc_id, template=template)
+        _generate_doc_pdf(doc_id, template)
     except Exception as e:
         logger.exception("PDF generation failed for doc %s", doc_id)
 
@@ -2609,7 +2934,7 @@ async def download_pdf(request: Request, doc_id: int, template: str = ""):
     if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     template = _resolve_template(user, template)
-    filepath = generate_invoice_pdf(doc_id, template=template)
+    filepath = _generate_doc_pdf(doc_id, template)
     return FileResponse(filepath, media_type="application/pdf",
                         filename=os.path.basename(filepath))
 
@@ -2694,7 +3019,7 @@ async def send_document_email(request: Request, doc_id: int):
             logger.exception("E-invoice XML generation failed for doc %s", doc_id)
             return _redirect_with(f"error=E-rēķina izveide neizdevās: {quote(str(e))}")
     else:
-        filepath = generate_invoice_pdf(doc_id, template=template)
+        filepath = _generate_doc_pdf(doc_id, template)
 
     # Get client and company info for email
     settings = _user_settings(user["account_id"])

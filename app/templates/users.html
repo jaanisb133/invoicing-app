@@ -143,6 +143,12 @@
                                 {% if user.subscription_end and user.tier not in ('free', 'admin') %}
                                 <span class="admin-sub">līdz {{ user.subscription_end[:10] }}</span>
                                 {% endif %}
+                                <form method="post" action="/users/{{ user.id }}/branded-offers" style="display:block;margin-top:4px">
+                                    <button type="submit" class="btn btn-outline btn-sm" style="font-size:11px;padding:2px 8px"
+                                            title="Pielāgotais tāmju PDF dizains šim kontam">
+                                        Tāmju dizains: {% if user.id in branded_ids %}ieslēgts ✓{% else %}izslēgts{% endif %}
+                                    </button>
+                                </form>
                                 {% endif %}
                             </td>
                             <td>

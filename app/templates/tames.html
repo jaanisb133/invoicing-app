@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_empty_state.html" import empty_state %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Tāmju veidnes</h2>
+        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Katram produktam sava veidne — teksti un foto, ko piedāvājums ielasa automātiski.</p>
+    </div>
+    <form method="post" action="/tames/create">
+        <button type="submit" class="btn btn-primary">+ Jauna veidne</button>
+    </form>
+</div>
+
+<div class="page-body">
+    {% if presets %}
+    <div class="tame-grid">
+        {% for p in presets %}
+        <div class="card tame-card">
+            <a href="/tames/{{ p.id }}/edit" class="tame-card-photos">
+                {% if p.photos %}
+                {% for ph in p.photos[:3] %}
+                <img src="/preset-photos/{{ ph }}" alt="" loading="lazy">
+                {% endfor %}
+                {% else %}
+                <div class="tame-card-nophoto">Nav foto</div>
+                {% endif %}
+            </a>
+            <div class="tame-card-body">
+                <div class="tame-card-name">{{ p.name }}</div>
+                <div class="tame-card-meta">{{ p.title or '—' }}</div>
+                <div class="tame-card-meta" style="margin-top:2px">
+                    {{ p.specs | length }} specifikācijas · {{ p.benefits | length }} priekšrocības · {{ p.photos | length }} foto
+                </div>
+                <div class="btn-group" style="margin-top:12px">
+                    <a href="/tames/{{ p.id }}/edit" class="btn btn-outline btn-sm">Rediģēt</a>
+                    <form method="post" action="/tames/{{ p.id }}/duplicate">
+                        <button type="submit" class="btn btn-outline btn-sm">Dublēt</button>
+                    </form>
+                    <form method="post" action="/tames/{{ p.id }}/delete"
+                          onsubmit="return confirm('Vai tiešām dzēst veidni “{{ p.name }}”? Jau izveidotie piedāvājumi paliks neskarti.')">
+                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card"><div class="card-body">
+        {{ empty_state(icon="offer", title="Vēl nav nevienas veidnes",
+                       text="Izveidojiet veidni katram produktam — piedāvājuma forma to ielasīs ar vienu klikšķi.",
+                       cta_onclick="this.closest('.card-body').querySelector('form').submit()",
+                       cta_label="+ Jauna veidne") }}
+        <form method="post" action="/tames/create" hidden></form>
+    </div></div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -138,6 +138,25 @@
                                value="{{ settings.get('bank_account', '') }}">
                     </div>
                 </div>
+                {% if branded_offers %}
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Tālrunis (uz tāmes)</label>
+                        <input type="text" name="company_phone" class="form-control"
+                               value="{{ settings.get('company_phone', '') }}" placeholder="+371 ...">
+                    </div>
+                    <div class="form-group">
+                        <label>Mājaslapa (uz tāmes)</label>
+                        <input type="text" name="company_website" class="form-control"
+                               value="{{ settings.get('company_website', '') }}" placeholder="www.piemers.lv">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Sauklis zem logo (uz tāmes)</label>
+                    <input type="text" name="offer_tagline" class="form-control"
+                           value="{{ settings.get('offer_tagline', '') }}" placeholder="piem., Modernas terases. Kvalitāte uz ilgi.">
+                </div>
+                {% endif %}
             </div>
         </section>
 

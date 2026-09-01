@@ -5,6 +5,7 @@ Multi-tenant SaaS architecture: all business data is isolated per user.
 
 import sqlite3
 import os
+import json
 import datetime
 import secrets
 
@@ -152,6 +153,20 @@ def init_db():
             value TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS offer_presets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            specs_json TEXT NOT NULL DEFAULT '[]',
+            benefits_json TEXT NOT NULL DEFAULT '[]',
+            conditions TEXT NOT NULL DEFAULT '',
+            photos_json TEXT NOT NULL DEFAULT '[]',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS recurring_invoices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -263,6 +278,12 @@ def _run_migrations():
         # Set on an invoice created via "Izveidot rēķinu" on an offer. Lets the
         # offer show which invoice it produced, so it is not billed twice.
         cursor.execute("ALTER TABLE documents ADD COLUMN converted_from_offer_id INTEGER")
+    if "offer_meta" not in doc_cols:
+        # JSON copied from an offer preset at save time (title, spec rows,
+        # benefit rows, conditions, photo filenames). A later preset edit must
+        # not rewrite offers that were already sent, so the document keeps its
+        # own copy. NULL/'' means the offer renders with the standard templates.
+        cursor.execute("ALTER TABLE documents ADD COLUMN offer_meta TEXT")
 
     # Add vat_payer column to clients if missing
     client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
@@ -660,6 +681,133 @@ def get_client(client_id):
     return dict(row) if row else None
 
 
+# --- Offer presets (branded tāme content, per-user) ---
+
+def _preset_row(row):
+    """Decode the JSON columns; a corrupt value degrades to empty, not a 500."""
+    p = dict(row)
+    for col, key in (("specs_json", "specs"), ("benefits_json", "benefits"),
+                     ("photos_json", "photos")):
+        try:
+            val = json.loads(p.get(col) or "[]")
+            p[key] = val if isinstance(val, list) else []
+        except (ValueError, TypeError):
+            p[key] = []
+    return p
+
+
+def get_offer_presets(user_id):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM offer_presets WHERE user_id = ? ORDER BY name COLLATE NOCASE",
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    return [_preset_row(r) for r in rows]
+
+
+def get_offer_preset(user_id, preset_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM offer_presets WHERE id = ? AND user_id = ?",
+        (preset_id, user_id)
+    ).fetchone()
+    conn.close()
+    return _preset_row(row) if row else None
+
+
+def create_offer_preset(user_id, name, title="", specs=None, benefits=None,
+                        conditions="", photos=None):
+    conn = get_connection()
+    cursor = conn.execute(
+        """INSERT INTO offer_presets (user_id, name, title, specs_json, benefits_json, conditions, photos_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, name, title, json.dumps(specs or [], ensure_ascii=False),
+         json.dumps(benefits or [], ensure_ascii=False), conditions,
+         json.dumps(photos or [], ensure_ascii=False))
+    )
+    conn.commit()
+    preset_id = cursor.lastrowid
+    conn.close()
+    return preset_id
+
+
+def update_offer_preset(user_id, preset_id, name, title, specs, benefits,
+                        conditions, photos=None):
+    conn = get_connection()
+    if photos is None:
+        conn.execute(
+            """UPDATE offer_presets SET name = ?, title = ?, specs_json = ?,
+                   benefits_json = ?, conditions = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND user_id = ?""",
+            (name, title, json.dumps(specs, ensure_ascii=False),
+             json.dumps(benefits, ensure_ascii=False), conditions,
+             preset_id, user_id)
+        )
+    else:
+        conn.execute(
+            """UPDATE offer_presets SET name = ?, title = ?, specs_json = ?,
+                   benefits_json = ?, conditions = ?, photos_json = ?,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND user_id = ?""",
+            (name, title, json.dumps(specs, ensure_ascii=False),
+             json.dumps(benefits, ensure_ascii=False), conditions,
+             json.dumps(photos, ensure_ascii=False), preset_id, user_id)
+        )
+    conn.commit()
+    conn.close()
+
+
+def set_offer_preset_photos(user_id, preset_id, photos):
+    conn = get_connection()
+    conn.execute(
+        """UPDATE offer_presets SET photos_json = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_id = ?""",
+        (json.dumps(photos, ensure_ascii=False), preset_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def duplicate_offer_preset(user_id, preset_id):
+    """Copy a preset (the client's 'duplicate and edit the text' workflow).
+    Photos are shared by filename — deleting them from one copy never removes
+    the files while another preset still references them (see the photo
+    delete route for the refcount)."""
+    src = get_offer_preset(user_id, preset_id)
+    if not src:
+        return None
+    return create_offer_preset(
+        user_id, f"{src['name']} (kopija)", src["title"], src["specs"],
+        src["benefits"], src["conditions"], src["photos"]
+    )
+
+
+def delete_offer_preset(user_id, preset_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM offer_presets WHERE id = ? AND user_id = ?",
+                 (preset_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def count_preset_photo_refs(user_id, filename):
+    """How many of this user's presets still reference a photo filename."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT photos_json FROM offer_presets WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    conn.close()
+    count = 0
+    for r in rows:
+        try:
+            if filename in (json.loads(r["photos_json"] or "[]") or []):
+                count += 1
+        except (ValueError, TypeError):
+            continue
+    return count
+
+
 # --- Documents (per-user) ---
 
 def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
@@ -774,7 +922,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
 
-def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None, created_by_user_id=None):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None, created_by_user_id=None, offer_meta=None):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id (int or None), description (str, used
@@ -801,12 +949,13 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
 
         cursor = conn.execute(
-            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge, converted_from_offer_id, created_by_user_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge, converted_from_offer_id, created_by_user_id, offer_meta)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
              payment_due_date or None, vat_rate, notes, int(reverse_charge),
-             converted_from_offer_id or None, created_by_user_id or user_id)
+             converted_from_offer_id or None, created_by_user_id or user_id,
+             json.dumps(offer_meta, ensure_ascii=False) if offer_meta else None)
         )
         doc_id = cursor.lastrowid
 
@@ -832,7 +981,7 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         conn.close()
 
 
-def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False):
+def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, offer_meta=None):
     """
     Update an existing document and its line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
@@ -868,13 +1017,25 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
                         f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
                     )
 
-        # Update document fields
-        conn.execute(
-            """UPDATE documents SET client_id = ?, doc_date = ?, payment_due_date = ?, vat_rate = ?, notes = ?, reverse_charge = ?
-               WHERE id = ? AND user_id = ?""",
-            (client_id, doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
-             payment_due_date or None, vat_rate, notes, int(reverse_charge), doc_id, user_id)
-        )
+        # Update document fields. offer_meta is replaced only when the edit
+        # form actually posts branded-offer content — a plain invoice update
+        # passes None and keeps whatever the document already carries.
+        if offer_meta is not None:
+            conn.execute(
+                """UPDATE documents SET client_id = ?, doc_date = ?, payment_due_date = ?, vat_rate = ?, notes = ?, reverse_charge = ?, offer_meta = ?
+                   WHERE id = ? AND user_id = ?""",
+                (client_id, doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
+                 payment_due_date or None, vat_rate, notes, int(reverse_charge),
+                 json.dumps(offer_meta, ensure_ascii=False) if offer_meta else None,
+                 doc_id, user_id)
+            )
+        else:
+            conn.execute(
+                """UPDATE documents SET client_id = ?, doc_date = ?, payment_due_date = ?, vat_rate = ?, notes = ?, reverse_charge = ?
+                   WHERE id = ? AND user_id = ?""",
+                (client_id, doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
+                 payment_due_date or None, vat_rate, notes, int(reverse_charge), doc_id, user_id)
+            )
 
         # Delete old items and insert new ones
         conn.execute("DELETE FROM document_items WHERE document_id = ?", (doc_id,))
