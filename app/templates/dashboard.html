@@ -59,11 +59,20 @@
 .dash-stat-label { font-size: 12.5px; font-weight: 500; color: var(--text-light); letter-spacing: -0.1px; }
 .dash-stat-value { font-size: 26px; font-weight: 700; color: var(--text); letter-spacing: -0.7px; line-height: 1.1; }
 .dash-stat-value small { font-size: 13px; font-weight: 500; color: var(--text-light); margin-left: 4px; }
-.dash-stat-foot { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-lighter); }
+.dash-stat-foot { display: flex; align-items: center; gap: 6px; min-height: 23px; font-size: 11.5px; color: var(--text-lighter); }
+/* Secondary figures under a stat value (Apgrozījums: bez PVN · PVN) */
+/* No separator glyph on purpose: the two figures wrap onto separate lines
+   in narrow cards (2-up mobile grid) and a "·" would be stranded. The gap
+   plus muted label / stronger number keeps them apart on one line. */
+.dash-stat-sub { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin-top: -6px;
+                 font-size: 12px; color: var(--text-lighter); font-variant-numeric: tabular-nums; }
+.dash-stat-sub > span { white-space: nowrap; }
+.dash-stat-sub b { font-weight: 500; color: var(--text-light); margin-left: 2px; }
+.dash-stat-sub[hidden] { display: none; }
 .dash-stat-foot .pill { font-size: 11px; padding: 2px 8px; }
 
 /* --- Sparklines --- */
-.dash-stat-spark { height: 32px; margin-top: -4px; position: relative; }
+.dash-stat-spark { height: 32px; margin-top: auto; position: relative; }
 /* The svg carries explicit pixel width/height matching its viewBox 1:1, so the
    stroke and its dash pattern share one coordinate system. Don't stretch it. */
 .dash-stat-spark svg { display: block; height: 32px; }
@@ -100,6 +109,7 @@
 
 /* --- Loading skeletons (AJAX date-range refresh) --- */
 .dash-stats-grid.is-loading .dash-stat-value,
+.dash-stats-grid.is-loading .dash-stat-sub > span,
 .dash-stats-grid.is-loading .dash-stat-foot > * {
     color: transparent !important;
     border-color: transparent !important;
@@ -108,7 +118,8 @@
     animation: shimmer 1.4s ease-in-out infinite;
     border-radius: 6px;
 }
-.dash-stats-grid.is-loading .dash-stat-value small { color: transparent !important; }
+.dash-stats-grid.is-loading .dash-stat-value small,
+.dash-stats-grid.is-loading .dash-stat-sub b { color: transparent !important; }
 .dash-stats-grid.is-loading .dash-stat-spark { opacity: 0.25; transition: opacity 0.2s; }
 .dash-stat-spark { transition: opacity 0.2s; }
 .dash-chart-card.is-loading .dash-chart-body { opacity: 0.3; transition: opacity 0.2s; }
@@ -277,6 +288,15 @@
                 </span>
             </div>
             <div class="dash-stat-value" id="statRevenue">{{ "%.2f" | format(range_stats.total_revenue) }} <small>EUR</small></div>
+            {# Net / VAT split of the total above. Hidden for non-VAT-payers
+               unless the period still holds VAT (invoices from before they
+               stopped being a payer); loadStats() re-applies the same rule. #}
+            {% set vat_payer = settings.get('is_vat_payer', '1') == '1' %}
+            <div class="dash-stat-sub" id="statRevenueSplit" data-vat-payer="{{ '1' if vat_payer else '0' }}"
+                 {% if not vat_payer and not range_stats.revenue_vat %}hidden{% endif %}>
+                <span>Bez PVN <b id="statRevenueNet">{{ "%.2f" | format(range_stats.revenue_net) }}</b></span>
+                <span>PVN <b id="statRevenueVat">{{ "%.2f" | format(range_stats.revenue_vat) }}</b></span>
+            </div>
             <div class="dash-stat-spark" id="sparkRevenue"></div>
             <div class="dash-stat-foot" id="statRevenueChange">
                 {% if range_stats.revenue_change > 0 %}<span class="pill pill-success">↑ {{ range_stats.revenue_change }}%</span>
@@ -1187,6 +1207,14 @@ function switchChartGrain(grain) {
                 countUp(document.getElementById('statUnpaid'), s.unpaid_total, 2, sm);
                 countUp(document.getElementById('statDocs'), s.doc_count, 0, '');
                 countUp(document.getElementById('statAvg'), s.avg_invoice, 2, sm);
+                var splitEl = document.getElementById('statRevenueSplit');
+                if (splitEl) {
+                    var netEl = document.getElementById('statRevenueNet');
+                    var vatEl = document.getElementById('statRevenueVat');
+                    if (netEl) netEl.textContent = fmt(s.revenue_net || 0);
+                    if (vatEl) vatEl.textContent = fmt(s.revenue_vat || 0);
+                    splitEl.hidden = splitEl.dataset.vatPayer !== '1' && !s.revenue_vat;
+                }
                 renderAllSparks(s, true);
 
                 // Update change indicators
