@@ -1798,6 +1798,7 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     row = conn.execute("""
         SELECT
             COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
+            COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit ELSE 0 END), 0) as revenue_net,
             COALESCE(SUM(CASE WHEN d.doc_type='buy'  THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as expenses,
             COUNT(DISTINCT d.id) as doc_count
         FROM documents d
@@ -1805,6 +1806,13 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
         WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, date_from, date_to)).fetchone()
     total_revenue = row["revenue"] if row else 0
+    # Net / VAT split of the same rows. Each line carries its own document's
+    # rate, so 0% and reverse-charge invoices (vat_rate = 0) add their full
+    # amount to net and nothing to VAT, and mixed rates sum correctly. VAT is
+    # taken as the difference of the rounded figures so net + VAT always
+    # equals the total shown on the card, to the cent.
+    revenue_net = round(row["revenue_net"], 2) if row else 0.0
+    revenue_vat = round(round(total_revenue, 2) - revenue_net, 2)
     total_expenses = row["expenses"] if row else 0
     doc_count = row["doc_count"] if row else 0
 
@@ -1947,6 +1955,8 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     conn.close()
     return {
         "total_revenue": total_revenue,
+        "revenue_net": revenue_net,
+        "revenue_vat": revenue_vat,
         "total_expenses": total_expenses,
         "unpaid_total": unpaid_total,
         "doc_count": doc_count,
