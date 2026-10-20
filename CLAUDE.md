@@ -21,6 +21,11 @@ genuinely modern UX patterns, not generic "AI dashboard" defaults.
 
 ## Current design system (post-redesign)
 
+> ⚠️ **Out of date — settle in the next audit.** The live CSS (v38) is no longer
+> near-monochrome: `--brand: #3B82F6` (blue) drives `--primary` / `--accent`, and
+> production shows blue buttons, logo and active nav. Treat `style.css` as the
+> source of truth until the user decides which direction is current.
+
 ### Color palette — strict near-monochrome
 - `--primary: #09090b` (near-black)
 - `--bg: #fafaf9` (off-white)
@@ -194,3 +199,18 @@ can't kill the main form logic.
 - **Premium = restraint:** When in doubt, remove decoration. The user explicitly rejected colorful "AI default" looks. Stick to near-monochrome.
 - **Mobile-first:** User's primary feedback is mobile UX. Always test mobile viewport (≤768px).
 - **No new deps without asking** — keep the dependency footprint small.
+
+## Vendored skills (`.claude/skills/`, `.claude/agents/`)
+Committed to the repo because cloud sessions never install plugins; sources,
+versions and local patches are in `.claude/skills/VENDORED.md`.
+- **taste-skill** (`design-taste-frontend`) — use it for **review and polish**, not
+  to re-art-direct the app. Its drawn "directions" do not override the project's
+  own tokens in `style.css`; propose a direction change to the user, never apply
+  one. App screens use its `--app` mode. In cloud sessions run the inspector with
+  `CHROME_PATH=/opt/pw-browsers/chromium`.
+- **claude-seo** (`seo`, `seo-*` + 19 agents) — for the public pages (landing,
+  pricing, legal). The app is server-rendered Jinja, so rendered-page (Chromium)
+  features aren't needed; its runtime runs fine without them. First use in a session
+  runs `.claude/skills/seo/scripts/claude-seo setup` (~3 min, venv is gitignored).
+  `seo-dataforseo`, `seo-image-gen`, `seo-google` and parts of `seo-maps` need API keys
+  or Google credentials we don't have — skip them unless the user provides them.
