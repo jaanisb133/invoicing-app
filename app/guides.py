@@ -1,5 +1,8 @@
 """Public guides (/celvedis). Drafts are reachable by URL but noindex and left out
-of the sitemap and the guide index until `published` is True."""
+of the sitemap and the guide index until `published` is True.
+
+Every claim was checked against the law texts on likumi.lv (21.10.2026); the
+sources list only what was actually read."""
 
 GUIDES = [
     {
@@ -11,19 +14,10 @@ GUIDES = [
         "published": False,
         "sources": [
             ("Grāmatvedības likums (likumi.lv)", "https://likumi.lv/ta/id/324249-gramatvedibas-likums"),
-            ("Grozījumi Grāmatvedības likumā (likumi.lv)", "https://likumi.lv/ta/id/356316-grozijumi-gramatvedibas-likuma"),
-            ("MK 09.12.2025 noteikumi Nr. 749 par strukturētu elektronisko rēķinu apriti (likumi.lv)", "https://likumi.lv/ta/id/365040-kartiba-kada-organize-un-isteno-strukturetu-elektronisko-rekinu-apriti-un-kada-strukturetu-elektronisko-rekinu-datus-iesniedz-valsts-ienemumu-dienestam"),
-            ("Finanšu ministrija: Obligātie e-rēķini visiem uzņēmumiem būs jāievieš no 2028. gada", "https://www.fm.gov.lv/lv/jaunums/obligatie-e-rekini-visiem-uznemumiem-bus-jaievies-no-2028gada"),
-            ("Finanšu ministrija: Strukturēts elektroniskais rēķins", "https://www.fm.gov.lv/lv/strukturets-elektroniskais-rekins"),
-            ("VID: E-rēķini, biežāk uzdotie jautājumi", "https://www.vid.gov.lv/lv/biezak-uzdotie-jautajumi-katalogs/e-rekini"),
-            ("VID: E-rēķinu noformēšanas vadlīnijas (30.09.2026)", "https://vid.gov.lv/lv/media/35808/download?attachment="),
-            ("VID: Informatīvais materiāls par MK noteikumiem Nr. 749 (15.12.2025)", "https://vid.gov.lv/lv/media/32903/download?attachment="),
-            ("VID seminārs: E-rēķinu ieviešana un datu nodošana VID", "https://vid.gov.lv/lv/media/32810/download?attachment="),
-            ("LV portāls: Obligātie e-rēķini visiem uzņēmumiem būs jāievieš no 2028. gada", "https://lvportals.lv/dienaskartiba/377035-obligatie-e-rekini-visiem-uznemumiem-bus-jaievies-no-2028-gada-2025"),
-            ("Latvija.gov.lv: E-rēķini e-adresē", "https://latvija.gov.lv/Content/Eadr_Erekini"),
-            ("VISS: E-rēķinu aprite, izmantojot e-adreses informācijas sistēmu (vadlīnijas)", "https://viss.gov.lv/-/media/Files/VRAA/Dokumentacija/Vadlinijas/e-adrese/Dokumentacija_iestadem/e_rekinu_izmant_vadlinijas_v2_29_03.ashx"),
+            ("Grozījumi Grāmatvedības likumā, 31.10.2024 (likumi.lv)", "https://likumi.lv/ta/id/356316-grozijumi-gramatvedibas-likuma"),
+            ("MK 09.12.2025 noteikumi Nr. 749 par strukturētu elektronisko rēķinu apriti (likumi.lv)", "https://likumi.lv/ta/id/365040"),
             ("Oficiālās elektroniskās adreses likums (likumi.lv)", "https://likumi.lv/ta/id/283229-oficialas-elektroniskas-adreses-likums"),
-            ("LV portāls: No nākamā gada e-adrese juridiskajām personām būs obligāta", "https://lvportals.lv/skaidrojumi/347329-no-nakama-gada-e-adrese-juridiskajam-personam-bus-obligata-2022"),
+            ("LV portāls: Obligātie e-rēķini visiem uzņēmumiem būs jāievieš no 2028. gada", "https://lvportals.lv/dienaskartiba/377035-obligatie-e-rekini-visiem-uznemumiem-bus-jaievies-no-2028-gada-2025"),
         ],
     },
     {
@@ -36,17 +30,6 @@ GUIDES = [
         "sources": [
             ("Pievienotās vērtības nodokļa likums (likumi.lv)", "https://likumi.lv/ta/id/253451-pievienotas-vertibas-nodokla-likums"),
             ("Grāmatvedības likums (likumi.lv)", "https://likumi.lv/ta/id/324249-gramatvedibas-likums"),
-            ("VID: Grāmatvedības organizēšana (attaisnojuma dokumenti), biežāk uzdotie jautājumi", "https://www.vid.gov.lv/lv/biezak-uzdotie-jautajumi-katalogs/gramatvedibas-organizesana-attaisnojuma-dokumenti-gramatvedibas-organizacijas-dokumenti"),
-            ("VID: PVN (nodokļa rēķins un īpašais režīms būvniecības pakalpojumiem), biežāk uzdotie jautājumi", "https://www.vid.gov.lv/lv/biezak-uzdotie-jautajumi-katalogs/pievienotas-vertibas-nodoklis-nodokla-rekins-un-ipasais-nodokla-piemerosanas-rezims-buvniecibas-pakalpojumiem"),
-            ("VID: Metodiskais materiāls par atsaucēm un norādēm PVN rēķinos", "https://www.vid.gov.lv/lv/media/2304/download"),
-            ("VID: Grāmatvedības e-dokumentu aprite (prezentācija)", "https://www.vid.gov.lv/lv/media/1488/download"),
-            ("VID: Attaisnojuma dokumentu un e-dokumentu aprite (prezentācija)", "https://www.vid.gov.lv/lv/media/20748/download"),
-            ("VID: Metodiskais materiāls „Kases čeks grāmatvedībā”", "https://vid.gov.lv/lv/media/21168/download?attachment="),
-            ("VID: Informatīvais materiāls par grozījumiem MK noteikumos Nr. 877 (25.09.2025)", "https://vid.gov.lv/lv/media/31802/download?attachment="),
-            ("LV portāls: Grāmatvedības likumā un noteikumos ir noteikti attaisnojuma dokumentu rekvizīti", "https://lvportals.lv/e-konsultacijas/37165-gramatvedibas-likuma-un-noteikumos-ir-noteikti-attaisnojuma-dokumentu-rekviziti-2025"),
-            ("BDO: Vai summa rēķinā jānorāda ar vārdiem?", "https://www.bdo.lv/lv-lv/publikacijas/featured-insights/vai-summa-rekina-janorada-ar-vardiem-lv"),
-            ("BilancePLZ: Kas grāmatvedim jāzina par nodokļa rēķina nosūtīšanu elektroniski", "https://www.plz.lv/kas-gramatvedim-jazina-par-nodokla-rekina-nosutisanu-elektroniski"),
-            ("Sorainen: Vai personas kods ir obligāts rekvizīts rēķinā?", "https://www.sorainen.com/lv/publik%C4%81cijas/ibizness-lv-vai-personas-kods-ir-obligats-rekvizits-rekina/"),
         ],
     },
     {
@@ -59,12 +42,6 @@ GUIDES = [
         "sources": [
             ("Pievienotās vērtības nodokļa likums (likumi.lv)", "https://likumi.lv/ta/id/253451-pievienotas-vertibas-nodokla-likums"),
             ("Grāmatvedības likums (likumi.lv)", "https://likumi.lv/ta/id/324249-gramatvedibas-likums"),
-            ("VID: Metodiskais materiāls par atsaucēm un norādēm PVN rēķinos", "https://www.vid.gov.lv/lv/media/2304/download"),
-            ("VID: Grāmatvedības e-dokumentu aprite (prezentācija)", "https://www.vid.gov.lv/lv/media/1488/download"),
-            ("VID: Metodiskais materiāls „PVN piemērošana būvniecības pakalpojumiem”", "https://www.vid.gov.lv/lv/media/2245/download"),
-            ("VID: E-rēķini, biežāk uzdotie jautājumi", "https://www.vid.gov.lv/lv/biezak-uzdotie-jautajumi-katalogs/e-rekini"),
-            ("Finanšu ministrija: Baltijas valstu nodokļu sistēmu salīdzinājums 2026", "https://fm.gov.lv/lv/media/25304/download?attachment="),
-            ("BDO: Vai summa rēķinā jānorāda ar vārdiem?", "https://www.bdo.lv/lv-lv/publikacijas/featured-insights/vai-summa-rekina-janorada-ar-vardiem-lv"),
         ],
     },
     {
@@ -78,21 +55,8 @@ GUIDES = [
             ("Grāmatvedības likums (likumi.lv)", "https://likumi.lv/ta/id/324249-gramatvedibas-likums"),
             ("Pievienotās vērtības nodokļa likums (likumi.lv)", "https://likumi.lv/ta/id/253451-pievienotas-vertibas-nodokla-likums"),
             ("MK 31.05.2022 noteikumi Nr. 322 par grāmatvedību vienkāršā ieraksta sistēmā (likumi.lv)", "https://likumi.lv/ta/id/332883"),
-            ("Sorainen: Vai personas kods ir obligāts rekvizīts rēķinā?", "https://www.sorainen.com/lv/publik%C4%81cijas/ibizness-lv-vai-personas-kods-ir-obligats-rekvizits-rekina/"),
-            ("LV portāls: Fiziskā persona rēķinā norāda obligātos rekvizītus", "https://lvportals.lv/e-konsultacijas/22301-fiziska-persona-rekina-norada-obligatos-rekvizitus-2021"),
-            ("VID: Grāmatvedības e-dokumentu aprite (prezentācija)", "https://www.vid.gov.lv/lv/media/1488/download"),
-            ("VID: Attaisnojuma dokumentu un e-dokumentu aprite (prezentācija)", "https://www.vid.gov.lv/lv/media/20748/download"),
-            ("Ellex: Vai paraksts e-rēķinā ir obligāts?", "https://ellex.legal/lv/vai-paraksts-e-rekina-ir-obligats/"),
-            ("ILGAK: Vai elektroniski nosūtītam rēķinam ir jābūt parakstītam?", "https://www.ilgak.lv/lv/vai-elektroniski-nosutitam-rekinam-ir-jabut-parakstitam/"),
-            ("VID: Mainījies PVN reģistrācijas sliekšņa aprēķins", "https://www.vid.gov.lv/lv/jaunums/mainijies-pvn-registracijas-slieksna-aprekins-dalai-uznemeju-lidz-15012025-jaregistrejas-vid-pvn-maksataju-registra"),
-            ("VID: Reģistrācija PVN maksātāju reģistrā 2025. gadā (prezentācija)", "https://www.vid.gov.lv/lv/media/31106/download?attachment="),
-            ("LV portāls: Izmaiņas PVN maksātāju reģistrācijā un reģistrācijas sliekšņa noteikšanā no 2025. gada", "https://lvportals.lv/skaidrojumi/371524-izmainas-pvn-maksataju-registracija-un-registracijas-slieksna-noteiksana-no-2025-gada-2025"),
-            ("LV portāls: Kad nepieciešams reģistrēties PVN maksātāju reģistrā", "https://lvportals.lv/e-konsultacijas/37177-kad-nepieciesams-registreties-pvn-maksataju-registra-2025"),
+            ("Elektronisko dokumentu likums (likumi.lv)", "https://likumi.lv/ta/id/68521-elektronisko-dokumentu-likums"),
             ("LV portāls: PVN izmaiņas no 2024. gada", "https://lvportals.lv/skaidrojumi/358988-pvn-izmainas-no-2024-gada-pretimnaksanas-solitis-mazajam-biznesam-un-es-cina-ar-nemaksatajiem-2024"),
-            ("VID: Grāmatvedības organizēšana, biežāk uzdotie jautājumi", "https://www.vid.gov.lv/lv/biezak-uzdotie-jautajumi-katalogs/gramatvedibas-organizesana-gramatvedibas-datorprogrammas"),
-            ("Swedbank blogs: Kuri grāmatvedības dokumenti jāglabā piecus gadus, kuri 10 gadus", "https://blog.swedbank.lv/finanses/kuri-gramatvedibas-dokumenti-jaglaba-tikai-piecus-gadus-kuri-10-gadus-bet-kuri-muzigi-4366"),
-            ("VID: E-rēķini, biežāk uzdotie jautājumi", "https://www.vid.gov.lv/lv/biezak-uzdotie-jautajumi-katalogs/e-rekini"),
-            ("VID: E-rēķinu noformēšanas vadlīnijas (30.09.2026)", "https://vid.gov.lv/lv/media/35808/download?attachment="),
         ],
     },
     {
@@ -104,18 +68,6 @@ GUIDES = [
         "published": False,
         "sources": [
             ("Pievienotās vērtības nodokļa likums (likumi.lv)", "https://likumi.lv/ta/id/253451-pievienotas-vertibas-nodokla-likums"),
-            ("VID: PVN (nodokļa rēķins un īpašais režīms būvniecības pakalpojumiem), biežāk uzdotie jautājumi", "https://www.vid.gov.lv/lv/biezak-uzdotie-jautajumi-katalogs/pievienotas-vertibas-nodoklis-nodokla-rekins-un-ipasais-nodokla-piemerosanas-rezims-buvniecibas-pakalpojumiem"),
-            ("VID: Metodiskais materiāls „PVN piemērošana būvniecības pakalpojumiem”", "https://www.vid.gov.lv/lv/media/2245/download"),
-            ("VID: Metodiskais materiāls par īpašo PVN režīmu (apgrieztā maksāšana)", "https://www.vid.gov.lv/lv/media/2286/download"),
-            ("VID: Metodiskais materiāls „Nodokļi darījumiem ar kokmateriāliem” (20.02.2025)", "https://vid.gov.lv/lv/media/30992/download?attachment="),
-            ("VID: Metodiskais materiāls par atsaucēm un norādēm PVN rēķinos", "https://www.vid.gov.lv/lv/media/2304/download"),
-            ("LV portāls: Reversais PVN paredzēts reģistrētiem PVN maksātājiem", "https://lvportals.lv/e-konsultacijas/21492-reversais-pvn-paredzets-registretiem-pvn-maksatajiem-2020"),
-            ("LV portāls: Kam piemēro PVN reverso (apgriezto) maksāšanas kārtību", "https://lvportals.lv/e-konsultacijas/11139-kam-piemero-pvn-reverso-apgriezto-maksasanas-kartibu-2017"),
-            ("Jurista Vārds: Par apgrieztās PVN maksāšanas kārtības atcelšanu būvizstrādājumu piegādēm no 2020. gada 1. janvāra", "https://m.juristavards.lv/zinas/275445-par-apgrieztas-jeb-reversas-pvn-maksasanas-kartibas-atcelsanu-buvizstradajumu-piegadem-no-2020-gada-/"),
-            ("BilancePLZ: PVN īpašs piemērošanas režīms „nodokļa apgrieztā maksāšana”", "https://www.plz.lv/pievienotas-vertibas-nodokla-ipass-piemerosanas-rezims-nodokla-apgriezta-maksasana/"),
-            ("Breicis: Reversais PVN jeb apgrieztā PVN maksāšanas kārtība", "https://breicis.com/en/reverse-charge-vat/"),
-            ("vatcalc.com: EU optional reverse charge extension", "https://www.vatcalc.com/global/eu-optional-reverse-charge-extended-until-dec-2026/"),
-            ("VATupdate: European Commission opposes further Latvian reverse charge for timber supplies", "https://www.vatupdate.com/2026/09/29/european-commission-opposes-further-latvian-reverse-charge-for-timber-supplies/"),
         ],
     },
 ]

@@ -203,9 +203,12 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   Publishing = set True and bump `updated`; sitemap and `/celvedis` pick it up.
 - `/static/guides/rekina-paraugs.pdf` is a real app PDF of the article's sample invoice
   (`scripts/footage/sample_pdf.py` on the footage account; change article and PDF together).
-- Drafts carry `<!-- PĀRBAUDĪT: … -->` comments: claims researched only through search
-  snippets, because likumi.lv / vid.gov.lv are blocked from cloud sessions. Each must be
-  checked against the source text, then the comment removed, before `published: True`.
+- Checked against the law texts on likumi.lv on 2026-10-21 (PVN likums 41–43, 59, 125–133,
+  141–143.⁴; Grāmatvedības likums 3, 6, 11, 28 + pārejas noteikumi 8–10; MK 749; MK 322;
+  e-address and e-documents laws). Claims only VID made were removed or reworded onto the
+  law: vid.gov.lv and fm.gov.lv reset the connection from cloud sessions even when allowed.
+  `sources` lists only what was read. A new claim gets a `<!-- PĀRBAUDĪT: … -->` comment
+  until checked.
   Drafts render them as visible "Pārbaudīt:" boxes (`guide_checks` filter); published pages
   strip any left over.
 
@@ -213,9 +216,11 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 1. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
    the preview mirrors the server exactly, but a printed line can differ by a cent from
    its rounded parts. Pre-existing accounting behaviour; change only deliberately
-2. **Self-host the last payment logos** — card marks are committed; EveryPay, SEB, Citadele
-   and LHV are still hotlinked from `vnmedia.lv` (startup logs a warning). Run
-   `scripts/fetch_payment_logos.py` once from a machine that can reach that host.
+2. **Last payment logos** — Visa/Mastercard/Google Pay (simple-icons), Apple Pay and LHV
+   (official, from the owner) are committed. EveryPay, SEB and Citadele are missing and print
+   as text; the owner is sending official files (and Swedbank, which needs a manifest entry
+   in `app/payment_logos.py`). The vnmedia.lv sources are dead, so the fetch script can't help.
+   Logo presence is read at startup: restart after adding files.
 
 ### Invoice PDFs (redesigned 2026-10-21)
 - `app/pdf_generator.py`: three templates built from shared parts (`_head_*`, `_parties`,
