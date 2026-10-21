@@ -55,7 +55,8 @@
         <p class="lede">{{ guide.lede }}</p>
         <p class="article-meta">Atjaunots {{ guide.updated[8:10] }}.{{ guide.updated[5:7] }}.{{ guide.updated[:4] }}{% if sample_pdf %} · <a href="{{ sample_pdf }}" download>Lejupielādēt paraugu (PDF)</a>{% endif %}</p>
         <div class="article-body">
-            {% include "guides/" ~ guide.slug ~ ".html" %}
+            {% set body %}{% include "guides/" ~ guide.slug ~ ".html" %}{% endset %}
+            {{ body | guide_checks(not guide.published) }}
         </div>
         {% if guide.sources %}
         <section class="article-sources" aria-labelledby="srcTitle">

@@ -59,7 +59,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "47"
+CSS_VERSION = "48"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -71,6 +71,21 @@ templates.env.globals["lifetime_cap"] = db.LIFETIME_CAP
 templates.env.globals["current_year"] = lambda: datetime.date.today().year
 # Latvian count agreement: 1, 21, 31 … take the singular (1 diena, 21 rēķins; 11 dienas)
 templates.env.filters["plural"] = lambda n, one, many: one if int(n) % 10 == 1 and int(n) % 100 != 11 else many
+
+
+_CHECK_NOTE = re.compile(r"<!--\s*PĀRBAUDĪT:\s*(.*?)\s*-->", re.S)
+
+
+def _guide_checks(body, show):
+    """Guide drafts mark unverified claims with <!-- PĀRBAUDĪT: … --> comments. Show them
+    on drafts so a proofreader sees them on the page; strip them from published pages."""
+    from markupsafe import Markup, escape
+    if show:
+        return Markup(_CHECK_NOTE.sub(lambda m: f'<span class="check-note" role="note">Pārbaudīt: {escape(m.group(1))}</span>', str(body)))
+    return Markup(_CHECK_NOTE.sub("", str(body)))
+
+
+templates.env.filters["guide_checks"] = _guide_checks
 templates.env.filters["eur"] = fmt.eur
 templates.env.filters["num"] = fmt.num
 templates.env.filters["qty"] = fmt.qty

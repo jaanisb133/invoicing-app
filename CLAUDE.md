@@ -199,6 +199,8 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 - Drafts carry `<!-- PĀRBAUDĪT: … -->` comments: claims researched only through search
   snippets, because likumi.lv / vid.gov.lv are blocked from cloud sessions. Each must be
   checked against the source text, then the comment removed, before `published: True`.
+  Drafts render them as visible "Pārbaudīt:" boxes (`guide_checks` filter); published pages
+  strip any left over.
 
 ### Still open
 1. **Contacts / terms / license** still on `style.css`.

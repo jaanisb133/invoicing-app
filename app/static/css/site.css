@@ -584,6 +584,7 @@ details.more[open] > summary { margin-bottom: 14px; }
 @media (max-width: 520px) { .site-nav a:not(.site-nav-cta) { display: none; } }
 
 .article-main { width: 100%; padding: 16px 16px 0; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 40px; }
+.check-note { display: block; margin: 10px 0 14px; padding: 8px 12px; border-left: 3px solid var(--negative); border-radius: 4px; background: var(--pill-neg-bg); color: var(--pill-neg-ink); font-size: var(--s1); line-height: 1.45; }
 .draft-note { width: min(720px, 100%); margin: 0; padding: 10px 14px; border-radius: var(--r); background: var(--pill-neg-bg); color: var(--pill-neg-ink); font-size: var(--s1); }
 .article { width: min(720px, 100%); }
 .crumbs { font-size: var(--s1); color: var(--muted); margin-bottom: 20px; }
