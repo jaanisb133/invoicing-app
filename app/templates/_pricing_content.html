@@ -37,7 +37,7 @@
                 <li>Rezerves kopiju veidošana</li>
             </ul>
             {% if current_user %}
-                {% if current_user.tier == 'free' %}
+                {% if current_user.plan_tier == 'free' %}
                 <div class="btn btn-outline pricing-cta" style="pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
                 {% else %}
                 <div class="btn btn-outline pricing-cta" style="pointer-events:none;opacity:0.6">Bezmaksas plāns</div>
@@ -67,14 +67,14 @@
                 <li>Rezerves kopiju veidošana</li>
             </ul>
             {% if current_user %}
-                {% if current_user.tier == 'mini' %}
+                {% if current_user.plan_tier == 'mini' %}
                 <div class="btn btn-primary pricing-cta" style="pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
                 {% else %}
                 <form method="post" action="/billing/checkout" class="pricing-cta">
                     <input type="hidden" name="tier" value="mini">
                     <input type="hidden" name="cycle" value="monthly" class="cycle-input">
                     <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-                        {% if current_user.tier == 'free' %}Uzlabot{% else %}Mainīt plānu{% endif %}
+                        {% if current_user.plan_tier == 'free' %}Uzlabot{% else %}Mainīt plānu{% endif %}
                     </button>
                 </form>
                 {% endif %}
@@ -106,14 +106,14 @@
                 <li>Rezerves kopiju veidošana</li>
             </ul>
             {% if current_user %}
-                {% if current_user.tier == 'starter' %}
+                {% if current_user.plan_tier == 'starter' %}
                 <div class="btn btn-primary pricing-cta" style="pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
                 {% else %}
                 <form method="post" action="/billing/checkout" class="pricing-cta">
                     <input type="hidden" name="tier" value="starter">
                     <input type="hidden" name="cycle" value="monthly" class="cycle-input">
                     <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-                        {% if current_user.tier in ('free', 'mini') %}Uzlabot{% else %}Mainīt plānu{% endif %}
+                        {% if current_user.plan_tier in ('free', 'mini') %}Uzlabot{% else %}Mainīt plānu{% endif %}
                     </button>
                 </form>
                 {% endif %}
@@ -147,14 +147,14 @@
                 <li>Rezerves kopiju veidošana</li>
             </ul>
             {% if current_user %}
-                {% if current_user.tier == 'business' %}
+                {% if current_user.plan_tier == 'business' %}
                 <div class="btn btn-primary pricing-cta" style="pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
                 {% else %}
                 <form method="post" action="/billing/checkout" class="pricing-cta">
                     <input type="hidden" name="tier" value="business">
                     <input type="hidden" name="cycle" value="monthly" class="cycle-input">
                     <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-                        {% if current_user.tier in ('free', 'mini', 'starter') %}Uzlabot{% else %}Mainīt plānu{% endif %}
+                        {% if current_user.plan_tier in ('free', 'mini', 'starter') %}Uzlabot{% else %}Mainīt plānu{% endif %}
                     </button>
                 </form>
                 {% endif %}
@@ -187,7 +187,7 @@
             </div>
             <div class="pricing-lifetime-cta">
                 {% if current_user %}
-                    {% if current_user.tier == 'lifetime' %}
+                    {% if current_user.plan_tier == 'lifetime' %}
                     <div class="btn btn-primary" style="width:100%;justify-content:center;pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
                     {% elif lifetime_sold >= 10 %}
                     <div class="btn btn-outline" style="width:100%;justify-content:center;pointer-events:none;opacity:0.6">Izpārdots</div>

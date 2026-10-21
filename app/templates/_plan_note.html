@@ -1,0 +1,12 @@
+{# Quiet plan status: trial days left, or the free plan's last invoices this month. #}
+{% if current_user.on_trial %}
+<div class="plan-note">
+    <span><b>Pamata izmēģinājums</b>, vēl {{ current_user.trial_days_left }} {{ current_user.trial_days_left | plural('diena', 'dienas') }}. Pēc tam konts turpinās bezmaksas plānā, un visi dati paliek.</span>
+    {% if is_owner %}<a href="/pricing">Izvēlēties plānu</a>{% endif %}
+</div>
+{% elif docs_left is not none and docs_left <= 2 and (doc_type is not defined or doc_type != 'offer') %}
+<div class="plan-note">
+    <span>{% if docs_left == 0 %}Šī mēneša bezmaksas rēķini ir izlietoti.{% else %}Šomēnes {{ docs_left | plural('atlicis', 'atlikuši') }} <b>{{ docs_left }}</b> bezmaksas {{ docs_left | plural('rēķins', 'rēķini') }}.{% endif %}</span>
+    {% if is_owner %}<a href="/pricing">{% if trial_available %}Izmēģināt Pamata bez maksas{% else %}Salīdzināt plānus{% endif %}</a>{% endif %}
+</div>
+{% endif %}

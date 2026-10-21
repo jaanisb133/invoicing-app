@@ -58,13 +58,16 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "42"
+CSS_VERSION = "43"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
 # template — the pricing page used to hardcode every figure twice.
 templates.env.globals["tiers"] = db.TIER_LIMITS
 templates.env.filters["price"] = db.format_price
+templates.env.globals["plans"] = db.TIER_LIMITS
+# Latvian count agreement: 1, 21, 31 … take the singular (1 diena, 21 rēķins; 11 dienas)
+templates.env.filters["plural"] = lambda n, one, many: one if int(n) % 10 == 1 and int(n) % 100 != 11 else many
 templates.env.filters["eur"] = fmt.eur
 templates.env.filters["num"] = fmt.num
 templates.env.filters["qty"] = fmt.qty
@@ -372,8 +375,12 @@ def _base_context(request):
         "current_user": user,
         "stock_enabled": _stock_enabled(user["account_id"]),
         "tier": tier,
-        "tier_label": db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
+        "tier_label": (db.TIER_LIMITS[tier]["label"] + " · izmēģinājums") if user.get("on_trial")
+                      else db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
         "tier_limits": db.get_tier_limits(tier),
+        "trial_available": user.get("plan_tier") == "free" and db.trial_available(user["account_id"]),
+        # Free plan: how many of this month's invoices are left (None on paid plans and trials)
+        "docs_left": _docs_left(user),
         "needs_setup": not db.get_user_setting(user["account_id"], "company_name"),
         "company_name": db.get_user_setting(user["account_id"], "company_name"),
         "offline_mode": OFFLINE_MODE,
@@ -383,6 +390,18 @@ def _base_context(request):
         # account by an admin, not tied to a tier.
         "branded_offers": _branded_offers_enabled(user["account_id"]),
     }
+
+
+def _docs_left(user):
+    if user.get("tier", "free") != "free":
+        return None
+    allowed, used, maximum = _check_tier_limit(user, "documents")
+    return None if maximum is None else max(0, maximum - used)
+
+
+def _email_enabled(user):
+    """Sending by e-mail is part of every plan (the free one has a monthly cap)."""
+    return not OFFLINE_MODE and db.get_tier_limits(user.get("tier", "free")).get("max_emails_month") != 0
 
 
 def _with_document_client(clients, uid, doc):
@@ -793,6 +812,9 @@ async def _process_recurring_invoices():
                     # Check monthly document limit before creating
                     rec_user = db.get_user(rec["user_id"])
                     if rec_user:
+                        # Schedules made during a trial pause when it ends rather than run free
+                        if not _check_tier_feature(rec_user, "recurring"):
+                            continue
                         allowed, _, _ = _check_tier_limit(rec_user, "documents")
                         if not allowed:
                             continue
@@ -1241,6 +1263,10 @@ async def register(request: Request,
             "_pending_plan_cycle": cycle,
         })
 
+    # Every new account tries the paid features first, then keeps the free plan
+    if not OFFLINE_MODE:
+        db.start_trial(user_id)
+
     # Always redirect to dashboard → onboarding gate will send to /setup
     response = RedirectResponse("/", status_code=303)
     return _set_session_cookie(response, user_id)
@@ -1295,6 +1321,22 @@ async def logout(request: Request):
 # =============================================================================
 # Initial Setup (simplified onboarding)
 # =============================================================================
+
+@app.post("/trial/start")
+async def trial_start(request: Request):
+    """Start the one-time Pamata trial (offered on locked features to free accounts)."""
+    user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
+    if user.get("plan_tier") == "free":
+        db.start_trial(user["account_id"])
+    form = await request.form()
+    nxt = str(form.get("next") or "/")
+    if not nxt.startswith("/") or nxt.startswith("//"):
+        nxt = "/"
+    return RedirectResponse(nxt, status_code=303)
+
 
 @app.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
@@ -1921,7 +1963,7 @@ async def billing_cancel(request: Request):
     gate = _owner_only(user)
     if gate:
         return gate
-    if user.get("tier", "free") == "free":
+    if user.get("plan_tier", user.get("tier", "free")) == "free":
         return RedirectResponse("/account?error=no_subscription", status_code=303)
 
     # Deactivate the stored card token so no more recurring charges
@@ -2097,7 +2139,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
         "range_stats_json": _json.dumps(range_stats, default=str),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "email_enabled": _email_enabled(user),
         "page": "dashboard",
     })
     return templates.TemplateResponse("dashboard.html", ctx)
@@ -2677,7 +2719,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         "limits": limits,
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "email_enabled": _email_enabled(user),
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to,
                      "status": status},
@@ -2708,7 +2750,7 @@ async def offers_page(request: Request, client_id: str = "",
         "documents": docs,
         "clients": clients,
         "settings": settings,
-        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "email_enabled": _email_enabled(user),
         "filters": {"client_id": client_id, "date_from": date_from,
                     "date_to": date_to, "status": status},
         "converted_offer_ids": db.get_converted_offer_ids(user["account_id"]),
@@ -2735,6 +2777,16 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
             raise HTTPException(status_code=404, detail="Piedāvājums nav atrasts")
         prefill_doc, prefill_items = offer, offer_items
         doc_type = "sell"
+
+    # Out of this month's invoices: say so before the form, not after it was filled in
+    if doc_type != "offer":
+        allowed, used, maximum = _check_tier_limit(user, "documents")
+        if not allowed:
+            today = datetime.date.today()
+            next_month = (today.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+            ctx.update({"page": "documents", "limit_used": used, "limit_max": maximum,
+                        "next_month": next_month})
+            return templates.TemplateResponse("doc_limit.html", ctx)
 
     clients = _with_document_client(db.get_all_clients(uid), uid, prefill_doc)
     products = db.get_all_products(uid)
@@ -2821,10 +2873,7 @@ async def create_document(request: Request):
     if doc_type != "offer":
         allowed, current, maximum = _check_tier_limit(user, "documents")
         if not allowed:
-            return RedirectResponse(
-                f"/documents?error=Ikmēneša dokumentu limits sasniegts ({current}/{maximum}). "
-                f"<a href='/pricing'>Uzlabojiet plānu</a>, lai turpinātu.",
-                status_code=303)
+            return RedirectResponse(f"/documents/new?doc_type={doc_type}", status_code=303)
 
     # Block buy doc creation if stock management is off
     if doc_type == "buy" and not _stock_enabled(user["account_id"]):
@@ -3013,7 +3062,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "all_templates": _check_tier_feature(user, "all_templates"),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "email_enabled": _email_enabled(user),
         "page": "offers" if doc["doc_type"] == "offer" else "documents",
         # An offer shows the invoices it produced; an invoice shows its source offer.
         "offer_invoices": (db.get_invoices_from_offer(user["account_id"], doc_id)

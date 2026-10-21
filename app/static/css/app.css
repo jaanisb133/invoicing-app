@@ -1415,3 +1415,34 @@ span.flatpickr-weekday { color: var(--muted) !important; font-weight: 400 !impor
 
 /* Tabs, chips and menu links are controls, not prose links */
 .page-body .tabs a, .page-body .segmented a, .page-body .chip { text-decoration: none !important; }
+
+/* ------------------------------------------------------------ upgrade gate */
+.page-gated { position: relative; min-height: 420px; }
+.page-gated > *:not(.upgrade-gate-overlay) { opacity: .28; pointer-events: none; user-select: none; }
+.upgrade-gate-overlay {
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; justify-content: center; align-items: flex-start;
+    padding: 72px 16px 0;
+    background: color-mix(in srgb, var(--ground) 70%, transparent);
+}
+.gate-card {
+    width: min(440px, 100%);
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    padding: 28px;
+}
+.gate-card h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
+.gate-card p { color: var(--muted); font-size: 14px; margin: 0 0 10px; line-height: 1.5; }
+.gate-card .gate-plan { color: var(--text); font-weight: 500; }
+.gate-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 18px; }
+.gate-link { font-size: 14px; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.gate-note { font-size: 13px; color: var(--muted); }
+
+/* plan usage notice (free plan nearing its monthly limit, trial days left) */
+.plan-note {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    padding: 12px 16px; margin-bottom: 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    font-size: 14px;
+}
+.plan-note b { font-weight: 600; }
+.plan-note a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }

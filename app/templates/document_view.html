@@ -360,7 +360,13 @@ function partyLines(info) {
     if (info.account) html += '<br>Konts: ' + esc(info.account);
     return html;
 }
+// Free-plan invoices carry one small line at the foot, as the PDF does
+const FREE_PLAN_FOOTER = {{ 'true' if tier == 'free' else 'false' }};
 function signatureHtml(style) {
+    const foot = FREE_PLAN_FOOTER ? '<div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8">Sagatavots ar V-Rēķini · v-rekini.lv</div>' : '';
+    return signatureHtmlOnly(style) + foot;
+}
+function signatureHtmlOnly(style) {
     const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
     if (docData.electronicDoc) {
         return `<div style="margin-top:32px;font-size:${style === 'minimal' ? '11px' : '12px'};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;

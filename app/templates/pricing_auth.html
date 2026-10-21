@@ -12,8 +12,8 @@
         <div class="card-body" style="padding:24px">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
                 <span style="font-size:15px;font-weight:600">Pašreizējais plāns:</span>
-                <span class="tier-badge tier-{{ current_user.tier }}">{{ limits.label }}</span>
-                {% if current_user.subscription_status == 'active' and current_user.tier != 'free' %}
+                <span class="tier-badge tier-{{ current_user.plan_tier }}">{{ limits.label }}</span>
+                {% if current_user.subscription_status == 'active' and current_user.plan_tier != 'free' %}
                 <span class="badge badge-paid">Aktīvs</span>
                 {% elif current_user.subscription_status == 'past_due' %}
                 <span class="badge badge-issued">Kavēts maksājums</span>
@@ -57,13 +57,13 @@
                 </div>
             </div>
 
-            {% if current_user.subscription_end and current_user.tier != 'free' %}
+            {% if current_user.subscription_end and current_user.plan_tier != 'free' %}
             <div style="margin-top:16px;font-size:13px;color:var(--text-light)">
                 Nākamais apmaksas datums: <strong>{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong>
             </div>
             {% endif %}
 
-            {% if current_user.tier != 'free' and has_payments %}
+            {% if current_user.plan_tier != 'free' and has_payments %}
             <div style="margin-top:12px">
                 <form method="post" action="/billing/cancel" style="display:inline"
                       onsubmit="return confirm('Vai tiešām vēlaties atcelt abonementu? Jūsu plāns tiks pazemināts uz Bezmaksas.')">
@@ -102,7 +102,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Highlight current plan card
-    var currentTier = '{{ current_user.tier }}';
+    var currentTier = '{{ current_user.plan_tier }}';
     var tiers = ['free', 'starter', 'business', 'lifetime'];
     var cards = document.querySelectorAll('.pricing-grid .card');
     tiers.forEach(function(tier, i) {

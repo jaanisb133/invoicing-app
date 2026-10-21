@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Jauns rēķins{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Jauns rēķins</h1>
+        <p class="page-sub">Šomēnes izrakstīti {{ limit_used }} no {{ limit_max }} bezmaksas rēķiniem.</p>
+    </div>
+</div>
+<div class="page-body">
+    <div class="gate-card" style="width:min(520px,100%)">
+        <h2>Šī mēneša rēķini ir izlietoti</h2>
+        <p>Nākamos {{ limit_max }} varēsiet izrakstīt no {{ next_month.strftime('%d.%m.%Y') }}. Visi jau izrakstītie rēķini, klienti un produkti paliek pieejami, un piedāvājumus var veidot bez ierobežojuma.</p>
+        {% if trial_available and is_owner %}
+        <p class="gate-plan">Vai izmēģiniet Pamata plānu 14 dienas bez maksas: 500 rēķini mēnesī, e-rēķini un eksports grāmatvedim.</p>
+        <div class="gate-actions">
+            <form method="post" action="/trial/start">
+                <input type="hidden" name="next" value="/documents/new">
+                <button type="submit" class="btn btn-primary">Izmēģināt 14 dienas bez maksas</button>
+            </form>
+            <a href="/pricing" class="gate-link">Salīdzināt plānus</a>
+        </div>
+        {% elif is_owner %}
+        <p class="gate-plan">{{ plans.mini.label }} plānā {{ plans.mini.max_documents }} rēķini mēnesī par {{ plans.mini.price_monthly | price }}&nbsp;€.</p>
+        <div class="gate-actions">
+            <a href="/pricing" class="btn btn-primary">Izvēlēties plānu</a>
+            <a href="/documents/new?doc_type=offer" class="gate-link">Jauns piedāvājums</a>
+        </div>
+        {% else %}
+        <p class="gate-note">Plānu var mainīt konta īpašnieks.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

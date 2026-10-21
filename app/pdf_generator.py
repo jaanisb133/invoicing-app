@@ -243,6 +243,25 @@ def _get_doc_data(doc_id):
     }
 
 
+FREE_PLAN_FOOTER = "Sagatavots ar V-Rēķini · v-rekini.lv"
+
+
+def _plan_footer(data, font):
+    """Page callback: invoices made on the free plan carry one small line at the
+    foot of the page. Paid plans and trials print nothing."""
+    owner = db.get_user(data["doc"]["user_id"])
+    if not owner or owner.get("tier", "free") != "free":
+        return lambda canvas, doc: None
+
+    def draw(canvas, doc):
+        canvas.saveState()
+        canvas.setFont(font, 7)
+        canvas.setFillColor(colors.HexColor("#94A3B8"))
+        canvas.drawCentredString(A4[0] / 2, 7 * mm, FREE_PLAN_FOOTER)
+        canvas.restoreState()
+    return draw
+
+
 def generate_invoice_pdf(doc_id, template="minimal"):
     if template not in TEMPLATES:
         template = "minimal"
@@ -461,7 +480,8 @@ def _generate_classic(doc_id):
         ]]
         elements.append(Table(sig_data, colWidths=[85 * mm, 85 * mm]))
 
-    pdf.build(elements)
+    on_page = _plan_footer(data, FONT)
+    pdf.build(elements, onFirstPage=on_page, onLaterPages=on_page)
     return filepath
 
 
@@ -670,7 +690,8 @@ def _generate_modern(doc_id):
         sig_table = Table(sig_data, colWidths=[85 * mm, 85 * mm])
         elements.append(sig_table)
 
-    pdf.build(elements)
+    on_page = _plan_footer(data, FONT)
+    pdf.build(elements, onFirstPage=on_page, onLaterPages=on_page)
     return filepath
 
 
@@ -869,5 +890,6 @@ def _generate_minimal(doc_id):
         ]]
         elements.append(Table(sig_data, colWidths=[77 * mm, 77 * mm]))
 
-    pdf.build(elements)
+    on_page = _plan_footer(data, FONT)
+    pdf.build(elements, onFirstPage=on_page, onLaterPages=on_page)
     return filepath

@@ -1436,6 +1436,51 @@ _ACCOUNT_FIELDS = ("tier", "subscription_status", "subscription_start",
                    "subscription_end", "billing_cycle")
 
 
+TRIAL_TIER = "starter"
+TRIAL_DAYS = 14
+
+
+def _apply_trial(conn, user):
+    """A free account inside its trial works as Pamata everywhere.
+
+    user["tier"] is the tier every gate reads; user["plan_tier"] stays the plan
+    actually paid for, which is what pricing and billing screens compare against.
+    """
+    user["plan_tier"] = user.get("tier") or "free"
+    user["on_trial"] = False
+    user["trial_until"] = None
+    if user["plan_tier"] != "free":
+        return user
+    row = conn.execute("SELECT value FROM user_settings WHERE user_id = ? AND key = 'trial_until'",
+                       (user["account_id"],)).fetchone()
+    if not row or not row["value"]:
+        return user
+    try:
+        until = datetime.date.fromisoformat(row["value"])
+    except ValueError:
+        return user
+    if until >= datetime.date.today():
+        user["tier"] = TRIAL_TIER
+        user["on_trial"] = True
+        user["trial_until"] = until.isoformat()
+        user["trial_days_left"] = (until - datetime.date.today()).days + 1
+    return user
+
+
+def trial_available(account_id):
+    """Each account can start the trial once."""
+    return get_user_setting(account_id, "trial_until", "") == ""
+
+
+def start_trial(account_id, days=TRIAL_DAYS):
+    """Start the Pamata trial for an account that has never had one. Returns True if started."""
+    if not trial_available(account_id):
+        return False
+    until = (datetime.date.today() + datetime.timedelta(days=days - 1)).isoformat()
+    set_user_setting(account_id, "trial_until", until)
+    return True
+
+
 def _with_account(conn, row):
     """Attach account scope to a user row.
 
@@ -1448,14 +1493,15 @@ def _with_account(conn, row):
     user["is_account_owner"] = owner_id is None
     if owner_id is None:
         user["account_id"] = user["id"]
-        return user
+        return _apply_trial(conn, user)
 
     owner = conn.execute("SELECT * FROM users WHERE id = ?", (owner_id,)).fetchone()
     if not owner:
         # Owner row is gone. Fail closed: no data, no plan.
         user["account_id"] = user["id"]
         user["is_account_owner"] = True
-        user["tier"] = "free"
+        user["tier"] = user["plan_tier"] = "free"
+        user["on_trial"] = False
         return user
     user["account_id"] = owner["id"]
     user["account_owner_name"] = owner["display_name"] or owner["username"]
@@ -1463,7 +1509,7 @@ def _with_account(conn, row):
         user[field] = owner[field]
     # A member never inherits admin rights from the account owner.
     user["is_admin"] = 0
-    return user
+    return _apply_trial(conn, user)
 
 
 def get_user(user_id: int):
@@ -2106,21 +2152,21 @@ UNLIMITED = None
 # tags — four copies, so a price change could show one number and charge another.
 TIER_LIMITS = {
     "free": {
-        "max_documents": 5, "max_clients": 5, "max_products": 5,
-        # A few real sends, so the "invoice sent, done" moment is reachable
-        # before paying — it is the best part of the product.
-        "max_emails_month": 3, "recurring": False, "max_recurring": 0,
-        "all_templates": False,
+        "max_documents": 5, "max_clients": 25, "max_products": UNLIMITED,
+        # Every free invoice can be sent: sending is the moment the product
+        # proves itself, so it is not where the free plan should stop.
+        "max_emails_month": 5, "recurring": False, "max_recurring": 0,
+        "all_templates": True,
         "einvoice": False, "accounting_export": False, "stock": False,
         "max_users": 1,
         "label": "Bezmaksas",
         "price_monthly": 0, "price_yearly": 0,
     },
     "mini": {
-        "max_documents": 50, "max_clients": 25, "max_products": 25,
+        "max_documents": 50, "max_clients": 50, "max_products": UNLIMITED,
         # 50 documents but 10 emails read as an arbitrary punishment.
         "max_emails_month": 30, "recurring": False, "max_recurring": 0,
-        "all_templates": False,
+        "all_templates": True,
         # E-invoice XML costs nothing marginal, and a paid plan that cannot
         # produce one stops being fit for purpose when the mandate lands.
         "einvoice": True, "accounting_export": False, "stock": False,
@@ -2129,7 +2175,7 @@ TIER_LIMITS = {
         "price_monthly": 299, "price_yearly": 2900,
     },
     "starter": {
-        "max_documents": 500, "max_clients": 100, "max_products": 200,
+        "max_documents": 500, "max_clients": 100, "max_products": UNLIMITED,
         "max_emails_month": 100, "recurring": True, "max_recurring": 3,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": False,
@@ -2138,7 +2184,7 @@ TIER_LIMITS = {
         "price_monthly": 599, "price_yearly": 5900,
     },
     "business": {
-        "max_documents": 5000, "max_clients": 500, "max_products": 1000,
+        "max_documents": 5000, "max_clients": 500, "max_products": UNLIMITED,
         "max_emails_month": UNLIMITED, "recurring": True, "max_recurring": UNLIMITED,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": True,

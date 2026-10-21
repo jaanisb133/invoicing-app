@@ -233,6 +233,7 @@
 </div>
 
 <div class="page-body editor-body">
+    {% include "_plan_note.html" %}
     {% set err = request.query_params.get('error') %}
     {% if err %}
     <div class="alert alert-danger">{% if err == 'no_items' %}Pievienojiet vismaz vienu rindu ar nosaukumu.{% else %}{{ err }}{% endif %}</div>
@@ -1146,7 +1147,13 @@ function vatLines(d, muted) {
             <div style="color:${c}">${label}: <strong style="color:#111827">${fmtEur(d.vatAmount)}</strong></div>`;
 }
 
+// Free-plan invoices carry one small line at the foot, as the PDF does
+const FREE_PLAN_FOOTER = {{ 'true' if tier == 'free' else 'false' }};
 function previewSignatureHtml(style) {
+    const foot = FREE_PLAN_FOOTER ? '<div style="margin-top:24px;text-align:center;font-size:8px;color:#94a3b8">Sagatavots ar V-Rēķini · v-rekini.lv</div>' : '';
+    return previewSignatureHtmlOnly(style) + foot;
+}
+function previewSignatureHtmlOnly(style) {
     if (companySettings.electronic_doc === '1') {
         const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
         return `<div style="margin-top:20px;font-size:${style === 'minimal' ? '8px' : '9px'};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;

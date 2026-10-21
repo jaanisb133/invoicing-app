@@ -8,8 +8,6 @@
 {%- set faq = [
     ("Vai der, ja neesmu PVN maksātājs?",
      "Jā. Iestatījumos atzīmējiet, ka neesat PVN maksātājs, un rēķinos PVN rindu nebūs. Der arī individuālajiem komersantiem un pašnodarbinātajiem."),
-    ("Vai rēķins atbilst Latvijas prasībām?",
-     "Rēķinā ir rekvizīti, ko prasa PVN likums: numurs, datums, abu pušu nosaukumi, reģistrācijas un PVN numuri, adreses, daudzums, cena, PVN likme un summa. Apgrieztās maksāšanas gadījumā rēķinā ir norāde „nodokļa apgrieztā maksāšana”."),
     ("Kas ir e-rēķins, un vai man tas vajadzīgs?",
      "E-rēķins ir rēķins mašīnlasāmā PEPPOL BIS 3.0 formātā. Valsts iestādēm tādi jāsūta jau kopš 2025. gada, un no 2028. gada 1. janvāra tie būs obligāti arī darījumos starp uzņēmumiem. V-Rēķini tos sagatavo, sākot ar Mini plānu."),
     ("Vai varu turpināt savu numerāciju?",
@@ -17,7 +15,7 @@
     ("Vai var strādāt telefonā?",
      "Jā, jebkurā pārlūkā. Lietotni var pievienot telefona sākuma ekrānam un izrakstīt rēķinu uzreiz pēc darba."),
     ("Kur glabājas mani dati?",
-     "Serveros Latvijā, ar automātiskām rezerves kopijām katru dienu. Jūsu klienti un rēķini nav redzami nevienam citam kontam."),
+     "Serveros Eiropas Savienībā, ar automātiskām rezerves kopijām katru dienu. Jūsu klienti un rēķini nav redzami nevienam citam kontam."),
     ("Vai grāmatvedis var saņemt datus?",
      "Jā, sākot ar Pamata plānu: perioda dokumenti Excel failā ar Jūsu izvēlētām kolonnām vai visi rēķini vienā ZIP arhīvā kā PDF vai XML."),
     ("Vai var strādāt vairāki cilvēki?",
@@ -25,7 +23,7 @@
     ("Vai varu uzskaitīt preces?",
      "Jā, Bizness plānā. Iegādes dokumenti atlikumu palielina, pārdošanas dokumenti to samazina, un rēķinā nevar pārdot vairāk, nekā ir noliktavā."),
     ("Kas notiek, kad beidzas bezmaksas limits?",
-     "Bezmaksas plānā var izrakstīt " ~ t_free.max_documents ~ " dokumentus mēnesī. Kad tie izlietoti, nākamos var izveidot nākamajā mēnesī vai pēc plāna maiņas, un visi jau izrakstītie rēķini paliek pieejami."),
+     "Pirmās 14 dienas jaunam kontam ir visas Pamata plāna iespējas. Pēc tam bezmaksas plānā var izrakstīt " ~ t_free.max_documents ~ " rēķinus mēnesī; kad tie izlietoti, nākamos var izrakstīt nākamajā mēnesī vai pēc plāna maiņas. Visi jau izrakstītie rēķini, klienti un produkti paliek pieejami."),
     ("Kā var samaksāt?",
      "Ar Visa, Mastercard, Google Pay vai Apple Pay; maksājumus apstrādā EveryPay un SEB. Cenas ir ar PVN, un, maksājot par gadu, plāns ir par 18 % lētāks."),
 ] -%}
@@ -133,7 +131,7 @@
                 <p class="lede" data-rise style="--i:2">Izrakstiet PVN rēķinu minūtē. Rekvizītus atrod Uzņēmumu reģistrā, summas un PVN aprēķina pati, un klients saņem PDF vai e-rēķinu uzreiz.</p>
                 <div class="hero-actions" data-rise style="--i:3">
                     <a href="/register" class="btn">Sākt bez maksas</a>
-                    <span class="hero-note">{{ t_free.max_documents }} rēķini mēnesī bez maksas, bez kartes</span>
+                    <span class="hero-note">14 dienas visas Pamata iespējas, pēc tam {{ t_free.max_documents }} rēķini mēnesī bez maksas. Bez kartes.</span>
                 </div>
             </div>
             <nav class="card-links" aria-label="Lapas sadaļas">
@@ -329,7 +327,7 @@
         <div class="plan free">
             <h3 data-rise>{{ t_free.label }}</h3>
             <p class="for" data-rise style="--i:1">Lai izmēģinātu uz īstiem klientiem.</p>
-            <p class="inc" data-rise style="--i:2">{{ t_free.max_documents }} dokumenti mēnesī, {{ t_free.max_clients }} klienti un {{ t_free.max_products }} produkti. PDF rēķini un nosūtīšana e-pastā. Bez kartes un bez termiņa.</p>
+            <p class="inc" data-rise style="--i:2">{{ t_free.max_documents }} rēķini mēnesī, līdz {{ t_free.max_clients }} klientiem un neierobežoti produkti. Visas trīs veidnes, nosūtīšana e-pastā. Pirmās 14 dienas ar visām Pamata iespējām. Bez kartes un bez termiņa.</p>
             <div class="foot">
                 <div class="amount num">0&nbsp;€<small>mēnesī</small></div>
                 <a href="/register" class="btn">Sākt bez maksas</a>
@@ -338,7 +336,7 @@
         <div class="plan main">
             <h3 data-rise>{{ t_main.label }}</h3>
             <p class="for" data-rise style="--i:1">Maziem uzņēmumiem un individuālajiem komersantiem.</p>
-            <p class="inc" data-rise style="--i:2">{{ t_main.max_documents }} dokumenti mēnesī, {{ t_main.max_clients }} klienti un {{ t_main.max_products }} produkti. Visas veidnes, e-rēķini un eksports grāmatvedim. Cena ar PVN; maksājot par gadu, {{ t_main.price_yearly | price }}&nbsp;€.</p>
+            <p class="inc" data-rise style="--i:2">{{ t_main.max_documents }} rēķini mēnesī, {{ t_main.max_clients }} klienti, e-rēķini, periodiskie rēķini un eksports grāmatvedim. Cena ar PVN; maksājot par gadu, {{ t_main.price_yearly | price }}&nbsp;€.</p>
             <div class="foot">
                 <div class="amount num">{{ t_main.price_monthly | price }}&nbsp;€<small>mēnesī</small></div>
                 <a href="/register?plan=starter" class="btn btn-light">Izvēlēties {{ t_main.label }}</a>

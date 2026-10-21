@@ -42,6 +42,7 @@
     {% if not tier_limits.recurring %}
     {% set gate_feature = "Periodiskie rēķini" %}
     {% set gate_description = "Automātiski ģenerējiet un nosūtiet rēķinus pēc grafika. Pieejams Pamata un Bizness plānos." %}
+    {% set gate_plan = "starter" %}
     {% include "_upgrade_gate.html" %}
     {% endif %}
     {% if request.query_params.get('created') %}
