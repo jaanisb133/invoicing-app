@@ -56,7 +56,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "40"
+CSS_VERSION = "41"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -1048,7 +1048,11 @@ async def login(request: Request, username: str = Form(...), password: str = For
 
 
 @app.get("/register", response_class=HTMLResponse)
-async def register_page(request: Request, error: str = "", plan: str = "", cycle: str = "monthly"):
+async def register_page(request: Request, error: str = "", plan: str = "", cycle: str = "monthly",
+                        entity_type: str = "business", display_name: str = "", reg_number: str = "",
+                        legal_address: str = "", first_name: str = "", last_name: str = ""):
+    """Sign-up form. The landing page's "Jūsu uzņēmums" dialog prefills it with
+    the company the visitor already picked from the registry there."""
     user = _get_current_user(request)
     if user:
         return RedirectResponse("/", status_code=303)
@@ -1058,7 +1062,12 @@ async def register_page(request: Request, error: str = "", plan: str = "", cycle
         "page": "register",
         "plan": plan,
         "cycle": cycle,
-        "entity_type": "business",
+        "entity_type": "individual" if entity_type == "individual" else "business",
+        "display_name": display_name[:200],
+        "reg_number": re.sub(r"\D", "", reg_number)[:20],
+        "legal_address": legal_address[:300],
+        "first_name": first_name[:100],
+        "last_name": last_name[:100],
     })
 
 
@@ -1966,10 +1975,17 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
     user = getattr(request.state, "user", None)
     # Guest visitor — serve public landing page (good for SEO)
     if not user:
+        today = datetime.date.today()
         return templates.TemplateResponse("landing.html", {
             "request": request,
             "current_user": None,
             "page": "landing",
+            "site_url": SITE_URL,
+            "tiers": db.TIER_LIMITS,
+            "today": today,
+            "due": today + datetime.timedelta(days=14),
+            # Sample dates on the landing page stay true relative to the visit
+            "day": lambda n: (today + datetime.timedelta(days=n)).strftime("%d.%m.%Y"),
         })
     ctx = _base_context(request)
     uid = user["account_id"]

@@ -158,7 +158,7 @@
                         <dd class="num {% if is_late %}late{% endif %}">{{ dmy(due) }}{% if is_late %} · kavēts{% endif %}</dd>
                         {% endif %}
                         {% if doc.reverse_charge %}
-                        <dt>PVN</dt><dd>reverse charge</dd>
+                        <dt>PVN</dt><dd>apgrieztā maksāšana</dd>
                         {% endif %}
                         {% if client.email %}
                         <dt>E-pasts</dt><dd>{{ client.email }}</dd>
@@ -388,7 +388,7 @@ function itemsTableHtml(items, style) {
 }
 function totalsHtml(d, style) {
     const muted = style === 'minimal' ? '#9ca3af' : '#6b7280';
-    const vatLabel = d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + fmtQty(d.vatRate) + '%)';
+    const vatLabel = d.reverseCharge ? 'PVN 0% (nodokļa apgrieztā maksāšana)' : 'PVN (' + fmtQty(d.vatRate) + '%)';
     const big = { classic: ['16px', '0.75px solid #1f2937', 'Kopā'], modern: ['17px', '1px solid #111827', 'KOPĀ'], minimal: ['15px', '0.5px solid #111827', 'Kopā'] }[style];
     return `<div style="text-align:right;font-size:13px">
         ${d.isVatPayer ? `<div style="color:${muted}">Summa bez PVN: <strong style="color:#111827">${fmtEur(d.subtotal)}</strong></div>

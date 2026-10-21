@@ -416,7 +416,7 @@ def _generate_classic(doc_id):
                                textColor=C_BLACK, alignment=TA_RIGHT)
 
     if data["is_vat_payer"]:
-        vat_label = "PVN (0% - Reverse Charge):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
+        vat_label = "PVN 0% (nodokļa apgrieztā maksāšana):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
         totals_data = [
             [Paragraph("Summa bez PVN:", total_label),
              Paragraph(fmt.eur(data['subtotal']), total_val)],
@@ -621,7 +621,7 @@ def _generate_modern(doc_id):
 
     # Totals
     if data["is_vat_payer"]:
-        vat_label = "PVN (0% - Reverse Charge):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
+        vat_label = "PVN 0% (nodokļa apgrieztā maksāšana):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
         totals_data = [
             [Paragraph("Summa bez PVN:", styles["total_label"]),
              Paragraph(fmt.eur(data['subtotal']), styles["total_value"])],
@@ -825,7 +825,7 @@ def _generate_minimal(doc_id):
                              textColor=C_BLACK, alignment=TA_RIGHT)
 
     if data["is_vat_payer"]:
-        vat_label = "PVN 0% - Reverse Charge" if data["reverse_charge"] else f"PVN {data['vat_rate']:.0f}%"
+        vat_label = "PVN 0% (nodokļa apgrieztā maksāšana)" if data["reverse_charge"] else f"PVN {data['vat_rate']:.0f}%"
         totals_data = [
             [Paragraph("Bez PVN", tr), Paragraph(fmt.eur(data['subtotal']), tr)],
             [Paragraph(vat_label, tr),
