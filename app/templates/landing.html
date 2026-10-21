@@ -27,6 +27,11 @@
     ("Kā var samaksāt?",
      "Ar Visa, Mastercard, Google Pay vai Apple Pay; maksājumus apstrādā EveryPay un SEB. Cenas ir ar PVN, un, maksājot par gadu, divi mēneši ir bez maksas."),
 ] -%}
+{#- Answers a guide covers in depth link to it from the visible FAQ -#}
+{%- set faq_more = {
+    "Vai der, ja neesmu PVN maksātājs?": ("/celvedis/pasnodarbinata-rekins", "rēķins bez PVN"),
+    "Kas ir e-rēķins, un vai man tas vajadzīgs?": ("/celvedis/e-rekini-2028", "e-rēķini no 2028. gada"),
+} -%}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Rēķinu programma Latvijas uzņēmējiem | V-Rēķini</title>
@@ -49,9 +54,7 @@
     <meta name="twitter:image" content="{{ site_url }}/static/og-image.png">
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#f2f4f7">
-    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+    {% include "_icons.html" %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
@@ -355,7 +358,7 @@
     <h2 id="h-faq" data-rise>Bieži jautājumi</h2>
     <div class="faq-text">
         {%- for q, a in faq %}
-        <p data-rise style="--i:{{ loop.index0 % 3 }}"><strong>{{ q }}</strong> {{ a }}</p>
+        <p data-rise style="--i:{{ loop.index0 % 3 }}"><strong>{{ q }}</strong> {{ a }}{% if q in faq_more %} Sīkāk: <a class="link" href="{{ faq_more[q][0] }}">{{ faq_more[q][1] }}</a>.{% endif %}</p>
         {%- endfor %}
     </div>
 </section>
@@ -391,6 +394,7 @@
         <span>Rēķinu programma Latvijai</span>
         <nav aria-label="Kājene">
             <a href="/pricing">Cenas</a>
+            <a href="/celvedis">Ceļvedis</a>
             <a href="/terms">Noteikumi</a>
             <a href="/contacts">Kontakti</a>
             <a href="/login">Ienākt</a>

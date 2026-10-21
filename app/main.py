@@ -60,7 +60,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "59"
+CSS_VERSION = "60"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -643,7 +643,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         if (path.startswith("/static") or path.startswith("/celvedis") or path in ("/login", "/register", "/forgot", "/reset", "/pricing", "/contacts", "/terms", "/license",
-                                                    "/robots.txt", "/sitemap.xml")
+                                                    "/robots.txt", "/sitemap.xml", "/favicon.ico")
                 or path == "/everypay/callback" or path == "/api/registry/search"):
             return await call_next(request)
 
@@ -1647,6 +1647,12 @@ async def change_password(request: Request,
 SITE_URL = os.getenv("VREKINI_SITE_URL", "https://v-rekini.lv")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon_ico():
+    """Browsers, Bing and feed readers ask for /favicon.ico whatever the page links."""
+    return FileResponse(os.path.join(BASE_DIR, "static", "icons", "favicon.ico"), media_type="image/x-icon")
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots_txt():
     """Allow indexing of public pages, block private/utility routes.
@@ -1659,6 +1665,7 @@ async def robots_txt():
         "Allow: /pricing\n"
         "Allow: /contacts\n"
         "Allow: /terms\n"
+        "Allow: /celvedis\n"
         "Disallow: /set-password\n"
         "Disallow: /setup\n"
         "Disallow: /account\n"
@@ -1740,11 +1747,16 @@ async def guide_page(request: Request, slug: str):
     if not guide or not re.fullmatch(r"[a-z0-9-]+", slug):
         raise HTTPException(status_code=404)
     related = [g for g in guides if g["published"] and g["slug"] != slug][:3]
-    sample_pdf = f"/static/guides/{slug}.pdf" if os.path.exists(
-        os.path.join(BASE_DIR, "static", "guides", f"{slug}.pdf")) else None
+    sample = None
+    pdf_path = os.path.join(BASE_DIR, "static", "guides", f"{slug}.pdf")
+    if os.path.exists(pdf_path):
+        has_thumb = os.path.exists(pdf_path[:-4] + ".png")
+        sample = {"pdf": f"/static/guides/{slug}.pdf",
+                  "thumb": f"/static/guides/{slug}.png" if has_thumb else None,
+                  "kb": max(1, round(os.path.getsize(pdf_path) / 1024))}
     return templates.TemplateResponse("guide.html", {
         "request": request, "current_user": None, "page": "guides",
-        "guide": guide, "related": related, "sample_pdf": sample_pdf, "site_url": SITE_URL,
+        "guide": guide, "related": related, "sample": sample, "site_url": SITE_URL,
     })
 
 

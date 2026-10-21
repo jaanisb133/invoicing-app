@@ -582,13 +582,14 @@ details.more[open] > summary { margin-bottom: 14px; }
 
 /* ------------------------------------------------------------ public bar + guides */
 .site-nav { display: flex; align-items: center; gap: 20px; font-size: 15px; }
-.site-nav a { color: var(--muted); text-decoration: none; }
+.site-nav a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.auth-bar .wordmark { white-space: nowrap; }
 .site-nav a:hover { color: var(--text); }
 .site-nav .login-btn { color: var(--text); height: 38px; }
 .site-nav .site-nav-cta { min-height: 40px; padding: 0 16px; font-size: 15px; color: var(--on-primary); }
+@media (max-width: 640px) { .site-nav a:not(.site-nav-cta):not(.login-btn) { display: none; } }  /* text links need the room */
 @media (max-width: 520px) {
     .site-nav { gap: 8px; }
-    .site-nav a:not(.site-nav-cta):not(.login-btn) { display: none; }
     .site-nav .login-btn, .site-nav .site-nav-cta { height: 38px; min-height: 38px; padding: 0 12px; font-size: 14px; white-space: nowrap; }
     .auth-bar { padding: 16px; }
     .auth-bar .wordmark { white-space: nowrap; }
@@ -605,6 +606,20 @@ details.more[open] > summary { margin-bottom: 14px; }
 .article .lede { font-size: clamp(18px, 1.6vw, 21px); line-height: 1.5; color: var(--muted); max-width: 52ch; margin-bottom: 14px; }
 .article-meta { font-size: var(--s1); color: var(--faint); margin-bottom: 40px; }
 .article-meta a { color: var(--text); }
+/* The guide's sample, first thing in the article: a look at it and a real button */
+.sample-dl { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px 24px; margin: 0 0 40px; padding: 16px 24px 16px 16px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); }
+.article-meta:has(+ .sample-dl) { margin-bottom: 24px; }
+.sample-thumb { display: block; width: 132px; line-height: 0; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.sample-thumb img { width: 100%; height: auto; }
+.sample-text { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.sample-text b { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.sample-text span { font-size: var(--s1); color: var(--muted); }
+.sample-dl .btn { white-space: nowrap; }
+@media (max-width: 560px) {
+    .sample-dl { grid-template-columns: 72px 1fr; padding: 12px; gap: 12px 14px; }
+    .sample-thumb { width: 72px; }
+    .sample-dl .btn { grid-column: 1 / -1; }
+}
 .article-body { font-size: 18px; line-height: 1.65; }
 .article-body h2 { font-size: clamp(24px, 2.4vw, 30px); letter-spacing: -0.02em; line-height: 1.15; margin: 48px 0 14px; }
 .article-body h3 { font-size: 20px; letter-spacing: -0.01em; line-height: 1.25; margin: 32px 0 10px; }
@@ -660,6 +675,13 @@ details.more[open] > summary { margin-bottom: 14px; }
 .guide-list li a span { color: var(--muted); }
 .guide-list li a:hover b { text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 640px) { .article-body { font-size: 17px; } .article-body table { font-size: 14px; } .article-body th, .article-body td { padding: 8px; } }
+@media (max-width: 520px) {   /* five-column line tables fit a 320 px phone */
+    .article-body table { font-size: 13px; }
+    .article-body th, .article-body td { padding: 8px 5px; }
+    .article-body th:first-child, .article-body td:first-child { padding-left: 10px; }
+    .article-body th:last-child, .article-body td:last-child { padding-right: 10px; }
+}
+@media (max-width: 359px) { .article-body table { display: block; overflow-x: auto; } }  /* below that, scroll the table, not the page */
 [data-ui].paper .p-totals .grand span { font-weight: 500; }
 [data-ui].paper.t-classic .p-totals .grand b { font-size: 1.2em; }
 [data-ui].paper.t-minimal .p-totals .grand span { font-weight: 400; }
