@@ -35,7 +35,7 @@
         </div>
         <div class="px-cycle" role="group" aria-label="Norēķinu periods">
             <button type="button" data-cycle="monthly" aria-pressed="true">Mēnesī</button>
-            <button type="button" data-cycle="yearly" aria-pressed="false">Gadā, −18&nbsp;%</button>
+            <button type="button" data-cycle="yearly" aria-pressed="false">Gadā <span class="px-save">2 mēn. bez maksas</span></button>
         </div>
     </div>
 
@@ -113,6 +113,7 @@
 .px-cycle { display: inline-flex; gap: 4px; padding: 4px; border-radius: 8px; background: var(--ground-2, var(--ground)); }
 .px-cycle button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 500 14px var(--font); cursor: pointer; }
 .px-cycle button[aria-pressed="true"] { background: var(--surface); color: var(--text); }
+.px-save { margin-left: 4px; color: var(--positive); font-weight: 500; }
 .px-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .px-card { display: flex; flex-direction: column; padding: 24px 22px; border-radius: 8px; background: var(--surface); }
 .px-card h3 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 6px; }

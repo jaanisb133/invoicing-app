@@ -4,19 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cenas — rēķinu programma no 0 € mēnesī | V-Rēķini</title>
-    <meta name="description" content="Bezmaksas plāns ar 5 rēķiniem mēnesī un 14 dienu Pamata izmēģinājumu. Mini 2,99 €, Pamata 5,99 €, Bizness 12,99 € mēnesī, cenas ar PVN.">
+    <meta name="description" content="Bezmaksas plāns ar {{ plans.free.max_documents }} rēķiniem mēnesī un 14 dienu Pamata izmēģinājumu. Mini {{ plans.mini.price_monthly | price }} €, Pamata {{ plans.starter.price_monthly | price }} €, Bizness {{ plans.business.price_monthly | price }} € mēnesī, cenas ar PVN.">
     <link rel="canonical" href="https://v-rekini.lv/pricing">
     <meta name="robots" content="index,follow">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="V-Rēķini">
     <meta property="og:title" content="Cenas un plāni — V-Rēķini">
-    <meta property="og:description" content="Sāciet bez maksas. Mini 2,99 €, Pamata 5,99 € un Bizness 12,99 € mēnesī, cenas ar PVN.">
+    <meta property="og:description" content="Sāciet bez maksas. Mini {{ plans.mini.price_monthly | price }} €, Pamata {{ plans.starter.price_monthly | price }} € un Bizness {{ plans.business.price_monthly | price }} € mēnesī, cenas ar PVN.">
     <meta property="og:url" content="https://v-rekini.lv/pricing">
     <meta property="og:image" content="https://v-rekini.lv/static/og-image.png">
     <meta property="og:locale" content="lv_LV">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Cenas un plāni — V-Rēķini">
-    <meta name="twitter:description" content="Rēķinu programma no 0 € līdz 12,99 € mēnesī, cenas ar PVN.">
+    <meta name="twitter:description" content="Rēķinu programma no 0 € līdz {{ plans.business.price_monthly | price }} € mēnesī, cenas ar PVN.">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)">

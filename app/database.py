@@ -2172,7 +2172,9 @@ TIER_LIMITS = {
         "einvoice": True, "accounting_export": False, "stock": False,
         "max_users": 1,
         "label": "Mini",
-        "price_monthly": 299, "price_yearly": 2900,
+        # Every paid step sits under Numbero's nearest plan (2 / 6 / 10 € a month)
+        # with more in it. Yearly is ten months' price: "two months free".
+        "price_monthly": 199, "price_yearly": 1990,
     },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": UNLIMITED,
@@ -2181,7 +2183,7 @@ TIER_LIMITS = {
         "einvoice": True, "accounting_export": True, "stock": False,
         "max_users": 1,
         "label": "Pamata",
-        "price_monthly": 599, "price_yearly": 5900,
+        "price_monthly": 499, "price_yearly": 4990,
     },
     "business": {
         "max_documents": 5000, "max_clients": 500, "max_products": UNLIMITED,
@@ -2190,9 +2192,8 @@ TIER_LIMITS = {
         "einvoice": True, "accounting_export": True, "stock": True,
         "max_users": 5,
         "label": "Bizness",
-        # Was 19.99/199. A 3.3x jump from Pamata bought volume nobody in this
-        # market uses; at 12.99 stock management alone can justify the step.
-        "price_monthly": 1299, "price_yearly": 12900,
+        # Was 19.99, then 12.99; Numbero's unlimited plan is 10 €.
+        "price_monthly": 999, "price_yearly": 9990,
     },
     "lifetime": {
         # Genuinely unlimited — the pricing card says "Neierobežots" and this
@@ -2203,7 +2204,8 @@ TIER_LIMITS = {
         "einvoice": True, "accounting_export": True, "stock": True,
         "max_users": UNLIMITED,
         "label": "Mūža licence",
-        "price_monthly": 0, "price_yearly": 0, "price_lifetime": 49900,
+        # About two years of Bizness: a founding-customer price, ten of them only
+        "price_monthly": 0, "price_yearly": 0, "price_lifetime": 19900,
     },
     "admin": {
         "max_documents": UNLIMITED, "max_clients": UNLIMITED, "max_products": UNLIMITED,
