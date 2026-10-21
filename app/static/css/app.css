@@ -816,16 +816,18 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
     cursor: pointer;
 }
 .row-menu-trigger:hover, .view-dots-trigger:hover, .dash-menu-trigger:hover { background: var(--raised); color: var(--text); }
+/* Menus are positioned by script in viewport coordinates, so they never get
+   clipped by a scrolling table or card. */
 .row-menu-dropdown, .view-menu-dropdown, .dash-menu-dropdown {
     display: none;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
+    position: fixed;
     min-width: 200px;
     padding: 4px;
 }
 .row-menu-dropdown.show, .row-menu-dropdown.open, .view-menu-dropdown.show, .view-menu-dropdown.open,
-.dash-menu-dropdown.show, .dash-menu-dropdown.open { display: block; }
+.dash-menu-dropdown.show, .dash-menu-dropdown.open,
+.row-menu-wrapper.open .row-menu-dropdown, .view-menu-wrapper.open .view-menu-dropdown,
+.dash-menu-wrapper.open .dash-menu-dropdown { display: block; }
 .row-menu-item, .view-menu-item, .dash-menu-item {
     display: flex;
     align-items: center;
@@ -1384,3 +1386,6 @@ span.flatpickr-weekday { color: var(--muted) !important; font-weight: 400 !impor
     .doc-view-preview table th, .doc-view-preview table td { padding: 4px 6px !important; }
     .doc-view-preview .preview-modern-header { flex-direction: column; gap: 8px; text-align: center !important; }
 }
+
+/* Tabs, chips and menu links are controls, not prose links */
+.page-body .tabs a, .page-body .segmented a, .page-body .chip { text-decoration: none !important; }

@@ -259,7 +259,7 @@
                             <h2 class="section-title">{{ 'Piegādātājs' if doc_type == 'buy' else 'Klients' }}</h2>
                             <button type="button" class="btn btn-ghost btn-sm" onclick="showQuickAddClient()">+ Jauns klients</button>
                         </div>
-                        <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if prefill else '' }}">
+                        <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if prefill else (preselect_client_id or '') }}">
                         <div class="combo" id="clientCombo">
                             <svg class="combo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
                             <input type="text" id="clientSearchInput" class="form-control combo-input"

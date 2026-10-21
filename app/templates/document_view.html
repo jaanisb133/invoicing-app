@@ -1,773 +1,535 @@
 {% extends "base.html" %}
+{% set tracking = settings.get('status_tracking', '0') == '1' and doc.doc_type != 'offer' %}
+{% set is_offer = doc.doc_type == 'offer' %}
+{% set list_href = '/offers' if is_offer else '/documents' %}
+{% set list_label = 'Piedāvājumi' if is_offer else ('Dokumenti' if stock_enabled else 'Rēķini') %}
+{% set doc_name = settings.get('buy_doc_name', 'Rēķins') if doc.doc_type == 'buy' else (settings.get('offer_doc_name', 'Piedāvājums') if is_offer else settings.get('sell_doc_name', 'Rēķins')) %}
+{% set due = doc.payment_due_date if (doc.payment_due_date and not is_offer) else '' %}
+{% set is_paid = doc.status == 'paid' %}
+{% set is_late = tracking and not is_paid and due and due < today %}
+{% macro dmy(iso) %}{{ iso[8:10] }}.{{ iso[5:7] }}.{{ iso[:4] }}{% endmacro %}
+
+{% block title %}{{ doc.doc_number }} · {{ client.name }} · V-Rēķini{% endblock %}
 
 {% block content %}
 <style>
-.badge-pro-sm {
-    display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 5px;
-    border-radius: 4px; background: var(--brand); color: #fff; vertical-align: middle; line-height: 1.4; letter-spacing: 0.4px;
+.crumb { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+.crumb a { color: inherit; }
+.crumb a:hover { color: var(--text); }
+.doc-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.paper-card { overflow: hidden; }
+.paper-card .card-header { padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+.doc-view-preview { border-radius: 0 0 var(--radius-card) var(--radius-card); }
+.rail { position: sticky; top: 24px; display: flex; flex-direction: column; gap: var(--gap); }
+.rail .card { margin: 0; }
+.sum-total { font-size: var(--fs-kpi); line-height: 38px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.sum-sub { font-size: 13px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 14px; }
+.facts dt { color: var(--muted); }
+.facts dd { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.facts .late { color: var(--negative); font-weight: 500; }
+.rail-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.rail-actions form { margin: 0; }
+.rail-actions .btn { width: 100%; }
+.link-note { font-size: 13px; color: var(--muted); }
+.link-note a { color: var(--text); }
+.tpl-switch .pro { font-size: 10px; font-weight: 600; color: var(--faint); margin-left: 4px; }
+@media (max-width: 1100px) {
+    .doc-grid { grid-template-columns: minmax(0, 1fr); }
+    .rail { position: static; order: -1; }
 }
-.btn-download-disabled { opacity: 0.5; }
-.view-menu-wrapper { position: relative; display: inline-block; }
-.view-menu-dropdown {
-    display: none; position: fixed;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 12px; box-shadow: var(--shadow-lg); min-width: 240px;
-    z-index: 9999; padding: 6px; white-space: nowrap;
+@media (max-width: 768px) {
+    .page-header .btn-group { display: grid; grid-template-columns: 1fr 1fr auto; }
+    .paper-card .card-header { flex-wrap: nowrap; overflow-x: auto; }
 }
-.view-menu-wrapper.open .view-menu-dropdown { display: block; }
-.view-menu-item {
-    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-    font-size: 13.5px; color: var(--text); text-decoration: none;
-    cursor: pointer; transition: background 0.1s; border: none; background: none;
-    width: 100%; text-align: left; font-family: inherit; border-radius: 8px;
-}
-.view-menu-item:hover { background: var(--bg-card-hover); }
-.view-menu-item svg { flex-shrink: 0; color: var(--text-light); }
-.view-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
-.view-menu-disabled { opacity: 0.55; }
-.view-menu-status { color: var(--success) !important; }
-.view-menu-status:hover { background: var(--success-soft) !important; }
-.view-menu-status svg { color: var(--success) !important; }
-.view-dots-trigger {
-    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
-    padding: 10px 12px; color: var(--text-light); display: flex; align-items: center; transition: all 0.15s;
-}
-.view-dots-trigger:hover { background: var(--bg-card-hover); color: var(--text); border-color: var(--border-strong); }
-.btn-download-split { display: inline-flex; align-items: stretch; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 12px rgba(59,130,246,0.28); }
-.btn-download-split .btn-download-main,
-a.btn-download-main,
-a.btn-download-main:link,
-a.btn-download-main:visited,
-a.btn-download-main:hover,
-a.btn-download-main:active {
-    display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px;
-    font-size: 13.5px; font-weight: 600; color: #fff !important; background: var(--brand);
-    text-decoration: none; border: none; cursor: pointer; transition: background 0.15s;
-}
-.btn-download-split .btn-download-main:hover { background: var(--brand-hover); }
-.btn-download-split .btn-download-toggle {
-    display: inline-flex; align-items: center; padding: 0 10px;
-    background: var(--brand); border: none; border-left: 1px solid rgba(255,255,255,0.22);
-    color: #fff; cursor: pointer; transition: background 0.15s;
-}
-.btn-download-split .btn-download-toggle:hover { background: var(--brand-hover); }
-.btn-download-split.btn-download-disabled .btn-download-main,
-.btn-download-split.btn-download-disabled .btn-download-toggle { opacity: 0.5; }
-.doc-view-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.doc-view-title h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.6px; margin: 0; color: var(--text); }
-.doc-view-title .pill { font-size: 12px; padding: 4px 12px; }
 </style>
+
 <div class="page-header">
-    <div class="doc-view-title">
-        {% if doc.doc_type == 'buy' %}
-        <span class="pill pill-warning">Iegāde</span>
-        {% elif doc.doc_type == 'offer' %}
-        <span class="pill pill-brand">Piedāvājums</span>
-        {% else %}
-        <span class="pill pill-brand">Pārdošana</span>
-        {% endif %}
-        <h2>{{ doc.doc_number }}</h2>
-        {% if settings.get('status_tracking', '0') == '1' and doc.doc_type != 'offer' %}
-            {% if doc.status == 'paid' %}
-            <span class="pill pill-success">Apmaksāts</span>
-            {% else %}
-            <span class="pill pill-brand">Izrakstīts</span>
+    <div>
+        <div class="crumb"><a href="{{ list_href }}">{{ list_label }}</a> /</div>
+        <div class="page-title-row">
+            <h1>{{ doc.doc_number }}</h1>
+            {% if is_offer %}
+                <span class="pill {{ offer_status_pill.get(doc.status, 'pill-neutral') }}">{{ offer_statuses.get(doc.status, 'Gaida atbildi') | lower }}</span>
+            {% elif tracking %}
+                {% if is_paid %}<span class="pill pill-success">apmaksāts</span>
+                {% elif is_late %}<span class="pill pill-danger">kavēts</span>
+                {% else %}<span class="pill pill-neutral">gaida apmaksu</span>{% endif %}
             {% endif %}
-        {% endif %}
-        {% if doc.excluded_from_stats and doc.doc_type != 'offer' %}
-        <span class="pill pill-neutral" title="Šis dokuments netiek iekļauts statistikā un kopsummās">Neskaita statistikā</span>
-        {% endif %}
+            {% if doc.doc_type == 'buy' %}<span class="pill pill-warning">iegāde</span>{% endif %}
+            {% if doc.excluded_from_stats and not is_offer %}<span class="pill pill-outline" title="Netiek ieskaitīts pārskatos un kopsummās">ārpus pārskata</span>{% endif %}
+        </div>
+        <p class="page-sub">{{ doc_name }} · {{ client.name }} · {{ dmy(doc.doc_date) }}</p>
     </div>
-    <a href="{% if doc.doc_type == 'offer' %}/offers{% else %}/documents{% endif %}" class="btn btn-outline">← Atpakaļ</a>
+    <div class="btn-group">
+        {% if is_offer %}
+        <a href="/documents/new?from_offer={{ doc.id }}" class="btn {% if offer_invoices %}btn-outline{% else %}btn-primary{% endif %}"
+           {% if offer_invoices %}onclick="return confirm('Šim piedāvājumam jau ir rēķins {{ offer_invoices[0].doc_number }}. Izveidot vēl vienu?')"{% endif %}>Izveidot rēķinu</a>
+        {% elif email_enabled %}
+        <button type="button" class="btn btn-primary" onclick="showSendModal()">Nosūtīt klientam</button>
+        {% endif %}
+        <a href="/documents/{{ doc.id }}/pdf?template={{ selected_template }}" id="downloadBtn" class="btn {% if not is_offer and not email_enabled %}btn-primary{% else %}btn-outline{% endif %}" target="_blank">Lejupielādēt PDF</a>
+        <div class="view-menu-wrapper" id="actionsWrapper">
+            <button type="button" class="btn btn-outline btn-icon" onclick="toggleActionsMenu(event)" aria-label="Citas darbības" aria-haspopup="true">
+                <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+            </button>
+            <div class="view-menu-dropdown" id="actionsDropdown">
+                <a href="/documents/{{ doc.id }}/edit" class="view-menu-item">Rediģēt</a>
+                {% if is_offer and email_enabled %}
+                <button type="button" class="view-menu-item" onclick="closeAllMenus();showSendModal()">Nosūtīt klientam</button>
+                {% elif not email_enabled %}
+                <a href="/pricing" class="view-menu-item view-menu-disabled">Nosūtīt klientam · PRO</a>
+                {% endif %}
+                {% if not is_offer %}
+                    {% if einvoice_enabled %}
+                    <a href="/documents/{{ doc.id }}/einvoice" class="view-menu-item" target="_blank">E-rēķins (XML)</a>
+                    {% else %}
+                    <a href="/pricing" class="view-menu-item view-menu-disabled">E-rēķins (XML) · PRO</a>
+                    {% endif %}
+                    {% if recurring_enabled %}
+                    <button type="button" class="view-menu-item" onclick="closeAllMenus();showRecurringModal()">Padarīt periodisku</button>
+                    {% else %}
+                    <a href="/pricing" class="view-menu-item view-menu-disabled">Padarīt periodisku · PRO</a>
+                    {% endif %}
+                    <div class="view-menu-divider"></div>
+                    <form method="post" action="/documents/{{ doc.id }}/toggle-stats" style="margin:0">
+                        <button type="submit" class="view-menu-item">{{ 'Ieskaitīt pārskatos' if doc.excluded_from_stats else 'Neieskaitīt pārskatos' }}</button>
+                    </form>
+                {% endif %}
+                <div class="view-menu-divider"></div>
+                <form method="post" action="/documents/{{ doc.id }}/delete" style="margin:0" onsubmit="return confirm('Pārvietot {{ doc.doc_number }} uz papīrgrozu?')">
+                    <button type="submit" class="view-menu-item row-menu-danger">Pārvietot uz papīrgrozu</button>
+                </form>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="page-body">
     {% if request.query_params.get('created') %}
-    <div class="alert alert-success">Dokuments veiksmīgi izveidots!</div>
+    <div class="alert alert-success">{{ doc_name }} {{ doc.doc_number }} izveidots.{% if email_enabled and not is_offer %} Nosūtiet to klientam vai lejupielādējiet PDF.{% endif %}</div>
     {% endif %}
     {% if request.query_params.get('updated') %}
-    <div class="alert alert-success">Dokuments veiksmīgi atjaunināts!</div>
+    <div class="alert alert-success">Izmaiņas saglabātas.</div>
     {% endif %}
     {% if request.query_params.get('scheduled') %}
-    <div class="alert alert-success">Periodiskais rēķins veiksmīgi izveidots!</div>
+    <div class="alert alert-success">Periodiskais rēķins izveidots. Nākamos rēķinus atradīsiet sadaļā <a href="/recurring">Periodiskie rēķini</a>.</div>
     {% endif %}
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
-    {% if doc.doc_type == 'offer' %}
-    <div class="offer-status-bar">
-        <span class="offer-status-label">Statuss</span>
-        <div class="offer-status-switch">
-            {% for key, label in offer_statuses.items() %}
-            <form method="post" action="/documents/{{ doc.id }}/offer-status" style="margin:0">
-                <input type="hidden" name="status" value="{{ key }}">
-                <button type="submit"
-                        class="offer-status-btn {% if doc.status == key %}active is-{{ key }}{% endif %}"
-                        {% if doc.status == key %}aria-current="true"{% endif %}>{{ label }}</button>
-            </form>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-    {% if offer_invoices %}
-    <div class="alert alert-info">
-        {% if offer_invoices | length == 1 %}
-        Šim piedāvājumam ir izveidots rēķins
-        <a href="/documents/{{ offer_invoices[0].id }}">{{ offer_invoices[0].doc_number }}</a>.
-        {% else %}
-        Šim piedāvājumam ir izveidoti {{ offer_invoices | length }} rēķini:
-        {% for inv in offer_invoices %}<a href="/documents/{{ inv.id }}">{{ inv.doc_number }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
-        {% endif %}
-    </div>
-    {% endif %}
-    {% if source_offer %}
-    <div class="alert alert-info">
-        Izveidots no piedāvājuma
-        <a href="/documents/{{ source_offer.id }}">{{ source_offer.doc_number }}</a>.
-    </div>
-    {% endif %}
 
-    <div class="doc-actions-bar">
-        {% if branded_doc %}
-        <div class="template-tabs">
-            <span class="template-tab active" style="cursor:default">Tāmes dizains</span>
-        </div>
-        {% else %}
-        <div class="template-tabs">
-            {% for key, label in templates.items() %}
-            <button type="button" class="template-tab {% if key == selected_template %}active{% endif %}"
-                    onclick="selectTemplate('{{ key }}', this)"
-                    {% if key != 'classic' and not all_templates %}title="PRO veidne"{% endif %}>
-                {{ label }}{% if key != 'classic' and not all_templates %} <span class="badge-pro-sm">PRO</span>{% endif %}
-            </button>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        {% if doc.doc_type == 'offer' %}
-        <a href="/documents/new?from_offer={{ doc.id }}"
-           class="btn {% if offer_invoices %}btn-outline{% else %}btn-primary{% endif %}"
-           {% if offer_invoices %}onclick="return confirm('Šim piedāvājumam jau ir izveidots rēķins {{ offer_invoices[0].doc_number }}. Izveidot vēl vienu?')"{% endif %}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-            Izveidot rēķinu
-        </a>
-        {% endif %}
-
-        <!-- Download split button with dropdown -->
-        <div class="view-menu-wrapper" id="downloadWrapper">
-            <div class="btn-download-split" id="downloadSplit">
-                <a href="/documents/{{ doc.id }}/pdf?template={{ selected_template }}" id="downloadBtn" class="btn-download-main" target="_blank">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Lejupielādēt
-                </a>
-                <button type="button" class="btn-download-toggle" onclick="toggleDownloadMenu(event)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
-                </button>
-            </div>
-            <div class="view-menu-dropdown" id="downloadDropdown">
-                <a href="/documents/{{ doc.id }}/pdf?template={{ selected_template }}" id="downloadPdfLink" class="view-menu-item" target="_blank">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Lejupielādēt PDF
-                </a>
-                {% if doc.doc_type != 'offer' %}
-                    {% if einvoice_enabled %}
-                    <a href="/documents/{{ doc.id }}/einvoice" class="view-menu-item" target="_blank">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                        E-rēķins (XML)
-                    </a>
-                    {% else %}
-                    <a href="/pricing" class="view-menu-item view-menu-disabled">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                        E-rēķins (XML) <span class="badge-pro-sm">PRO</span>
-                    </a>
-                    {% endif %}
+    <div class="doc-grid">
+        <section class="card paper-card">
+            <div class="card-header">
+                <span>{{ 'Tāme' if branded_doc else 'Dokuments' }}</span>
+                {% if not branded_doc %}
+                <div class="segmented tpl-switch" role="group" aria-label="PDF veidne">
+                    {% for key, label in templates.items() %}
+                    <button type="button" class="template-tab {% if key == selected_template %}on{% endif %}" data-tpl="{{ key }}"
+                            onclick="selectTemplate('{{ key }}', this)">{{ label }}{% if key != 'classic' and not all_templates %}<span class="pro">PRO</span>{% endif %}</button>
+                    {% endfor %}
+                </div>
                 {% endif %}
             </div>
-        </div>
-
-        <!-- 3-dot menu for other actions -->
-        <div class="view-menu-wrapper" id="actionsWrapper">
-            <button type="button" class="view-dots-trigger" onclick="toggleActionsMenu(event)" aria-label="Darbības">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-            </button>
-            <div class="view-menu-dropdown" id="actionsDropdown">
-                {% if email_enabled %}
-                <a href="#" class="view-menu-item" onclick="event.preventDefault();closeAllMenus();showSendModal()">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                    Nosūtīt klientam
-                </a>
-                {% else %}
-                <a href="/pricing" class="view-menu-item view-menu-disabled">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                    Nosūtīt klientam <span class="badge-pro-sm">PRO</span>
-                </a>
-                {% endif %}
-                <a href="/documents/{{ doc.id }}/edit" class="view-menu-item">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    Rediģēt
-                </a>
-                {% if doc.doc_type != 'offer' %}
-                    {% if recurring_enabled %}
-                    <a href="#" class="view-menu-item" onclick="event.preventDefault();closeAllMenus();showRecurringModal()">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                        Periodiskais rēķins
-                    </a>
-                    {% else %}
-                    <a href="/pricing" class="view-menu-item view-menu-disabled">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                        Periodiskais rēķins <span class="badge-pro-sm">PRO</span>
-                    </a>
-                    {% endif %}
-                {% endif %}
-                {% if settings.get('status_tracking', '0') == '1' and doc.doc_type != 'offer' %}
-                <div class="view-menu-divider"></div>
-                <form method="post" action="/documents/{{ doc.id }}/status" style="margin:0">
-                    {% if doc.status == 'paid' %}
-                    <button type="submit" class="view-menu-item" style="color:var(--warning)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                        Atzīmēt kā izrakstītu
-                    </button>
-                    {% else %}
-                    <button type="submit" class="view-menu-item view-menu-status">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                        Atzīmēt kā apmaksātu
-                    </button>
-                    {% endif %}
-                </form>
-                {% endif %}
-                {% if doc.doc_type != 'offer' %}
-                <div class="view-menu-divider"></div>
-                <form method="post" action="/documents/{{ doc.id }}/toggle-stats" style="margin:0">
-                    {% if doc.excluded_from_stats %}
-                    <button type="submit" class="view-menu-item">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                        Iekļaut statistikā
-                    </button>
-                    {% else %}
-                    <button type="submit" class="view-menu-item">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
-                        Izslēgt no statistikas
-                    </button>
-                    {% endif %}
-                </form>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-body" style="padding:0">
             {% if branded_doc %}
-            {# Branded tāme: embed the real PDF — the JS replicas below only
-               model the three standard templates. #}
-            <iframe src="/documents/{{ doc.id }}/pdf?inline=1#toolbar=0&navpanes=0" class="branded-pdf-frame"
-                    title="Tāmes priekšskatījums"></iframe>
-            <div class="branded-pdf-fallback">
-                Ja priekšskatījums nav redzams, <a href="/documents/{{ doc.id }}/pdf" target="_blank">atveriet PDF šeit</a>.
-            </div>
+            <iframe src="/documents/{{ doc.id }}/pdf?inline=1#toolbar=0&navpanes=0" class="branded-pdf-frame" title="Tāmes priekšskatījums"></iframe>
+            <div class="branded-pdf-fallback">Ja priekšskatījums nav redzams, <a href="/documents/{{ doc.id }}/pdf" target="_blank">atveriet PDF</a>.</div>
             {% else %}
             <div class="doc-view-preview" id="docPreview"></div>
             {% endif %}
-        </div>
+        </section>
+
+        <aside class="rail">
+            <section class="card">
+                <div class="card-body">
+                    <div class="kpi-label">{{ 'Summa' if is_offer else 'Kopā apmaksai' }}</div>
+                    <div class="sum-total">{{ total | eur }}</div>
+                    {% if settings.get('is_vat_payer', '1') == '1' %}
+                    <div class="sum-sub">bez PVN {{ subtotal | eur }} · PVN {{ vat_amount | eur }}</div>
+                    {% endif %}
+                    <dl class="facts">
+                        <dt>{{ 'Piegādātājs' if doc.doc_type == 'buy' else 'Klients' }}</dt>
+                        <dd>{{ client.name }}</dd>
+                        <dt>Datums</dt>
+                        <dd class="num">{{ dmy(doc.doc_date) }}</dd>
+                        {% if due %}
+                        <dt>Apmaksāt līdz</dt>
+                        <dd class="num {% if is_late %}late{% endif %}">{{ dmy(due) }}{% if is_late %} · kavēts{% endif %}</dd>
+                        {% endif %}
+                        {% if doc.reverse_charge %}
+                        <dt>PVN</dt><dd>reverse charge</dd>
+                        {% endif %}
+                        {% if client.email %}
+                        <dt>E-pasts</dt><dd>{{ client.email }}</dd>
+                        {% endif %}
+                    </dl>
+                    {% if tracking %}
+                    <div class="rail-actions">
+                        <form method="post" action="/documents/{{ doc.id }}/status">
+                            {% if is_paid %}
+                            <button type="submit" class="btn btn-outline">Atzīmēt kā neapmaksātu</button>
+                            {% else %}
+                            <button type="submit" class="btn btn-secondary">Atzīmēt kā apmaksātu</button>
+                            {% endif %}
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+            </section>
+
+            {% if is_offer %}
+            <section class="card">
+                <div class="card-body">
+                    <div class="kpi-label" style="margin-bottom:10px">Klienta atbilde</div>
+                    <div class="offer-status-switch" style="display:flex">
+                        {% for key, label in offer_statuses.items() %}
+                        <form method="post" action="/documents/{{ doc.id }}/offer-status" style="margin:0;flex:1">
+                            <input type="hidden" name="status" value="{{ key }}">
+                            <button type="submit" style="width:100%" class="offer-status-btn {% if doc.status == key %}active is-{{ key }}{% endif %}"
+                                    {% if doc.status == key %}aria-current="true"{% endif %}>{{ label }}</button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+
+            {% if offer_invoices or source_offer %}
+            <section class="card">
+                <div class="card-body link-note">
+                    {% if offer_invoices %}
+                        {% if offer_invoices | length == 1 %}
+                        No šī piedāvājuma izveidots rēķins <a href="/documents/{{ offer_invoices[0].id }}">{{ offer_invoices[0].doc_number }}</a>.
+                        {% else %}
+                        No šī piedāvājuma izveidoti {{ offer_invoices | length }} rēķini:
+                        {% for inv in offer_invoices %}<a href="/documents/{{ inv.id }}">{{ inv.doc_number }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
+                        {% endif %}
+                    {% endif %}
+                    {% if source_offer %}
+                    Izveidots no piedāvājuma <a href="/documents/{{ source_offer.id }}">{{ source_offer.doc_number }}</a>.
+                    {% endif %}
+                </div>
+            </section>
+            {% endif %}
+        </aside>
     </div>
 </div>
 
-<!-- Send Email Modal -->
-<div class="modal-overlay" id="sendEmailModal">
+<!-- Send by e-mail -->
+<div class="modal-overlay" id="sendEmailModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal" style="max-width:560px">
-        <div class="modal-title">Nosūtīt dokumentu pa e-pastu</div>
+        <div class="modal-title">Nosūtīt {{ doc.doc_number }}</div>
         <form method="post" action="/documents/{{ doc.id }}/send">
             <input type="hidden" name="template" id="sendTemplate" value="{{ selected_template }}">
             <div class="form-group">
-                <label>Saņēmēja e-pasts</label>
-                <input type="email" name="email" id="sendEmail" class="form-control"
-                       value="{{ client.email or '' }}" required placeholder="klients@epasts.lv">
+                <label for="sendEmail">Saņēmējs</label>
+                <input type="email" name="email" id="sendEmail" class="form-control" value="{{ client.email or '' }}" required placeholder="klients@epasts.lv">
             </div>
             <div class="form-group">
-                <label>Tēma</label>
-                <input type="text" name="email_subject" class="form-control" value="{{ default_email_subject }}">
+                <label for="sendSubject">Tēma</label>
+                <input type="text" name="email_subject" id="sendSubject" class="form-control" value="{{ default_email_subject }}">
             </div>
-            {% if doc.doc_type != 'offer' %}
+            {% if not is_offer %}
             <div class="form-group">
-                <label>Pielikuma formāts</label>
+                <label for="sendFormat">Pielikums</label>
                 <select name="attachment_format" id="sendFormat" class="form-control" onchange="updateSendAttachmentHint()">
                     <option value="pdf" selected>PDF</option>
-                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>
-                        E-rēķins (PEPPOL XML){% if not einvoice_enabled %} — PRO{% endif %}
-                    </option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · PRO{% endif %}</option>
                 </select>
-                {% if not einvoice_enabled %}
-                <span style="font-size:12px;color:var(--text-light)">E-rēķins pieejams no <a href="/pricing">Pamata plāna</a>.</span>
-                {% endif %}
             </div>
             {% endif %}
-            <div style="background:var(--bg);border-radius:var(--radius);padding:10px 16px;font-size:12px;margin-bottom:16px;border:1px solid var(--border);color:var(--text-light)">
-                No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;
-                {% if request.state.user.email %} · Atbildēt uz: {{ request.state.user.email }}{% endif %}
-                 · Pielikums: <span id="sendAttachmentName">{{ doc.doc_number }}.pdf</span>
-            </div>
-            <div class="form-group" style="margin-bottom:12px">
-                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                    <input type="checkbox" id="customEmailToggle" onchange="toggleCustomEmail()"
-                           style="width:18px;height:18px;cursor:pointer">
-                    Pielāgot e-pasta ziņojumu
-                </label>
+            <p class="field-hint" style="margin:-4px 0 16px">
+                No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;{% if request.state.user.email %} · atbildes uz {{ request.state.user.email }}{% endif %}
+                · <span id="sendAttachmentName">{{ doc.doc_number }}.pdf</span>
+            </p>
+            <div class="form-group">
+                <label class="check"><input type="checkbox" id="customEmailToggle" onchange="toggleCustomEmail()"> Rakstīt savu ziņojumu</label>
             </div>
             <div id="customEmailSection" style="display:none">
                 <div class="form-group">
-                    <label>E-pasta teksts</label>
-                    <textarea name="email_body" id="emailBodyText" class="form-control" rows="6"
-                              style="font-size:13px;line-height:1.5;resize:vertical">{{ default_email_body }}</textarea>
+                    <label for="emailBodyText">Ziņojums</label>
+                    <textarea id="emailBodyText" class="form-control" rows="7">{{ default_email_body }}</textarea>
                 </div>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('sendEmailModal').classList.remove('active')">Atcelt</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('sendEmailModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Nosūtīt</button>
             </div>
         </form>
     </div>
 </div>
-<!-- Schedule Recurring Modal -->
-<div class="modal-overlay" id="recurringModal">
+
+<!-- Recurring -->
+<div class="modal-overlay" id="recurringModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal">
-        <div class="modal-title">Izveidot periodisku rēķinu</div>
+        <div class="modal-title">Padarīt periodisku</div>
+        <p class="text-muted" style="margin:-8px 0 16px">Klients, rindas, cenas, PVN un piezīmes tiks kopēti no {{ doc.doc_number }}.</p>
         <form method="post" action="/recurring/from-document/{{ doc.id }}">
             <input type="hidden" name="template" value="{{ selected_template }}">
             <div class="form-group">
-                <label>Biežums</label>
-                <select name="frequency" class="form-control">
+                <label for="recFreq">Cik bieži</label>
+                <select name="frequency" id="recFreq" class="form-control">
                     <option value="monthly">Katru mēnesi</option>
-                    <option value="bimonthly">Katrus 2 mēnešus</option>
+                    <option value="bimonthly">Ik pēc 2 mēnešiem</option>
                     <option value="quarterly">Katru ceturksni</option>
-                    <option value="halfyearly">Katrus 6 mēnešus</option>
+                    <option value="halfyearly">Ik pēc 6 mēnešiem</option>
                     <option value="yearly">Katru gadu</option>
                 </select>
             </div>
             <div class="form-group">
-                <label>Pirmā izpilde</label>
-                <input type="date" name="next_run" class="form-control" value="">
+                <label for="recNext">Pirmais rēķins</label>
+                <input type="date" name="next_run" id="recNext" class="form-control" value="">
             </div>
-            <div class="form-group" style="display:flex;align-items:center;gap:8px">
-                <input type="checkbox" name="send_email" value="1" id="recSendEmail">
-                <label for="recSendEmail" style="margin:0;font-weight:400">Automātiski nosūtīt pa e-pastu</label>
-            </div>
-            <div style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;font-size:13px;margin-bottom:16px;border:1px solid var(--border)">
-                <strong>Tiks kopēts:</strong><br>
-                <span style="color:var(--text-light)">
-                    Klients, produkti, daudzumi, cenas, PVN likme un piezīmes no šī dokumenta.
-                </span>
+            <div class="form-group">
+                <label class="check"><input type="checkbox" name="send_email" value="1" id="recSendEmail"> Nosūtīt klientam automātiski</label>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('recurringModal').classList.remove('active')">Atcelt</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('recurringModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Izveidot</button>
             </div>
         </form>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
 const docId = {{ doc.id }};
 let currentTemplate = "{{ selected_template }}";
+const allTemplatesEnabled = {{ 'true' if all_templates else 'false' }};
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
-// Document data from server
 const docData = {
-    docTypeName: {{ (settings.get('buy_doc_name', 'Rēķins') if doc.doc_type == 'buy' else (settings.get('offer_doc_name', 'Piedāvājums') if doc.doc_type == 'offer' else settings.get('sell_doc_name', 'Rēķins'))) | tojson }},
+    docTypeName: {{ doc_name | tojson }},
     docNumber: {{ doc.doc_number | tojson }},
-    displayDate: "{{ doc.doc_date.split('-')[2] }}.{{ doc.doc_date.split('-')[1] }}.{{ doc.doc_date.split('-')[0] }}",
-    displayDueDate: {% if doc.payment_due_date and doc.doc_type != 'offer' %}"{{ doc.payment_due_date.split('-')[2] }}.{{ doc.payment_due_date.split('-')[1] }}.{{ doc.payment_due_date.split('-')[0] }}"{% else %}""{% endif %},
+    displayDate: fmtDate({{ doc.doc_date | tojson }}),
+    displayDueDate: {{ due | tojson }} ? fmtDate({{ due | tojson }}) : '',
     notes: {{ (doc.notes or '') | tojson }},
     hasLogo: {{ 'true' if has_logo else 'false' }},
     accentColor: {{ settings.get('accent_color', '#09090b') | tojson }},
     electronicDoc: {{ 'true' if settings.get('electronic_doc', '0') == '1' else 'false' }},
-    logoWidth: {{ settings.get('logo_width', '100') }},
+    logoWidth: {{ settings.get('logo_width', '100') | int }},
     entityType: {{ settings.get('entity_type', 'business') | tojson }},
     supplier: {
-        {% if doc.doc_type == 'buy' %}
-        name: {{ client.name | tojson }},
-        reg: {{ (client.reg_number or '') | tojson }},
-        vat: {{ (client.vat_number or '') | tojson }},
-        addr: {{ (client.legal_address or '') | tojson }},
-        bank: {{ (client.bank_name or '') | tojson }},
-        account: {{ (client.bank_account or '') | tojson }},
-        isOwn: false
-        {% else %}
-        name: {{ settings.get('company_name', '') | tojson }},
-        reg: {{ settings.get('reg_number', '') | tojson }},
-        vat: {{ settings.get('vat_number', '') | tojson }},
-        addr: {{ settings.get('legal_address', '') | tojson }},
-        bank: {{ settings.get('bank_name', '') | tojson }},
-        account: {{ settings.get('bank_account', '') | tojson }},
-        isOwn: true
-        {% endif %}
+        {% set s_own = doc.doc_type != 'buy' %}
+        name: {{ (settings.get('company_name', '') if s_own else client.name) | tojson }},
+        reg: {{ (settings.get('reg_number', '') if s_own else (client.reg_number or '')) | tojson }},
+        vat: {{ (settings.get('vat_number', '') if s_own else (client.vat_number or '')) | tojson }},
+        addr: {{ (settings.get('legal_address', '') if s_own else (client.legal_address or '')) | tojson }},
+        bank: {{ (settings.get('bank_name', '') if s_own else (client.bank_name or '')) | tojson }},
+        account: {{ (settings.get('bank_account', '') if s_own else (client.bank_account or '')) | tojson }},
+        isOwn: {{ 'true' if s_own else 'false' }}
     },
     buyer: {
-        {% if doc.doc_type != 'buy' %}
-        name: {{ client.name | tojson }},
-        reg: {{ (client.reg_number or '') | tojson }},
-        vat: {{ (client.vat_number or '') | tojson }},
-        addr: {{ (client.legal_address or '') | tojson }},
-        bank: {{ (client.bank_name or '') | tojson }},
-        account: {{ (client.bank_account or '') | tojson }},
-        isOwn: false
-        {% else %}
-        name: {{ settings.get('company_name', '') | tojson }},
-        reg: {{ settings.get('reg_number', '') | tojson }},
-        vat: {{ settings.get('vat_number', '') | tojson }},
-        addr: {{ settings.get('legal_address', '') | tojson }},
-        bank: {{ settings.get('bank_name', '') | tojson }},
-        account: {{ settings.get('bank_account', '') | tojson }},
-        isOwn: true
-        {% endif %}
+        name: {{ (client.name if s_own else settings.get('company_name', '')) | tojson }},
+        reg: {{ ((client.reg_number or '') if s_own else settings.get('reg_number', '')) | tojson }},
+        vat: {{ ((client.vat_number or '') if s_own else settings.get('vat_number', '')) | tojson }},
+        addr: {{ ((client.legal_address or '') if s_own else settings.get('legal_address', '')) | tojson }},
+        bank: {{ ((client.bank_name or '') if s_own else settings.get('bank_name', '')) | tojson }},
+        account: {{ ((client.bank_account or '') if s_own else settings.get('bank_account', '')) | tojson }},
+        isOwn: {{ 'false' if s_own else 'true' }}
     },
     items: [
         {% for item in items %}
-        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: Number({{ item.quantity | tojson }}), price: Number({{ item.price_per_unit | tojson }}), total: Number({{ "%.2f" | format(item.quantity * item.price_per_unit) }}), included: {{ 'true' if item.get('included_in_price') else 'false' }} },
+        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: {{ item.quantity | tojson }}, price: {{ item.price_per_unit | tojson }}, total: {{ (item.quantity * item.price_per_unit) | tojson }}, included: {{ 'true' if item.get('included_in_price') else 'false' }} },
         {% endfor %}
     ],
-    subtotal: Number({{ "%.2f" | format(subtotal) }}),
-    vatRate: {{ doc.vat_rate }},
-    vatAmount: Number({{ "%.2f" | format(vat_amount) }}),
-    total: Number({{ "%.2f" | format(total) }}),
+    subtotal: {{ subtotal | tojson }},
+    vatRate: {{ doc.vat_rate | tojson }},
+    vatAmount: {{ vat_amount | tojson }},
+    total: {{ total | tojson }},
     isVatPayer: {{ 'true' if settings.get('is_vat_payer', '1') == '1' else 'false' }},
     reverseCharge: {{ 'true' if doc.reverse_charge else 'false' }}
 };
 
 function logoHtml(invert) {
     if (!docData.hasLogo) return '';
-    const w = Math.round(160 * docData.logoWidth / 100);
-    const h = Math.round(50 * docData.logoWidth / 100);
-    const filter = invert ? 'filter:brightness(0) invert(1);' : '';
-    return `<img src="/api/logo" alt="Logo" style="max-height:${h}px;max-width:${w}px;display:block;${filter}">`;
+    const w = Math.round(160 * docData.logoWidth / 100), h = Math.round(50 * docData.logoWidth / 100);
+    return `<img src="/api/logo" alt="Logo" style="max-height:${h}px;max-width:${w}px;display:block;${invert ? 'filter:brightness(0) invert(1);' : ''}">`;
 }
-
 function partyLines(info) {
-    let html = '';
-    html += '<strong>' + info.name + '</strong>';
+    let html = '<strong>' + esc(info.name) + '</strong>';
     if (info.reg) {
         const regLabel = info.isOwn ? (docData.entityType === 'individual' ? 'P.k.:' : 'Reģ.Nr.:') : 'Reģ.Nr. / P.k.:';
-        html += '<br>' + regLabel + ' ' + info.reg;
+        html += '<br>' + regLabel + ' ' + esc(info.reg);
     }
-    if (docData.isVatPayer && info.vat) html += '<br>PVN Nr.: ' + info.vat;
-    if (info.addr) html += '<br>' + info.addr;
-    if (info.bank) html += '<br>Banka: ' + info.bank;
-    if (info.account) html += '<br>Konts: ' + info.account;
+    if (docData.isVatPayer && info.vat) html += '<br>PVN Nr.: ' + esc(info.vat);
+    if (info.addr) html += '<br>' + esc(info.addr);
+    if (info.bank) html += '<br>Banka: ' + esc(info.bank);
+    if (info.account) html += '<br>Konts: ' + esc(info.account);
     return html;
 }
-
 function signatureHtml(style) {
+    const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
     if (docData.electronicDoc) {
-        const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
-        const size = style === 'minimal' ? '11px' : '12px';
-        return `<div style="margin-top:32px;font-size:${size};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
+        return `<div style="margin-top:32px;font-size:${style === 'minimal' ? '11px' : '12px'};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
     }
-    if (style === 'minimal') {
-        return `<div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:11px;color:#9ca3af">
-            <div>Izsniedza ________________________</div>
-            <div>Saņēma ________________________</div>
-        </div>`;
-    }
-    return `<div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:12px;color:#6b7280">
-        <div><strong>Izsniedza:</strong> ________________________</div>
-        <div><strong>Saņēma:</strong> ________________________</div>
+    const b = style === 'minimal' ? ['', ''] : ['<strong>', '</strong>'];
+    return `<div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:${style === 'minimal' ? '11px' : '12px'};color:${color}">
+        <div>${b[0]}Izsniedza:${b[1]} ________________________</div>
+        <div>${b[0]}Saņēma:${b[1]} ________________________</div>
     </div>`;
 }
-
 function itemsTableHtml(items, style) {
     return items.map((item, i) => {
         const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
-        const priceCell = item.included ? 'Iekļauts cenā' : item.price.toFixed(2);
-        const totalCell = item.included ? 'Iekļauts cenā' : item.total.toFixed(2);
+        const priceCell = item.included ? 'Iekļauts cenā' : fmtNum(item.price);
+        const totalCell = item.included ? 'Iekļauts cenā' : fmtNum(item.total);
         return `<tr style="${bg}">
             <td style="padding:8px 12px">${i + 1}</td>
-            <td style="padding:8px 12px">${item.name}</td>
-            <td style="padding:8px 12px">${item.unit}</td>
-            <td style="padding:8px 12px;text-align:right">${item.qty.toFixed(2)}</td>
+            <td style="padding:8px 12px">${esc(item.name)}</td>
+            <td style="padding:8px 12px">${esc(item.unit)}</td>
+            <td style="padding:8px 12px;text-align:right">${fmtQty(item.qty)}</td>
             <td style="padding:8px 12px;text-align:right">${priceCell}</td>
             <td style="padding:8px 12px;text-align:right">${totalCell}</td>
         </tr>`;
     }).join('');
 }
+function totalsHtml(d, style) {
+    const muted = style === 'minimal' ? '#9ca3af' : '#6b7280';
+    const vatLabel = d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + fmtQty(d.vatRate) + '%)';
+    const big = { classic: ['16px', '0.75px solid #1f2937', 'Kopā'], modern: ['17px', '1px solid #111827', 'KOPĀ'], minimal: ['15px', '0.5px solid #111827', 'Kopā'] }[style];
+    return `<div style="text-align:right;font-size:13px">
+        ${d.isVatPayer ? `<div style="color:${muted}">Summa bez PVN: <strong style="color:#111827">${fmtEur(d.subtotal)}</strong></div>
+        <div style="color:${muted}">${vatLabel}: <strong style="color:#111827">${fmtEur(d.vatAmount)}</strong></div>` : ''}
+        <div style="font-size:${big[0]};font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:${big[1]};display:inline-block">${big[2]}: ${fmtEur(d.total)}</div>
+    </div>`;
+}
+function tableHtml(d, style, ac) {
+    const th = style === 'modern'
+        ? 'padding:8px 12px;font-size:10px;color:white;font-weight:700'
+        : style === 'minimal'
+            ? 'padding:7px 12px;font-size:9px;font-weight:700;color:#9ca3af;border-bottom:0.5px solid #6b7280'
+            : 'padding:8px 12px;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700';
+    const head = style === 'minimal' ? ['#', 'PRECE / PAKALPOJUMS', 'MĒRV.', 'DAUDZ.', 'CENA', 'SUMMA'] : ['Nr.', 'Nosaukums', 'Mērv.', 'Daudz.', 'Cena', 'Summa'];
+    const trStyle = style === 'modern' ? `background:${ac}` : (style === 'classic' ? 'background:#f9fafb' : '');
+    return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
+        <colgroup><col style="width:6%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
+        <thead><tr style="${trStyle}">${head.map((h, i) => `<th style="${th};text-align:${i > 2 ? 'right' : 'left'}">${h}</th>`).join('')}</tr></thead>
+        <tbody style="font-size:13px">${itemsTableHtml(d.items, style)}</tbody></table></div>`;
+}
+function partiesHtml(d, labelSize, labelColor, gap) {
+    const lab = `font-size:${labelSize};font-weight:700;color:${labelColor};letter-spacing:0.5px;margin-bottom:6px`;
+    return `<div class="preview-parties" style="display:grid;grid-template-columns:1fr 1fr;gap:${gap};margin-bottom:16px">
+        <div><div style="${lab}">PIEGĀDĀTĀJS / PĀRDEVĒJS</div><div style="font-size:13px;line-height:1.6">${partyLines(d.supplier)}</div></div>
+        <div><div style="${lab}">SAŅĒMĒJS / PIRCĒJS</div><div style="font-size:13px;line-height:1.6">${partyLines(d.buyer)}</div></div>
+    </div>`;
+}
+function notesHtml(d) { return d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + esc(d.notes) + '</div>' : ''; }
 
 function renderClassic(d) {
     return `
         ${logoHtml() ? '<div style="text-align:center;margin-bottom:12px">' + logoHtml().replace('display:block', 'display:inline-block') + '</div>' : ''}
         <div style="text-align:center;margin-bottom:4px">
-            <div style="font-size:20px;font-weight:700;color:#111827">${d.docTypeName}</div>
-            <div style="font-size:14px;color:#374151;margin-top:3px">Nr. ${d.docNumber}</div>
+            <div style="font-size:20px;font-weight:700;color:#111827">${esc(d.docTypeName)}</div>
+            <div style="font-size:14px;color:#374151;margin-top:3px">Nr. ${esc(d.docNumber)}</div>
             <div style="font-size:13px;color:#6b7280;margin-top:2px">Datums: ${d.displayDate}</div>
             ${d.displayDueDate ? '<div style="font-size:13px;color:#6b7280;margin-top:1px">Apmaksas termiņš: ' + d.displayDueDate + '</div>' : ''}
         </div>
         <hr style="border:none;border-top:0.5px solid #e5e7eb;margin:12px 0 16px">
-        <div class="preview-parties" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
-            <div>
-                <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                <div style="font-size:13px;line-height:1.6">${partyLines(d.supplier)}</div>
-            </div>
-            <div>
-                <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">SAŅĒMĒJS / PIRCĒJS</div>
-                <div style="font-size:13px;line-height:1.6">${partyLines(d.buyer)}</div>
-            </div>
-        </div>
-        <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
-            <colgroup><col style="width:6%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
-            <thead>
-                <tr style="background:#f9fafb">
-                    <th style="padding:8px 12px;text-align:left;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Nr.</th>
-                    <th style="padding:8px 12px;text-align:left;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Nosaukums</th>
-                    <th style="padding:8px 12px;text-align:left;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Mērv.</th>
-                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Daudz.</th>
-                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Cena</th>
-                    <th style="padding:8px 12px;text-align:right;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700">Summa</th>
-                </tr>
-            </thead>
-            <tbody style="font-size:13px">${itemsTableHtml(d.items, 'classic')}</tbody>
-        </table>
-        </div>
-        <div style="text-align:right;font-size:13px">
-            ${d.isVatPayer ? `<div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
-            <div style="color:#6b7280">${d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + d.vatRate + '%)'}: <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
-            <div style="font-size:16px;font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
-        </div>
-        ${d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        ${signatureHtml('classic')}
-    `;
+        ${partiesHtml(d, '10px', '#6b7280', '20px')}
+        ${tableHtml(d, 'classic')}
+        ${totalsHtml(d, 'classic')}
+        ${notesHtml(d)}
+        ${signatureHtml('classic')}`;
 }
-
 function renderModern(d) {
-    var ac = docData.accentColor || '#09090b';
+    const ac = docData.accentColor || '#09090b';
     return `
-        <div class="preview-modern-header" style="background:${ac};color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
-            <div>
-                ${docData.hasLogo ? logoHtml(false).replace('display:block;', 'display:block;margin-bottom:8px;') : ''}
-                <div style="font-size:22px;font-weight:700">${d.docTypeName}</div>
-            </div>
-            <div style="font-size:13px;color:rgba(255,255,255,0.7);text-align:right">
-                Nr. ${d.docNumber}<br>Datums: ${d.displayDate}${d.displayDueDate ? '<br>Apmaksas termiņš: ' + d.displayDueDate : ''}
-            </div>
+        <div class="preview-modern-header" style="background:${esc(ac)};color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
+            <div>${docData.hasLogo ? logoHtml(false).replace('display:block;', 'display:block;margin-bottom:8px;') : ''}<div style="font-size:22px;font-weight:700">${esc(d.docTypeName)}</div></div>
+            <div style="font-size:13px;color:rgba(255,255,255,0.7);text-align:right">Nr. ${esc(d.docNumber)}<br>Datums: ${d.displayDate}${d.displayDueDate ? '<br>Apmaksas termiņš: ' + d.displayDueDate : ''}</div>
         </div>
         <div>
-            <div class="preview-parties" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
-                <div>
-                    <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                    <div style="font-size:13px;line-height:1.6">${partyLines(d.supplier)}</div>
-                </div>
-                <div>
-                    <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">SAŅĒMĒJS / PIRCĒJS</div>
-                    <div style="font-size:13px;line-height:1.6">${partyLines(d.buyer)}</div>
-                </div>
-            </div>
-            <div style="overflow-x:auto">
-            <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
-                <colgroup><col style="width:6%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
-                <thead>
-                    <tr style="background:${ac}">
-                        <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Nr.</th>
-                        <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Nosaukums</th>
-                        <th style="padding:8px 12px;text-align:left;font-size:10px;color:white;font-weight:700">Mērv.</th>
-                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Daudz.</th>
-                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Cena</th>
-                        <th style="padding:8px 12px;text-align:right;font-size:10px;color:white;font-weight:700">Summa</th>
-                    </tr>
-                </thead>
-                <tbody style="font-size:13px">${itemsTableHtml(d.items, 'modern')}</tbody>
-            </table>
-            </div>
-            <div style="text-align:right;font-size:13px">
-                ${d.isVatPayer ? `<div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
-                <div style="color:#6b7280">${d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + d.vatRate + '%)'}: <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
-                <div style="font-size:17px;font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${d.total.toFixed(2)} EUR</div>
-            </div>
-            ${d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
+            ${partiesHtml(d, '10px', '#6b7280', '20px')}
+            ${tableHtml(d, 'modern', esc(ac))}
+            ${totalsHtml(d, 'modern')}
+            ${notesHtml(d)}
             ${signatureHtml('modern')}
-        </div>
-    `;
+        </div>`;
 }
-
 function renderMinimal(d) {
     return `
         ${logoHtml() ? '<div style="margin-bottom:16px">' + logoHtml() + '</div>' : ''}
-        <div style="font-size:18px;font-weight:700;color:#111827;margin-bottom:3px">${d.docTypeName}</div>
-        <div style="font-size:13px;color:#9ca3af;margin-bottom:14px">Nr. ${d.docNumber} &nbsp;&middot;&nbsp; ${d.displayDate}${d.displayDueDate ? ' &nbsp;&middot;&nbsp; Apmaksas termiņš: ' + d.displayDueDate : ''}</div>
+        <div style="font-size:18px;font-weight:700;color:#111827;margin-bottom:3px">${esc(d.docTypeName)}</div>
+        <div style="font-size:13px;color:#9ca3af;margin-bottom:14px">Nr. ${esc(d.docNumber)} &nbsp;&middot;&nbsp; ${d.displayDate}${d.displayDueDate ? ' &nbsp;&middot;&nbsp; Apmaksas termiņš: ' + d.displayDueDate : ''}</div>
         <hr style="border:none;border-top:0.25px solid #e5e7eb;margin:0 0 16px">
-        <div class="preview-parties" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:18px">
-            <div>
-                <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                <div style="font-size:13px;line-height:1.6">${partyLines(d.supplier)}</div>
-            </div>
-            <div>
-                <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">SAŅĒMĒJS / PIRCĒJS</div>
-                <div style="font-size:13px;line-height:1.6">${partyLines(d.buyer)}</div>
-            </div>
-        </div>
-        <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
-            <colgroup><col style="width:5%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
-            <thead>
-                <tr>
-                    <th style="padding:7px 12px;text-align:left;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">#</th>
-                    <th style="padding:7px 12px;text-align:left;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">PRECE / PAKALPOJUMS</th>
-                    <th style="padding:7px 12px;text-align:left;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">MĒRV.</th>
-                    <th style="padding:7px 12px;text-align:right;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">DAUDZ.</th>
-                    <th style="padding:7px 12px;text-align:right;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">CENA</th>
-                    <th style="padding:7px 12px;text-align:right;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">SUMMA</th>
-                </tr>
-            </thead>
-            <tbody style="font-size:13px">${itemsTableHtml(d.items, 'minimal')}</tbody>
-        </table>
-        </div>
-        <div style="text-align:right;font-size:13px">
-            ${d.isVatPayer ? `<div style="color:#9ca3af">Bez PVN: ${d.subtotal.toFixed(2)} EUR</div>
-            <div style="color:#9ca3af">${d.reverseCharge ? 'PVN 0% - Reverse Charge' : 'PVN ' + d.vatRate + '%'}: ${d.vatAmount.toFixed(2)} EUR</div>` : ''}
-            <div style="font-size:15px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
-        </div>
-        ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:12px 0 6px"><div style="font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        ${signatureHtml('minimal')}
-    `;
+        ${partiesHtml(d, '9px', '#9ca3af', '24px')}
+        ${tableHtml(d, 'minimal')}
+        ${totalsHtml(d, 'minimal')}
+        ${notesHtml(d)}
+        ${signatureHtml('minimal')}`;
 }
-
 function renderPreview(template) {
     const preview = document.getElementById('docPreview');
-    if (!preview) return;   // branded tāme: the real PDF is embedded instead
-    const d = docData;
-
-    if (template === 'modern') {
-        preview.className = 'doc-view-preview doc-view-modern';
-        preview.innerHTML = renderModern(d);
-    } else if (template === 'minimal') {
-        preview.className = 'doc-view-preview doc-view-minimal';
-        preview.innerHTML = renderMinimal(d);
-    } else {
-        preview.className = 'doc-view-preview doc-view-classic';
-        preview.innerHTML = renderClassic(d);
-    }
+    if (!preview) return;
+    const fn = template === 'modern' ? renderModern : template === 'minimal' ? renderMinimal : renderClassic;
+    preview.className = 'doc-view-preview doc-view-' + (['modern', 'minimal'].includes(template) ? template : 'classic');
+    preview.innerHTML = fn(docData);
 }
-
-const allTemplatesEnabled = {{ 'true' if all_templates else 'false' }};
 
 function selectTemplate(key, btn) {
     currentTemplate = key;
-    document.querySelectorAll('.template-tab').forEach(t => t.classList.remove('active'));
-    btn.classList.add('active');
-    const dlBtn = document.getElementById('downloadBtn');
-    const dlPdfLink = document.getElementById('downloadPdfLink');
-    const dlSplit = document.getElementById('downloadSplit');
-    const isPro = key !== 'classic' && !allTemplatesEnabled;
-    if (isPro) {
-        dlBtn.href = '/pricing';
-        dlBtn.removeAttribute('target');
-        dlSplit.classList.add('btn-download-disabled');
+    document.querySelectorAll('.template-tab').forEach(t => t.classList.toggle('on', t === btn));
+    const dl = document.getElementById('downloadBtn');
+    if (key !== 'classic' && !allTemplatesEnabled) {
+        dl.href = '/pricing';
+        dl.removeAttribute('target');
+        dl.textContent = 'Veidne pieejama PRO';
     } else {
-        dlBtn.href = '/documents/' + docId + '/pdf?template=' + key;
-        dlBtn.setAttribute('target', '_blank');
-        dlSplit.classList.remove('btn-download-disabled');
+        dl.href = '/documents/' + docId + '/pdf?template=' + key;
+        dl.setAttribute('target', '_blank');
+        dl.textContent = 'Lejupielādēt PDF';
     }
-    if (dlPdfLink) dlPdfLink.href = '/documents/' + docId + '/pdf?template=' + key;
     document.getElementById('sendTemplate').value = key;
     renderPreview(key);
 }
 
 function updateSendAttachmentHint() {
-    var sel = document.getElementById('sendFormat');
-    var name = document.getElementById('sendAttachmentName');
-    if (!sel || !name) return;
-    var base = {{ doc.doc_number | tojson }};
-    name.textContent = base + (sel.value === 'xml' ? '.xml' : '.pdf');
+    const sel = document.getElementById('sendFormat');
+    const name = document.getElementById('sendAttachmentName');
+    if (sel && name) name.textContent = {{ doc.doc_number | tojson }} + (sel.value === 'xml' ? '.xml' : '.pdf');
 }
-
 function showSendModal() {
     document.getElementById('sendEmailModal').classList.add('active');
     const emailInput = document.getElementById('sendEmail');
     if (!emailInput.value) emailInput.focus();
 }
-
 function toggleCustomEmail() {
-    const section = document.getElementById('customEmailSection');
-    const checkbox = document.getElementById('customEmailToggle');
-    const textarea = document.getElementById('emailBodyText');
-    section.style.display = checkbox.checked ? '' : 'none';
-    if (!checkbox.checked) {
-        textarea.name = '';
-    } else {
-        textarea.name = 'email_body';
-    }
+    const on = document.getElementById('customEmailToggle').checked;
+    document.getElementById('customEmailSection').style.display = on ? '' : 'none';
+    document.getElementById('emailBodyText').name = on ? 'email_body' : '';
 }
+function showRecurringModal() { document.getElementById('recurringModal').classList.add('active'); }
 
-function showRecurringModal() {
-    document.getElementById('recurringModal').classList.add('active');
-}
-
-function positionViewMenu(trigger, dropdown) {
-    const rect = trigger.getBoundingClientRect();
-    dropdown.style.left = '';
-    dropdown.style.top = '';
-    dropdown.style.visibility = 'hidden';
-    dropdown.style.display = 'block';
-    const dh = dropdown.offsetHeight;
-    const dw = dropdown.offsetWidth;
-    dropdown.style.display = '';
-    dropdown.style.visibility = '';
-
-    const spaceBelow = window.innerHeight - rect.bottom;
-    var top = spaceBelow < dh + 8 && rect.top > dh + 8
-        ? rect.top - dh - 4
-        : rect.bottom + 4;
-    top = Math.max(8, Math.min(top, window.innerHeight - dh - 8));
-    dropdown.style.top = top + 'px';
-
-    var left = rect.right - dw;
-    left = Math.max(8, Math.min(left, window.innerWidth - dw - 8));
-    dropdown.style.left = left + 'px';
-}
-
-function closeAllMenus() {
-    document.querySelectorAll('.view-menu-wrapper.open').forEach(w => w.classList.remove('open'));
-}
-
-function toggleDownloadMenu(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const wrapper = document.getElementById('downloadWrapper');
-    const dropdown = document.getElementById('downloadDropdown');
-    const wasOpen = wrapper.classList.contains('open');
-    closeAllMenus();
-    if (!wasOpen) {
-        positionViewMenu(wrapper.querySelector('.btn-download-split'), dropdown);
-        wrapper.classList.add('open');
-    }
-}
-
+function closeAllMenus() { document.querySelectorAll('.view-menu-dropdown.open').forEach(d => d.classList.remove('open')); }
 function toggleActionsMenu(e) {
     e.preventDefault();
     e.stopPropagation();
-    const wrapper = document.getElementById('actionsWrapper');
+    const trigger = e.currentTarget;
     const dropdown = document.getElementById('actionsDropdown');
-    const wasOpen = wrapper.classList.contains('open');
+    const wasOpen = dropdown.classList.contains('open');
     closeAllMenus();
-    if (!wasOpen) {
-        positionViewMenu(wrapper.querySelector('.view-dots-trigger'), dropdown);
-        wrapper.classList.add('open');
-    }
+    if (wasOpen) return;
+    const rect = trigger.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.classList.add('open');
+    const dw = dropdown.offsetWidth, dh = dropdown.offsetHeight;
+    let top = rect.bottom + 4;
+    if (top + dh > window.innerHeight - 8 && rect.top > dh + 8) top = rect.top - dh - 4;
+    dropdown.style.top = top + 'px';
+    dropdown.style.left = Math.max(8, Math.min(rect.right - dw, window.innerWidth - dw - 8)) + 'px';
+    dropdown.style.right = 'auto';
 }
-
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('.view-menu-wrapper')) closeAllMenus();
-});
+document.addEventListener('click', e => { if (!e.target.closest('.view-menu-wrapper')) closeAllMenus(); });
 window.addEventListener('scroll', closeAllMenus, true);
 window.addEventListener('resize', closeAllMenus);
 
-// Initial render
 renderPreview(currentTemplate);
-// Sync download button state on load
 if (currentTemplate !== 'classic' && !allTemplatesEnabled) {
-    const dlBtn = document.getElementById('downloadBtn');
-    dlBtn.href = '/pricing';
-    dlBtn.removeAttribute('target');
-    document.getElementById('downloadSplit').classList.add('btn-download-disabled');
+    const active = document.querySelector('.template-tab.on');
+    if (active) selectTemplate(currentTemplate, active);
 }
 </script>
 {% endblock %}

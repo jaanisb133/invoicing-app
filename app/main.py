@@ -66,6 +66,7 @@ templates.env.filters["price"] = db.format_price
 templates.env.filters["eur"] = fmt.eur
 templates.env.filters["num"] = fmt.num
 templates.env.filters["qty"] = fmt.qty
+templates.env.filters["initials"] = fmt.initials
 
 
 def _usage_pct(current, maximum):
@@ -2444,6 +2445,7 @@ async def products_page(request: Request):
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "products": products,
+        "product_prices": db.get_product_last_prices(user["account_id"]),
         "units": UNITS,
         "usage": usage,
         "limits": limits,
@@ -2490,6 +2492,7 @@ async def clients_page(request: Request):
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "clients": clients,
+        "client_last_billed": db.get_client_last_billed(user["account_id"]),
         "usage": usage,
         "limits": limits,
         "page": "clients",
@@ -2632,7 +2635,7 @@ async def offers_page(request: Request, client_id: str = "",
 
 
 @app.get("/documents/new", response_class=HTMLResponse)
-async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0):
+async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0, client_id: int = 0):
     ctx = _base_context(request)
     user = request.state.user
     uid = user["account_id"]
@@ -2684,6 +2687,8 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         "offer_presets": (db.get_offer_presets(uid)
                           if doc_type == "offer" and _branded_offers_enabled(uid) else []),
         "offer_meta": None,
+        # "Izrakstīt rēķinu" from the clients list starts the form on that client.
+        "preselect_client_id": client_id if any(c["id"] == client_id for c in clients) else 0,
     })
     return templates.TemplateResponse("document_form.html", ctx)
 
@@ -2911,6 +2916,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "items": items,
         "client": client,
         "settings": settings,
+        "today": datetime.date.today().isoformat(),
         "subtotal": subtotal,
         "vat_amount": vat_amount,
         "total": total,

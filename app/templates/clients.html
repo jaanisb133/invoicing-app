@@ -1,120 +1,128 @@
 {% extends "base.html" %}
 {% from "_empty_state.html" import empty_state %}
 
+{% block title %}Klienti · V-Rēķini{% endblock %}
+
 {% block content %}
+<style>
+.clients .c-name { width: 34%; }
+.clients .c-name a { color: inherit; }
+.clients .c-last, .clients .c-actions { white-space: nowrap; }
+.clients .c-actions { text-align: right; }
+.clients .c-actions .btn { margin-left: 4px; }
+.clients .ident { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.clients .ident > span:last-child { min-width: 0; }
+@media (max-width: 768px) {
+    .clients thead { display: none; }
+    .clients, .clients tbody { display: block; }
+    .clients tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 12px var(--card-pad); border-bottom: 1px solid var(--rule); align-items: center; }
+    .clients tbody tr:last-child { border-bottom: 0; }
+    .clients td { display: block; padding: 0 !important; height: auto; border: 0; }
+    .clients td.c-name { grid-column: 1; grid-row: 1; width: auto; }
+    .clients td.c-actions { grid-column: 2; grid-row: 1; }
+    .clients td.c-actions .btn-edit, .clients td.c-actions .btn-del { display: none; }
+    .clients td.c-vat, .clients td.c-contact, .clients td.c-last { display: none; }
+}
+</style>
+
 <div class="page-header">
     <div>
-        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Klienti</h2>
-        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Pārvaldiet savu klientu sarakstu.</p>
+        <h1>Klienti</h1>
+        <p class="page-sub">
+            {% set pct = usage_pct(usage.clients, limits.max_clients) %}
+            {{ clients | length }} {{ 'klients' if clients | length % 10 == 1 and clients | length % 100 != 11 else 'klienti' }}{% if pct >= 50 %} · <span class="{% if pct >= 80 %}text-negative{% endif %}">{{ usage.clients }} no {{ limits.max_clients }} plānā</span>{% endif %}
+        </p>
     </div>
-    <button class="btn btn-primary" onclick="document.getElementById('addClientModal').classList.add('active')">
-        + Pievienot klientu
-    </button>
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="openAddClient()">Pievienot klientu</button>
+    </div>
 </div>
 
 <div class="page-body">
     {% if request.query_params.get('error') == 'limit' %}
-    <div class="alert alert-danger">Klientu limits sasniegts ({{ tier_limits.max_clients | limit_text }}). <a href="/pricing">Uzlabojiet plānu</a>, lai pievienotu vairāk.</div>
+    <div class="alert alert-danger">Sasniegts klientu limits ({{ tier_limits.max_clients | limit_text }}). <a href="/pricing">Mainiet plānu</a>, lai pievienotu vairāk.</div>
     {% elif request.query_params.get('error') == 'duplicate' %}
-    <div class="alert alert-danger">Klients ar šo reģistrācijas numuru jau eksistē ({{ request.query_params.get('name', '') }}).</div>
+    <div class="alert alert-danger">Klients ar šo reģistrācijas numuru jau ir sarakstā ({{ request.query_params.get('name', '') }}).</div>
     {% endif %}
-    <div class="usage-section" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 18px">
-        <div class="usage-item" style="margin:0">
-            <div class="usage-label" style="font-size:12px;color:var(--text-light);font-weight:500;letter-spacing:0;text-transform:none;margin-bottom:8px">Klienti šomēnes</div>
-            <div class="usage-bar" style="background:var(--bg-input)">
-                <div class="usage-fill" style="background:var(--brand);width: {{ usage_pct(usage.clients, limits.max_clients) }}%"></div>
+    <section class="card">
+        {% if clients %}
+        <div class="list-toolbar" style="display:flex;padding:14px var(--card-pad);border-bottom:1px solid var(--rule)">
+            <div class="search-field" style="flex:1 1 240px;max-width:340px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input type="search" id="clientFilter" class="form-control" placeholder="Meklēt pēc nosaukuma vai reģ. nr." aria-label="Meklēt klientu">
             </div>
-            <div class="usage-count" style="font-size:12px;color:var(--text-light);margin-top:6px">{{ usage.clients }} / {{ limits.max_clients | limit_text }}</div>
         </div>
-    </div>
-    <div class="card">
-        <div class="card-body" style="padding:8px">
-            {% if clients %}
-            <div class="table-wrapper">
-                <table class="mobile-cards client-table">
-                    <thead>
-                        <tr>
-                            <th>Klients</th>
-                            <th>Reģ. Nr.</th>
-                            <th>PVN Nr.</th>
-                            <th>Kontaktpersona</th>
-                            <th>Tālrunis</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for c in clients %}
-                        <tr>
-                            <td data-label="Nosaukums" class="mobile-card-title">
-                                <span class="doc-client-cell">
-                                    <span class="brand-avatar sm bg-{{ (c.id or 0) % 10 }}">{{ (c.name or '?')[:2] | upper }}</span>
-                                    <span>{{ c.name }}</span>
-                                </span>
-                            </td>
-                            <td data-label="Reģ. Nr." class="mobile-card-meta">{{ c.reg_number or '—' }}</td>
-                            <td data-label="PVN Nr." class="mobile-card-meta">{{ c.vat_number or '—' }}</td>
-                            <td data-label="Kontaktpersona">{{ c.contact_person or '—' }}</td>
-                            <td data-label="Tālrunis">{{ c.phone or '—' }}</td>
-                            <td>
-                                <div class="btn-group">
-                                    <button class="btn btn-outline btn-sm"
-                                            onclick='editClient({{ c | tojson }})'>
-                                        Rediģēt
-                                    </button>
-                                    <form method="post" action="/clients/{{ c.id }}/delete"
-                                          onsubmit="return confirm('Vai tiešām dzēst šo klientu?')">
-                                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            {{ empty_state(
-                icon="client",
-                title="Vēl nav neviena klienta",
-                text="Pievienojiet klientu, lai varētu ātri izrakstīt rēķinus, neievadot rekvizītus katru reizi.",
-                cta_label="Pievienot klientu",
-                cta_onclick="document.getElementById('addClientModal').classList.add('active')") }}
-            {% endif %}
-        </div>
-    </div>
+        <table class="clients">
+            <thead>
+                <tr>
+                    <th class="c-name">Klients</th>
+                    <th class="c-vat">PVN nr.</th>
+                    <th class="c-contact">Kontakts</th>
+                    <th class="c-last">Pēdējais rēķins</th>
+                    <th class="c-actions"><span class="sr-only">Darbības</span></th>
+                </tr>
+            </thead>
+            <tbody id="clientsBody">
+                {% for c in clients %}
+                {% set last = client_last_billed.get(c.id) %}
+                <tr data-search="{{ (c.name ~ ' ' ~ (c.reg_number or '') ~ ' ' ~ (c.vat_number or '')) | lower }}">
+                    <td class="c-name">
+                        <span class="ident">
+                            <span class="brand-avatar bg-{{ (c.id or 0) % 10 }}">{{ c.name | initials }}</span>
+                            <span>
+                                <a href="#" class="plain" onclick='event.preventDefault();editClient({{ c | tojson }})' style="font-weight:500">{{ c.name }}</a>
+                                <span class="cell-sub">{{ ('Reģ. nr. ' ~ c.reg_number) if c.reg_number else 'Bez reģ. nr.' }}</span>
+                            </span>
+                        </span>
+                    </td>
+                    <td class="c-vat num">{{ c.vat_number or '—' }}</td>
+                    <td class="c-contact">
+                        {% if c.contact_person or c.email or c.phone %}
+                        {{ c.contact_person or c.email or c.phone }}
+                        {% if c.contact_person and (c.email or c.phone) %}<span class="cell-sub">{{ c.email or c.phone }}</span>{% endif %}
+                        {% else %}<span class="muted">—</span>{% endif %}
+                    </td>
+                    <td class="c-last num">{% if last %}{{ last[8:10] }}.{{ last[5:7] }}.{{ last[:4] }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td class="c-actions">
+                        <a href="/documents/new?doc_type=sell&client_id={{ c.id }}" class="btn btn-outline btn-sm">Izrakstīt rēķinu</a>
+                        <button class="btn btn-ghost btn-sm btn-edit" onclick='editClient({{ c | tojson }})'>Rediģēt</button>
+                        <form method="post" action="/clients/{{ c.id }}/delete" style="display:inline"
+                              onsubmit="return confirm('Dzēst klientu {{ c.name | e }}? Izrakstītie rēķini paliks.')">
+                            <button type="submit" class="btn btn-ghost btn-sm btn-del" aria-label="Dzēst {{ c.name }}" title="Dzēst">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 6h17M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6M18.5 6l-.8 13.1a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 6"/></svg>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="empty-inline" id="clientsNoMatch" hidden style="margin:16px var(--card-pad)">Nav klienta ar šādu nosaukumu.</div>
+        {% else %}
+        {{ empty_state(
+            icon="client",
+            title="Vēl nav neviena klienta",
+            text="Pievienojiet klientu vienreiz — turpmāk rēķinā pietiks ar nosaukuma sākumu.",
+            cta_label="Pievienot klientu",
+            cta_onclick="openAddClient()") }}
+        {% endif %}
+    </section>
 </div>
-<style>
-.client-table .doc-client-cell { gap: 12px; }
-.client-table thead th { padding: 12px 18px; }
-.client-table tbody td { padding: 14px 18px; }
-@media (max-width: 768px) {
-    .client-table .mobile-card-title .doc-client-cell { gap: 10px; }
-    .client-table tbody tr { padding: 14px 16px; }
-}
-</style>
 
 <!-- Add Client Modal -->
 <div class="modal-overlay" id="addClientModal">
     <div class="modal">
-        <div class="modal-title">Pievienot klientu</div>
+        <div class="modal-title">Jauns klients</div>
         <form method="post" action="/clients/add">
             <div class="form-group">
-                <div class="client-type-toggle" style="display:flex;gap:6px;background:var(--bg-input);padding:4px;border-radius:12px;border:1px solid var(--border);margin-bottom:4px">
-                    <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:var(--brand);color:#fff;border-radius:9px;transition:all 0.15s;box-shadow:0 2px 6px rgba(59,130,246,0.32)" id="ac_type_business_label">
-                        <input type="radio" name="client_type" value="business" checked
-                               onchange="acToggleClientType('business')" style="display:none">
-                        Juridiska persona
-                    </label>
-                    <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:transparent;color:var(--text-light);border-radius:9px;transition:all 0.15s" id="ac_type_individual_label">
-                        <input type="radio" name="client_type" value="individual"
-                               onchange="acToggleClientType('individual')" style="display:none">
-                        Fiziska persona
-                    </label>
+                <div class="segmented block client-type-toggle">
+                    <label id="ac_type_business_label"><input type="radio" name="client_type" value="business" checked onchange="acToggleClientType('business')">Uzņēmums</label>
+                    <label id="ac_type_individual_label"><input type="radio" name="client_type" value="individual" onchange="acToggleClientType('individual')">Privātpersona</label>
                 </div>
             </div>
             <!-- Business name with registry search -->
             <div class="form-group" id="ac_business_name_group">
-                <label>Nosaukums *</label>
+                <label>Nosaukums</label>
                 <div class="registry-wrapper">
                     <input type="text" name="name" id="ac_name" class="form-control" required
                            autocomplete="off" placeholder="Sāciet rakstīt uzņēmuma nosaukumu...">
@@ -126,11 +134,11 @@
             <div id="ac_individual_name_group" style="display:none">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Vārds *</label>
+                        <label>Vārds</label>
                         <input type="text" id="ac_first_name" class="form-control" placeholder="Vārds">
                     </div>
                     <div class="form-group">
-                        <label>Uzvārds *</label>
+                        <label>Uzvārds</label>
                         <input type="text" id="ac_last_name" class="form-control" placeholder="Uzvārds">
                     </div>
                 </div>
@@ -140,18 +148,17 @@
                 <input type="text" name="reg_number" id="ac_reg_number" class="form-control">
             </div>
             <div class="form-group">
-                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                <label class="check">
                     <input type="hidden" name="vat_payer" value="0">
                     <input type="checkbox" name="vat_payer" id="ac_vat_payer" value="1"
-                           style="width:18px;height:18px;cursor:pointer"
                            onchange="document.getElementById('ac_vat_group').style.display=this.checked?'':'none'">
-                    Ir PVN maksātājs?
+                    PVN maksātājs
                 </label>
             </div>
             <div class="form-group" id="ac_vat_group" style="display:none">
                 <label>PVN Nr.</label>
                 <input type="text" name="vat_number" id="ac_vat_number" class="form-control">
-                <button type="button" class="vat-validate-btn" onclick="validateVat('ac_vat_number', 'ac_vat_status')">&#x2713; Pārbaudīt VIES</button>
+                <button type="button" class="vat-validate-btn" onclick="validateVat('ac_vat_number', 'ac_vat_status')">Pārbaudīt VIES</button>
                 <div class="vat-status" id="ac_vat_status"></div>
             </div>
             <div class="form-group">
@@ -183,7 +190,7 @@
                 <input type="email" name="email" class="form-control">
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline"
+                <button type="button" class="btn btn-ghost"
                         onclick="document.getElementById('addClientModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Pievienot</button>
             </div>
@@ -197,33 +204,25 @@
         <div class="modal-title">Rediģēt klientu</div>
         <form method="post" id="editClientForm">
             <div class="form-group">
-                <div class="client-type-toggle" style="display:flex;gap:0;border:1px solid var(--border-color, #d1d5db);border-radius:8px;overflow:hidden;margin-bottom:4px">
-                    <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:var(--bg-primary, #111827);color:#fff;transition:all 0.2s" id="ec_type_business_label">
-                        <input type="radio" name="client_type" value="business" checked
-                               onchange="ecToggleClientType('business')" style="display:none">
-                        Juridiska persona
-                    </label>
-                    <label style="flex:1;text-align:center;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:500;background:transparent;color:var(--text-primary, #111827);transition:all 0.2s" id="ec_type_individual_label">
-                        <input type="radio" name="client_type" value="individual"
-                               onchange="ecToggleClientType('individual')" style="display:none">
-                        Fiziska persona
-                    </label>
+                <div class="segmented block client-type-toggle">
+                    <label id="ec_type_business_label"><input type="radio" name="client_type" value="business" checked onchange="ecToggleClientType('business')">Uzņēmums</label>
+                    <label id="ec_type_individual_label"><input type="radio" name="client_type" value="individual" onchange="ecToggleClientType('individual')">Privātpersona</label>
                 </div>
             </div>
             <!-- Business name -->
             <div class="form-group" id="ec_business_name_group">
-                <label>Nosaukums *</label>
+                <label>Nosaukums</label>
                 <input type="text" name="name" id="ec_name" class="form-control" required>
             </div>
             <!-- Individual name fields -->
             <div id="ec_individual_name_group" style="display:none">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Vārds *</label>
+                        <label>Vārds</label>
                         <input type="text" id="ec_first_name" class="form-control">
                     </div>
                     <div class="form-group">
-                        <label>Uzvārds *</label>
+                        <label>Uzvārds</label>
                         <input type="text" id="ec_last_name" class="form-control">
                     </div>
                 </div>
@@ -233,18 +232,17 @@
                 <input type="text" name="reg_number" id="ec_reg_number" class="form-control">
             </div>
             <div class="form-group">
-                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
+                <label class="check">
                     <input type="hidden" name="vat_payer" value="0">
                     <input type="checkbox" name="vat_payer" id="ec_vat_payer" value="1"
-                           style="width:18px;height:18px;cursor:pointer"
                            onchange="document.getElementById('ec_vat_group').style.display=this.checked?'':'none'">
-                    Ir PVN maksātājs?
+                    PVN maksātājs
                 </label>
             </div>
             <div class="form-group" id="ec_vat_group" style="display:none">
                 <label>PVN Nr.</label>
                 <input type="text" name="vat_number" id="ec_vat_number" class="form-control">
-                <button type="button" class="vat-validate-btn" onclick="validateVat('ec_vat_number', 'ec_vat_status')">&#x2713; Pārbaudīt VIES</button>
+                <button type="button" class="vat-validate-btn" onclick="validateVat('ec_vat_number', 'ec_vat_status')">Pārbaudīt VIES</button>
                 <div class="vat-status" id="ec_vat_status"></div>
             </div>
             <div class="form-group">
@@ -276,7 +274,7 @@
                 <input type="email" name="email" id="ec_email" class="form-control">
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline"
+                <button type="button" class="btn btn-ghost"
                         onclick="document.getElementById('editClientModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Saglabāt</button>
             </div>
@@ -287,6 +285,24 @@
 
 {% block scripts %}
 <script>
+function openAddClient() {
+    document.getElementById('addClientModal').classList.add('active');
+    setTimeout(() => document.getElementById('ac_name').focus(), 30);
+}
+(function () {
+    const input = document.getElementById('clientFilter');
+    if (!input) return;
+    input.addEventListener('input', () => {
+        const q = input.value.trim().toLowerCase();
+        let shown = 0;
+        document.querySelectorAll('#clientsBody tr').forEach(tr => {
+            const hit = !q || tr.dataset.search.includes(q);
+            tr.hidden = !hit;
+            if (hit) shown++;
+        });
+        document.getElementById('clientsNoMatch').hidden = shown > 0;
+    });
+})();
 /* --- Client Type Toggle (Add Modal) --- */
 function acToggleClientType(type) {
     const bizLabel = document.getElementById('ac_type_business_label');
@@ -295,15 +311,7 @@ function acToggleClientType(type) {
     const indGroup = document.getElementById('ac_individual_name_group');
     const regLabel = document.getElementById('ac_reg_label');
     const nameInput = document.getElementById('ac_name');
-    const activeStyle = 'var(--brand)';
-    const activeShadow = '0 2px 6px rgba(59,130,246,0.32)';
     if (type === 'business') {
-        bizLabel.style.background = activeStyle;
-        bizLabel.style.color = '#fff';
-        bizLabel.style.boxShadow = activeShadow;
-        indLabel.style.background = 'transparent';
-        indLabel.style.color = 'var(--text-light)';
-        indLabel.style.boxShadow = 'none';
         bizGroup.style.display = '';
         indGroup.style.display = 'none';
         nameInput.required = true;
@@ -311,12 +319,6 @@ function acToggleClientType(type) {
         document.getElementById('ac_last_name').required = false;
         regLabel.textContent = 'Reģistrācijas Nr.';
     } else {
-        indLabel.style.background = activeStyle;
-        indLabel.style.color = '#fff';
-        indLabel.style.boxShadow = activeShadow;
-        bizLabel.style.background = 'transparent';
-        bizLabel.style.color = 'var(--text-light)';
-        bizLabel.style.boxShadow = 'none';
         bizGroup.style.display = 'none';
         indGroup.style.display = '';
         nameInput.required = false;
@@ -335,10 +337,6 @@ function ecToggleClientType(type) {
     const regLabel = document.getElementById('ec_reg_label');
     const nameInput = document.getElementById('ec_name');
     if (type === 'business') {
-        bizLabel.style.background = 'var(--bg-primary, #111827)';
-        bizLabel.style.color = '#fff';
-        indLabel.style.background = 'transparent';
-        indLabel.style.color = 'var(--text-primary, #111827)';
         bizGroup.style.display = '';
         indGroup.style.display = 'none';
         nameInput.required = true;
@@ -346,10 +344,6 @@ function ecToggleClientType(type) {
         document.getElementById('ec_last_name').required = false;
         regLabel.textContent = 'Reģistrācijas Nr.';
     } else {
-        indLabel.style.background = 'var(--bg-primary, #111827)';
-        indLabel.style.color = '#fff';
-        bizLabel.style.background = 'transparent';
-        bizLabel.style.color = 'var(--text-primary, #111827)';
         bizGroup.style.display = 'none';
         indGroup.style.display = '';
         nameInput.required = false;

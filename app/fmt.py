@@ -53,3 +53,17 @@ def parse_decimal(raw, default=0.0):
     else:
         s = s.replace(",", ".")
     return float(s)
+
+
+_LEGAL_FORMS = {"SIA", "AS", "IK", "ZS", "PS", "KS", "BIEDRĪBA", "NODIBINĀJUMS"}
+
+
+def initials(name):
+    """Two letters for an avatar: SIA "Kalnciema Būve" -> KB, J. Bērziņš IK -> JB."""
+    words = [w.strip('"„“”.,()') for w in str(name or "").split()]
+    words = [w for w in words if w and w.upper() not in _LEGAL_FORMS]
+    if not words:
+        return "?"
+    first = words[0][0]
+    second = words[1][0] if len(words) > 1 else (words[0][1] if len(words[0]) > 1 else "")
+    return (first + second).upper()
