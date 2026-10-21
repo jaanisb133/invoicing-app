@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-"""Download the footer payment logos so they are served from our own domain.
+"""Check the footer payment logos, and fetch any that have a source URL.
 
-The logos are third-party trademarks, so the files are not committed to the
-repo. Run this once on the server after deploying, then restart the app:
+The logos are committed (app/static/img/payments/), so normally there is
+nothing to download: run with --check to see which marks are present. A mark
+with no file renders as its name in text.
 
-    python3 scripts/fetch_payment_logos.py
-    systemctl restart vrekini
-
-A mark with no file on disk renders as its name in text, so nothing breaks
-while this directory is empty — the real logos just are not shown.
-
-The original source URLs are dead (404 as of 2026-08-04). Point the `source`
-entries in app/payment_logos.py at working URLs before running this, or simply
-copy the files into app/static/img/payments/ by hand — see the README there.
+An entry in app/payment_logos.py with a `source` URL is downloaded if its file
+is missing; entries without one are skipped — copy those files in by hand (see
+the README there) and restart the app.
 
 Options:
     --force     re-download files that already exist
@@ -61,6 +56,8 @@ def fetch(logo, force=False):
     target = local_path(logo)
     if is_local(logo) and not force:
         return "skip", f"already present ({os.path.getsize(target)} bytes)"
+    if not logo.get("source"):
+        return "fail", "missing, and no source URL; copy the file in by hand"
     try:
         req = urllib.request.Request(logo["source"], headers=HEADERS)
         with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
@@ -90,7 +87,7 @@ def main():
     counts = {"ok": 0, "skip": 0, "fail": 0}
     for logo in PAYMENT_LOGOS:
         if check_only:
-            state = "present" if is_local(logo) else "MISSING (hotlinked)"
+            state = "present" if is_local(logo) else "MISSING (shown as text)"
             print(f"  {logo['file']:18} {state}")
             counts["ok" if is_local(logo) else "fail"] += 1
             continue
@@ -101,7 +98,7 @@ def main():
 
     print()
     if check_only:
-        print(f"{counts['ok']}/{len(PAYMENT_LOGOS)} self-hosted")
+        print(f"{counts['ok']}/{len(PAYMENT_LOGOS)} present")
         return 0 if counts["fail"] == 0 else 1
 
     print(f"downloaded {counts['ok']}, skipped {counts['skip']}, failed {counts['fail']}")

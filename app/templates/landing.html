@@ -399,7 +399,7 @@
         {% for logo in payment_logos %}
             {% if loop.changed(logo.group) and not loop.first %}<span class="footer-sep" aria-hidden="true"></span>{% endif %}
             {% if logo.url %}
-            <img src="{{ logo.url }}" alt="{{ logo.alt }}" height="{{ logo.height }}" class="{% if logo.mono %}pay-mono{% endif %}" loading="lazy" decoding="async">
+            <img src="{{ logo.url }}" alt="{{ logo.alt }}" height="{{ logo.height }}" loading="lazy" decoding="async">
             {% else %}
             <span class="footer-logo-text">{{ logo.alt }}</span>
             {% endif %}

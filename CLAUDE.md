@@ -216,11 +216,10 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 1. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
    the preview mirrors the server exactly, but a printed line can differ by a cent from
    its rounded parts. Pre-existing accounting behaviour; change only deliberately
-2. **Last payment logos** — Visa/Mastercard/Google Pay (simple-icons), Apple Pay and LHV
-   (official, from the owner) are committed. EveryPay, SEB and Citadele are missing and print
-   as text; the owner is sending official files (and Swedbank, which needs a manifest entry
-   in `app/payment_logos.py`). The vnmedia.lv sources are dead, so the fetch script can't help.
-   Logo presence is read at startup: restart after adding files.
+2. **Last payment logos** — all marks are official files from the owner, committed in
+   `app/static/img/payments/` (see SOURCES.txt). EveryPay is still missing and prints as
+   text; Mastercard's supplied PNG is tiny (74×52) and soft on the terms page — swap in an
+   SVG when the owner has one. Logo presence is read at startup: restart after adding files.
 
 ### Invoice PDFs (redesigned 2026-10-21)
 - `app/pdf_generator.py`: three templates built from shared parts (`_head_*`, `_parties`,
