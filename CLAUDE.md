@@ -10,8 +10,9 @@ genuinely modern UX patterns, not generic "AI dashboard" defaults.
 - **Templates:** Jinja2, located in `app/templates/`
 - **Frontend:** Vanilla JS, Chart.js 4.4.4, flatpickr for date pickers
 - **Styling:** `app/static/css/app.css` for every signed-in screen (loaded by `base.html`);
-  `app/static/css/style.css` only for the public pages (landing, pricing, login, legal).
-  Both versioned through `CSS_VERSION` (see Gotchas)
+  `app/static/css/site.css` for the landing page and 404 (same tokens, public composition);
+  `app/static/css/style.css` still serves pricing/login/register/contacts/terms in the old look.
+  All versioned through `CSS_VERSION` (see Gotchas)
 - **Number format:** `app/fmt.py` — `eur` / `num` / `qty` Jinja filters and JS `fmtEur` /
   `fmtNum` / `fmtQty` / `parseNum` / `fmtDate` in `base.html`
 - **Fonts:** Geist (app UI) + DM Sans (paper previews, public pages) from Google Fonts, with system fallbacks
@@ -135,9 +136,35 @@ the app to feel **"alive" and "cool"**, not just minimal-but-empty.
   offers list badges converted offers, and a second conversion asks for confirmation.
   A forged `from_offer` pointing at another user's document is ignored.
 
+### Public site — landing (`landing.html` + `site.css`, 2026-10-21)
+Dealt by design-taste-frontend (direction `split-stage`, seed 1015495166, palette/type kept
+from the app). Idea: a real Latvian invoice stays pinned while the page reads, and fills in.
+- **Live thing:** typing a company searches `/api/registry/search` (public, rate-limited)
+  and sets the supplier; qty/price, VAT (21/12/apgrieztā/bez PVN), template and PDF↔PEPPOL
+  XML controls re-render the pinned invoice. On phones the pin is a 172px strip cropped to
+  the part being changed (taller sticky panels fail the inspector's covered-text check).
+- **The sign-up dialog** carries the chosen company into `/register?display_name=&reg_number=
+  &legal_address=&entity_type=` — `register_page()` accepts these as prefill.
+- **Footage:** `app/static/media/editor{,-phone}.mp4` are real, not-sped-up recordings of
+  the editor ("Bez paātrinājuma" claims it). Regenerate after editor UI changes with
+  `scripts/footage/seed.py` + `scripts/footage/record.py` (fictional SIA "Ziemeļu Apdare").
+- **Sample content** (client "Bērzu Darbnīca", due list, export rows) is fictional; dates are
+  relative to today via the `day(n)` helper so "kavēts 4 d." stays true. Prices come from
+  `TIER_LIMITS`; FAQ items are one Jinja list rendered as text and as FAQPage JSON-LD.
+- `app/static/og-image.png` is a 1200×630 render of the hero; re-render if the hero changes.
+
+### SEO state (2026-10-21)
+- Indexable: `/`, `/pricing`, `/contacts`, `/terms` — listed in `SITEMAP_PAGES` with real
+  lastmod dates (update the date when a page's content changes). `/login`, `/register` are
+  crawlable but `noindex` (robots.txt must not block them, or the noindex is never read).
+- Unknown URLs return a real 404 (`404.html`); guests used to be 303'd to /login (soft 404).
+- `HeadAndSecurityHeaders` middleware: HEAD works on every GET route; nosniff, Referrer-Policy,
+  X-Frame-Options SAMEORIGIN, Permissions-Policy; HSTS only over HTTPS. No CSP yet (inline
+  scripts everywhere — needs nonces first).
+
 ### Still open
-1. **Public pages redesign** — landing / pricing still on `style.css` and the old look.
-   Next up: design-taste-frontend page run + high-end-visual-design, then claude-seo.
+1. **Pricing / login / register / contacts / terms** still on `style.css` (old blue look) —
+   restyle onto `site.css` so the path from the landing page stays in one design.
 2. **List actions on mobile** — swipe for mark-paid/delete
 3. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
    the preview mirrors the server exactly, but a printed line can differ by a cent from
@@ -207,6 +234,7 @@ can't kill the main form logic.
 - **Test before reporting done:** Use `from app.main import app; from fastapi.testclient import TestClient` to smoke-test pages
 - **Login flow for testing:** Fresh DB creates admin with printed password; first login requires `/set-password` then `/setup`
 - **Latvian language only** — all user-facing strings are in Latvian. Don't add English.
+  Reverse charge prints as "nodokļa apgrieztā maksāšana" (PVN likums wording), not "Reverse Charge".
 - **Premium = restraint:** When in doubt, remove decoration. The user explicitly rejected colorful "AI default" looks. Chrome stays achromatic; `--data` blue is for data only.
 - **Mobile-first:** User's primary feedback is mobile UX. Always test mobile viewport (≤768px).
 - **No new deps without asking** — keep the dependency footprint small.

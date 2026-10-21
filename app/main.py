@@ -25,6 +25,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSON
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Match
 from itsdangerous import URLSafeTimedSerializer
 
 logger = logging.getLogger("vrekini")
@@ -575,6 +577,24 @@ def _ensure_offline_user():
     return user
 
 
+def _route_exists(scope):
+    """True when some route matches this path (with any method)."""
+    return any(route.matches(scope)[0] != Match.NONE for route in app.router.routes)
+
+
+def _not_found_page(request):
+    return templates.TemplateResponse("404.html", {"request": request, "current_user": None}, status_code=404)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_page(request: Request, exc: StarletteHTTPException):
+    """Browsers get a Latvian 404 page; API clients keep the JSON error."""
+    wants_html = "text/html" in request.headers.get("accept", "") and not request.url.path.startswith("/api/")
+    if exc.status_code == 404 and wants_html:
+        return _not_found_page(request)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=getattr(exc, "headers", None))
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
@@ -609,6 +629,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             if path.startswith("/api/"):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            # A URL no route answers is a 404 for guests too; sending it to the
+            # login page made every mistyped or spammed link a soft 404.
+            if not _route_exists(request.scope):
+                return _not_found_page(request)
             return RedirectResponse("/login", status_code=303)
 
         if user["must_change_password"] and path != "/set-password" and path != "/logout":
@@ -625,6 +649,47 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AuthMiddleware)
+
+
+class HeadAndSecurityHeaders:
+    """Answer HEAD like GET without a body (FastAPI routes are GET-only, so link
+    checkers and uptime monitors got 405), and add the standard security headers
+    to every response. HSTS is sent only when the request came in over HTTPS."""
+
+    _HEADERS = [
+        (b"x-content-type-options", b"nosniff"),
+        (b"referrer-policy", b"strict-origin-when-cross-origin"),
+        (b"x-frame-options", b"SAMEORIGIN"),
+        (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+    ]
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        is_head = scope["method"] == "HEAD"
+        if is_head:
+            scope = dict(scope, method="GET")
+        req_headers = dict(scope.get("headers") or [])
+        https = scope.get("scheme") == "https" or req_headers.get(b"x-forwarded-proto", b"") == b"https"
+
+        async def wrapped(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                present = {k.lower() for k, _ in headers}
+                extra = self._HEADERS + ([(b"strict-transport-security", b"max-age=31536000")] if https else [])
+                headers += [(k, v) for k, v in extra if k not in present]
+                message = dict(message, headers=headers)
+            elif is_head and message["type"] == "http.response.body":
+                message = dict(message, body=b"")
+            await send(message)
+
+        await self.app(scope, receive, wrapped)
+
+
+app.add_middleware(HeadAndSecurityHeaders)
 
 
 def _calc_next_run(current_date, frequency):
@@ -1375,15 +1440,16 @@ SITE_URL = os.getenv("VREKINI_SITE_URL", "https://v-rekini.lv")
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots_txt():
-    """Allow indexing of public pages, block private/utility routes."""
+    """Allow indexing of public pages, block private/utility routes.
+
+    /login and /register stay crawlable on purpose: they carry noindex, which a
+    crawler can only read if robots.txt lets it fetch the page."""
     return PlainTextResponse(
         "User-agent: *\n"
         "Allow: /$\n"
         "Allow: /pricing\n"
         "Allow: /contacts\n"
         "Allow: /terms\n"
-        "Disallow: /login\n"
-        "Disallow: /register\n"
         "Disallow: /set-password\n"
         "Disallow: /setup\n"
         "Disallow: /account\n"
@@ -1405,26 +1471,22 @@ async def robots_txt():
     )
 
 
+# Public, indexable pages and when their content last really changed. Update the
+# date when a page's content changes; a lastmod that moves on every fetch is ignored.
+SITEMAP_PAGES = [
+    ("/", "2026-10-21"),
+    ("/pricing", "2026-10-21"),
+    ("/contacts", "2026-10-21"),
+    ("/terms", "2026-10-21"),
+]
+
+
 @app.get("/sitemap.xml")
 async def sitemap_xml():
     """Sitemap listing public, indexable pages."""
-    today = datetime.date.today().isoformat()
-    urls = [
-        ("/",         "1.0", "weekly"),
-        ("/pricing",  "0.9", "weekly"),
-        ("/contacts", "0.5", "monthly"),
-        ("/terms",    "0.3", "yearly"),
-    ]
     body = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    for path, prio, freq in urls:
-        body += (
-            "  <url>\n"
-            f"    <loc>{SITE_URL}{path}</loc>\n"
-            f"    <lastmod>{today}</lastmod>\n"
-            f"    <changefreq>{freq}</changefreq>\n"
-            f"    <priority>{prio}</priority>\n"
-            "  </url>\n"
-        )
+    for path, lastmod in SITEMAP_PAGES:
+        body += f"  <url>\n    <loc>{SITE_URL}{path}</loc>\n    <lastmod>{lastmod}</lastmod>\n  </url>\n"
     body += "</urlset>\n"
     return Response(content=body, media_type="application/xml")
 
