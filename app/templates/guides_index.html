@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ceļvedis: rēķini, PVN un e-rēķini Latvijā | V-Rēķini</title>
+    <meta name="description" content="Īsi un praktiski raksti par rēķinu izrakstīšanu Latvijā: rekvizīti, PVN, e-rēķini un rēķini pašnodarbinātajiem.">
+    <link rel="canonical" href="{{ site_url }}/celvedis">
+    <meta name="robots" content="index,follow">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Ceļvedis: rēķini, PVN un e-rēķini Latvijā">
+    <meta property="og:url" content="{{ site_url }}/celvedis">
+    <meta property="og:image" content="{{ site_url }}/static/og-image.png">
+    <meta property="og:locale" content="lv_LV">
+{% include "_site_head.html" %}
+</head>
+<body class="auth">
+{% include "_site_bar.html" %}
+<main class="article-main">
+    <div class="article">
+        <h1>Ceļvedis</h1>
+        <p class="lede">Īsi raksti par to, kā Latvijā izrakstīt pareizu rēķinu.</p>
+        <ul class="guide-list">
+            {% for g in guides %}
+            <li><a href="/celvedis/{{ g.slug }}"><b>{{ g.title }}</b><span>{{ g.lede }}</span></a></li>
+            {% endfor %}
+        </ul>
+    </div>
+</main>
+{% include "_site_footer.html" %}
+</body>
+</html>

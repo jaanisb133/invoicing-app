@@ -10,8 +10,9 @@ genuinely modern UX patterns, not generic "AI dashboard" defaults.
 - **Templates:** Jinja2, located in `app/templates/`
 - **Frontend:** Vanilla JS, Chart.js 4.4.4, flatpickr for date pickers
 - **Styling:** `app/static/css/app.css` for every signed-in screen (loaded by `base.html`);
-  `app/static/css/site.css` for the landing page and 404 (same tokens, public composition);
-  `app/static/css/style.css` still serves pricing/login/register/contacts/terms in the old look.
+  `app/static/css/site.css` for public pages: landing, pricing, login, register, setup,
+  guides, 404 (same tokens, public composition; `auth_base.html` + `_site_*.html` partials);
+  `app/static/css/style.css` now only serves contacts/terms/license in the old look.
   All versioned through `CSS_VERSION` (see Gotchas)
 - **Number format:** `app/fmt.py` — `eur` / `num` / `qty` Jinja filters and JS `fmtEur` /
   `fmtNum` / `fmtQty` / `parseNum` / `fmtDate` in `base.html`
@@ -162,14 +163,44 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   X-Frame-Options SAMEORIGIN, Permissions-Policy; HSTS only over HTTPS. No CSP yet (inline
   scripts everywhere — needs nonces first).
 
+### Plans, trial and paywalls (2026-10-21)
+- `TIER_LIMITS` is the single source: free = 5 invoices/month, 25 clients, unlimited products,
+  5 e-mails, all templates; Mini 50/50; nothing caps products. Pricing pages, the landing
+  page and gates render from it (`plans` Jinja global). `LIFETIME_CAP` = 10.
+- **Trial:** every new account gets 14 days of Pamata (`trial_until` user setting on the
+  account). `_apply_trial()` in `_with_account` sets `user["tier"]` (effective, what gates
+  read) and keeps `user["plan_tier"]` (what was paid for; billing/pricing screens compare
+  this). Free accounts without a trial can start it once (`POST /trial/start`, offered on
+  gates the trial would unlock). Renewal reads raw rows, so trials are never charged.
+- Free-plan PDFs and previews print "Sagatavots ar V-Rēķini · v-rekini.lv" (`_plan_footer`).
+- The monthly invoice limit is shown on `/documents/new` before the editor (`doc_limit.html`);
+  free users can send e-mail (`_email_enabled`). `_plan_note.html` warns at ≤ 2 invoices left
+  and in a trial's last 5 days.
+
+### Sign-up and first run (2026-10-21)
+- Register: company via registry search (or name for a person), e-mail, one password with
+  show/hide. Picked plan (`?plan=mini|starter|business|lifetime`) carries through setup to
+  checkout. Setup is one screen; payment term defaults to 14 days.
+- Dashboard "Pirmie soļi" (`_first_steps.html`, `get_onboarding_state`) until done or hidden.
+- Guided tours: page sets `window.VR_TOUR` in `{% block tour %}`; engine in `base.html`;
+  seen keys per person in user setting `tours_seen` (`POST /api/tour-seen`). Tours:
+  `dashboard`, `editor`. Help page `/palidziba` (`help.html`).
+
+### Guides (`/celvedis`, drafts 2026-10-21)
+- `app/guides.py` (`GUIDES` list) + body files `app/templates/guides/<slug>.html`, rendered by
+  `guide.html`. `published: False` → reachable by URL, `noindex`, not in sitemap/index.
+  Publishing = set True and bump `updated`; sitemap and `/celvedis` pick it up.
+- `/static/guides/rekina-paraugs.pdf` is a real app PDF of the article's sample invoice.
+
 ### Still open
-1. **Pricing / login / register / contacts / terms** still on `style.css` (old blue look) —
-   restyle onto `site.css` so the path from the landing page stays in one design.
-2. **List actions on mobile** — swipe for mark-paid/delete
-3. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
+1. **Password reset** — there is none; "Aizmirsāt paroli?" points to contacts. Needs an
+   e-mailed one-time link (Brevo/SMTP already wired for invoices).
+2. **Contacts / terms / license** still on `style.css`.
+3. **List actions on mobile** — swipe for mark-paid/delete
+4. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
    the preview mirrors the server exactly, but a printed line can differ by a cent from
    its rounded parts. Pre-existing accounting behaviour; change only deliberately
-4. **Self-host the footer payment logos** — `_public_footer.html` hotlinks all Visa /
+5. **Self-host the footer payment logos** — `_public_footer.html` hotlinks all Visa /
    Mastercard / Google Pay / Apple Pay / EveryPay / bank logos from
    `vnmedia.lv/wp-content/uploads/2026/03/...`. A WordPress media reshuffle silently
    breaks the card logos SEB compliance requires, on every public page.

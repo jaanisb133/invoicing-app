@@ -1,0 +1,25 @@
+{% extends "auth_base.html" %}
+{% block title %}Jauna parole | V-Rēķini{% endblock %}
+{% block bar_link %}<a href="/login">Ienākt</a>{% endblock %}
+{% block content %}
+<h1>Jauna parole</h1>
+{% if valid %}
+<p class="sub">Izvēlieties jaunu paroli savam kontam.</p>
+{% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/reset">
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="f">
+        <label for="rPass">Jaunā parole</label>
+        <div class="f-pass">
+            <input type="password" id="rPass" name="new_password" class="input" minlength="6" required autofocus autocomplete="new-password">
+            <button type="button" data-reveal="rPass" aria-pressed="false" aria-label="Rādīt paroli">Rādīt</button>
+        </div>
+        <div class="hint">Vismaz 6 simboli.</div>
+    </div>
+    <button type="submit" class="btn btn-wide">Saglabāt paroli</button>
+</form>
+{% else %}
+<p class="sub">Saite vairs nav derīga: tā ir izmantota vai pagājusi vairāk nekā stunda.</p>
+<a href="/forgot" class="btn btn-wide">Saņemt jaunu saiti</a>
+{% endif %}
+{% endblock %}

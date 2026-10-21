@@ -575,3 +575,52 @@ details.more[open] > summary { margin-bottom: 14px; }
 }
 .pricing-main { width: min(1240px, 100%); margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 0; flex: 1; }
 .pricing-main .foot-line { padding-top: 80px; }
+
+/* ------------------------------------------------------------ public bar + guides */
+.site-nav { display: flex; align-items: center; gap: 20px; font-size: 15px; }
+.site-nav a { color: var(--muted); text-decoration: none; }
+.site-nav a:hover { color: var(--text); }
+.site-nav .site-nav-cta { min-height: 40px; padding: 0 16px; font-size: 15px; color: var(--on-primary); }
+@media (max-width: 520px) { .site-nav a:not(.site-nav-cta) { display: none; } }
+
+.article-main { width: 100%; padding: 16px 16px 0; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 40px; }
+.draft-note { width: min(720px, 100%); margin: 0; padding: 10px 14px; border-radius: var(--r); background: var(--pill-neg-bg); color: var(--pill-neg-ink); font-size: var(--s1); }
+.article { width: min(720px, 100%); }
+.crumbs { font-size: var(--s1); color: var(--muted); margin-bottom: 20px; }
+.crumbs a { color: var(--muted); }
+.article h1 { font-size: clamp(32px, 4.4vw, 52px); max-width: 18ch; margin-bottom: 16px; }
+.article .lede { font-size: clamp(18px, 1.6vw, 21px); line-height: 1.5; color: var(--muted); max-width: 52ch; margin-bottom: 14px; }
+.article-meta { font-size: var(--s1); color: var(--faint); margin-bottom: 40px; }
+.article-meta a { color: var(--text); }
+.article-body { font-size: 18px; line-height: 1.65; }
+.article-body h2 { font-size: clamp(24px, 2.4vw, 30px); letter-spacing: -0.02em; line-height: 1.15; margin: 48px 0 14px; }
+.article-body h3 { font-size: 20px; letter-spacing: -0.01em; line-height: 1.25; margin: 32px 0 10px; }
+.article-body p { margin: 0 0 18px; }
+.article-body ul, .article-body ol { margin: 0 0 18px; padding-left: 22px; }
+.article-body li { margin-bottom: 8px; }
+.article-body a { color: var(--text); text-underline-offset: 3px; }
+.article-body strong { font-weight: 600; }
+.article-body blockquote { margin: 0 0 18px; padding: 14px 18px; background: var(--surface); border-radius: var(--r); color: var(--text); }
+.article-body table { width: 100%; border-collapse: collapse; margin: 8px 0 24px; font-size: 15px; background: var(--surface); border-radius: var(--r); overflow: hidden; }
+.article-body th { text-align: left; font-weight: 500; color: var(--muted); padding: 10px 12px; background: var(--ground-2); }
+.article-body td { padding: 10px 12px; border-top: 1px solid var(--rule); vertical-align: top; }
+.article-body td.num, .article-body th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.article-sources { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--rule); }
+.article-sources h2 { font-size: 16px; margin-bottom: 10px; }
+.article-sources ul { margin: 0; padding-left: 18px; font-size: var(--s1); color: var(--muted); }
+.article-sources li { margin-bottom: 6px; }
+.article-sources a { color: var(--muted); word-break: break-word; }
+.article-cta { width: min(720px, 100%); background: var(--ink-field); color: var(--on-ink); border-radius: var(--r); padding: 28px; }
+.article-cta h2 { font-size: clamp(22px, 2.2vw, 28px); margin-bottom: 10px; }
+.article-cta p { color: var(--on-ink-muted); margin-bottom: 20px; max-width: 52ch; }
+.article-cta .btn { background: var(--ink-btn); color: var(--ink-btn-ink); }
+.article-related { width: min(720px, 100%); }
+.article-related h2 { font-size: 18px; margin-bottom: 10px; }
+.article-related ul, .guide-list { list-style: none; margin: 0; padding: 0; }
+.article-related li a { display: block; padding: 12px 0; border-top: 1px solid var(--rule); color: var(--text); text-decoration: none; }
+.article-related li a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.guide-list li a { display: flex; flex-direction: column; gap: 4px; padding: 18px 0; border-top: 1px solid var(--rule); color: var(--text); text-decoration: none; }
+.guide-list li a b { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.guide-list li a span { color: var(--muted); }
+.guide-list li a:hover b { text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 640px) { .article-body { font-size: 17px; } .article-body table { font-size: 14px; } .article-body th, .article-body td { padding: 8px; } }

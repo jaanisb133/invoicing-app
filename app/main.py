@@ -9,6 +9,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env
 import json
 import re
 import secrets
+import urllib.parse
 import datetime
 import asyncio
 import logging
@@ -622,7 +623,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms", "/license",
+        if (path.startswith("/static") or path.startswith("/celvedis") or path in ("/login", "/register", "/forgot", "/reset", "/pricing", "/contacts", "/terms", "/license",
                                                     "/robots.txt", "/sitemap.xml")
                 or path == "/everypay/callback" or path == "/api/registry/search"):
             return await call_next(request)
@@ -1278,6 +1279,73 @@ async def register(request: Request,
     return _set_session_cookie(response, user_id)
 
 
+# ---------- Password reset ----------
+# A signed link valid for an hour. It carries the tail of the current password
+# hash, so it stops working as soon as the password changes (used once).
+RESET_MAX_AGE = 3600
+
+
+def _reset_token(user):
+    return _get_serializer().dumps({"u": user["id"], "h": user["password_hash"][-16:]}, salt="pw-reset")
+
+
+def _reset_user(token):
+    try:
+        data = _get_serializer().loads(token, salt="pw-reset", max_age=RESET_MAX_AGE)
+    except Exception:
+        return None
+    user = db.get_user(int(data.get("u", 0)))
+    if not user or user["password_hash"][-16:] != data.get("h"):
+        return None
+    return user
+
+
+@app.get("/forgot", response_class=HTMLResponse)
+async def forgot_page(request: Request):
+    return templates.TemplateResponse("forgot.html", {"request": request, "sent": False, "email": ""})
+
+
+@app.post("/forgot", response_class=HTMLResponse)
+async def forgot_send(request: Request, email: str = Form("")):
+    ip = _get_client_ip(request)
+    email = email.strip().lower()
+    if _rate_limiter.is_allowed(f"forgot:{ip}", 5, 3600) and email:
+        user = db.get_user_by_email(email)
+        if user and (SMTP_PASS or BREVO_API_KEY):
+            link = f"{SITE_URL}/reset?token={_reset_token(user)}"
+            try:
+                _send_email(
+                    to_email=user["email"],
+                    subject="Paroles maiņa — V-Rēķini",
+                    body=("Labdien!\n\nLai iestatītu jaunu V-Rēķini paroli, atveriet šo saiti "
+                          f"(derīga vienu stundu):\n\n{link}\n\n"
+                          "Ja paroli nemainījāt Jūs, šo e-pastu var droši ignorēt.\n\nV-Rēķini\n"),
+                    sender_name="V-Rēķini",
+                )
+            except Exception:
+                logger.exception("Password reset e-mail failed")
+    # Same answer whether or not the address has an account
+    return templates.TemplateResponse("forgot.html", {"request": request, "sent": True, "email": email})
+
+
+@app.get("/reset", response_class=HTMLResponse)
+async def reset_page(request: Request, token: str = ""):
+    user = _reset_user(token)
+    return templates.TemplateResponse("reset.html", {"request": request, "token": token, "valid": bool(user), "error": ""})
+
+
+@app.post("/reset", response_class=HTMLResponse)
+async def reset_save(request: Request, token: str = Form(""), new_password: str = Form("")):
+    user = _reset_user(token)
+    if not user:
+        return templates.TemplateResponse("reset.html", {"request": request, "token": token, "valid": False, "error": ""})
+    if len(new_password) < 6:
+        return templates.TemplateResponse("reset.html", {"request": request, "token": token, "valid": True,
+                                                         "error": "Parolei jābūt vismaz 6 simbolus garai."})
+    db.update_user_password(user["id"], new_password)
+    return RedirectResponse("/login?message=" + urllib.parse.quote("Parole nomainīta. Ienāciet ar jauno paroli."), status_code=303)
+
+
 @app.get("/set-password", response_class=HTMLResponse)
 async def set_password_page(request: Request, error: str = ""):
     user = _get_current_user(request)
@@ -1567,14 +1635,55 @@ SITEMAP_PAGES = [
 ]
 
 
+def _guides(published_only=False):
+    """Guides from app/guides.py; drafts are left out where published_only."""
+    try:
+        from app import guides as guides_mod
+        items = list(guides_mod.GUIDES)
+    except ImportError:
+        items = []
+    return [g for g in items if g.get("published")] if published_only else items
+
+
 @app.get("/sitemap.xml")
 async def sitemap_xml():
     """Sitemap listing public, indexable pages."""
     body = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    for path, lastmod in SITEMAP_PAGES:
+    pages = list(SITEMAP_PAGES)
+    published = _guides(published_only=True)
+    if published:
+        pages.append(("/celvedis", max(g["updated"] for g in published)))
+        pages += [(f"/celvedis/{g['slug']}", g["updated"]) for g in published]
+    for path, lastmod in pages:
         body += f"  <url>\n    <loc>{SITE_URL}{path}</loc>\n    <lastmod>{lastmod}</lastmod>\n  </url>\n"
     body += "</urlset>\n"
     return Response(content=body, media_type="application/xml")
+
+
+@app.get("/celvedis", response_class=HTMLResponse)
+async def guides_index(request: Request):
+    published = _guides(published_only=True)
+    if not published:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse("guides_index.html", {
+        "request": request, "current_user": None, "page": "guides",
+        "guides": published, "site_url": SITE_URL,
+    })
+
+
+@app.get("/celvedis/{slug}", response_class=HTMLResponse)
+async def guide_page(request: Request, slug: str):
+    guides = _guides()
+    guide = next((g for g in guides if g["slug"] == slug), None)
+    if not guide or not re.fullmatch(r"[a-z0-9-]+", slug):
+        raise HTTPException(status_code=404)
+    related = [g for g in guides if g["published"] and g["slug"] != slug][:3]
+    sample_pdf = f"/static/guides/{slug}.pdf" if os.path.exists(
+        os.path.join(BASE_DIR, "static", "guides", f"{slug}.pdf")) else None
+    return templates.TemplateResponse("guide.html", {
+        "request": request, "current_user": None, "page": "guides",
+        "guide": guide, "related": related, "sample_pdf": sample_pdf, "site_url": SITE_URL,
+    })
 
 
 @app.get("/contacts", response_class=HTMLResponse)
