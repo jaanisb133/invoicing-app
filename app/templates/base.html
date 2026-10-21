@@ -59,6 +59,28 @@
             var s = fmtNum(n, 2);
             return s.indexOf(',') >= 0 ? s.replace(/0+$/, '').replace(/,$/, '') : s;
         };
+        // A unit price: two decimals, more only when it has them (fmt.price)
+        window.fmtPrice = function (n) {
+            var frac = Math.abs(Number(n) || 0).toFixed(6).split('.')[1].replace(/0+$/, '');
+            return fmtNum(n, Math.max(2, frac.length));
+        };
+        // Money exactly as app/money.py does it: each line to the cent, VAT once
+        // on the sum of rounded lines, half-up on the decimal value (1,005 → 1,01,
+        // which toFixed gets wrong). The server recomputes on save; this keeps
+        // the editor's figures identical to what will be stored.
+        function round2(x) {
+            var n = Number(Number(x || 0).toPrecision(15));
+            var c = Number((Math.abs(n) * 100).toPrecision(15));
+            return (n < 0 ? -1 : 1) * Math.round(c) / 100;
+        }
+        window.vrRound2 = round2;
+        window.vrLine = function (qty, price) { return round2(Number(qty || 0) * Number(price || 0)); };
+        window.vrTotals = function (lines, rate) {
+            var sub = 0;
+            lines.forEach(function (l) { sub = round2(sub + l); });
+            var vat = round2(sub * Number(rate || 0) / 100);
+            return { subtotal: sub, vat: vat, total: round2(sub + vat) };
+        };
         // Reads "1 234,50", "1234.50" or "8,5"
         window.parseNum = function (raw) {
             var s = String(raw == null ? '' : raw).replace(/[\s €]/g, '');

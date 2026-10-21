@@ -24,6 +24,17 @@ def num(value, decimals=2):
     return ("-" if neg else "") + out
 
 
+def price(value):
+    """A unit price: two decimals, more only when the price has them.
+    8.5 -> '8,50'; 0.0145 -> '0,0145' (not '0,01', which made 1 000 × 0,01 = 14,50)."""
+    try:
+        v = float(value or 0)
+    except (TypeError, ValueError):
+        v = 0.0
+    frac = f"{abs(v):.6f}".split(".")[1].rstrip("0")
+    return num(v, max(2, len(frac)))
+
+
 def eur(value):
     """1955.84 -> '1 955,84 €'."""
     return num(value) + NBSP + "€"

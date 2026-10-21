@@ -41,11 +41,11 @@ if not logger.handlers:
     logger.propagate = False
 
 from app import database as db
-from app import fmt
+from app import fmt, money
 from app import registry
-from app.pdf_generator import generate_invoice_pdf, TEMPLATES
+from app.pdf_generator import generate_invoice_pdf, TEMPLATES, document_amounts, ref_line
 from app import pdf_branded
-from app.einvoice import generate_einvoice_xml, generate_einvoice_file
+from app.einvoice import generate_einvoice_xml, generate_einvoice_file, problems as einvoice_problems_for
 from app import payment_logos
 
 app = FastAPI(title="V-Rēķini")
@@ -59,7 +59,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "56"
+CSS_VERSION = "57"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -100,6 +100,7 @@ def _usage_pct(current, maximum):
 
 
 templates.env.globals["usage_pct"] = _usage_pct
+templates.env.globals["doc_locked"] = db.is_locked
 templates.env.filters["limit_text"] = lambda v: "∞" if v is None else v
 
 # Footer payment logos. Resolved once — files land during deploy and the app
@@ -789,12 +790,7 @@ def _build_email_defaults(doc, settings):
     and the send route — so the user's saved template is the source of truth.
     """
     company_name = settings.get("company_name", "") or ""
-    if doc.get("doc_type") == "buy":
-        doc_type_name = settings.get("buy_doc_name", "Rēķins")
-    elif doc.get("doc_type") == "offer":
-        doc_type_name = settings.get("offer_doc_name", "Piedāvājums")
-    else:
-        doc_type_name = settings.get("sell_doc_name", "Rēķins")
+    doc_type_name = _doc_type_name(doc.get("doc_type"), settings)
     raw_date = doc.get("doc_date", "") or ""
     if raw_date and "-" in raw_date:
         dp = raw_date.split("-")
@@ -1887,9 +1883,11 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
         admin_settings = db.get_all_user_settings(admin_id)
         vat_rate = float(admin_settings.get("default_vat_rate", "21"))
         # Prices include VAT. A two-decimal net can't always reach them (1,64 € + 21 %
-        # is 1,98 €, 1,65 € is 2,00 €, never 1,99 €), so the net keeps four decimals
-        # and the invoice total is exactly what the card was charged.
-        net_price = round(amount / (1 + vat_rate / 100), 4)
+        # is 1,98 €, 1,65 € is 2,00 €, never 1,99 €), and an e-invoice line can only
+        # carry cents, so the missing cent goes on a rounding line: the invoice
+        # total is exactly what the card was charged.
+        net, rounding = money.net_for_gross(amount, vat_rate)
+        net_price = float(net)
 
         notes = (
             f"Maksājuma ref.: {payment_reference}\n"
@@ -1906,7 +1904,7 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
 
         doc_id, doc_number = db.create_document(
             admin_id, "sell", client_id, today, items,
-            vat_rate=vat_rate, notes=notes,
+            vat_rate=vat_rate, notes=notes, rounding=float(rounding),
         )
 
         try:
@@ -2954,11 +2952,36 @@ async def offers_page(request: Request, client_id: str = "",
     return templates.TemplateResponse("offers.html", ctx)
 
 
+def _followup_source(uid, doc_id):
+    """The sales invoice a credit note or corrective invoice is about to change,
+    or None if it isn't this account's or has already been cancelled/replaced."""
+    if not doc_id:
+        return None
+    doc, items = db.get_document(doc_id)
+    if (not doc or doc.get("user_id") != uid or doc.get("doc_type") != "sell"
+            or doc.get("status") in ("cancelled", "replaced") or doc.get("deleted_at")):
+        return None
+    return doc, items
+
+
 @app.get("/documents/new", response_class=HTMLResponse)
-async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0, client_id: int = 0):
+async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0, client_id: int = 0,
+                            corrects: int = 0, credits: int = 0):
     ctx = _base_context(request)
     user = request.state.user
     uid = user["account_id"]
+
+    # A corrective invoice or credit note starts as a copy of the invoice it
+    # changes; the user edits what differs (E-INVOICING.md §5)
+    ref_doc = None
+    if corrects or credits:
+        src = _followup_source(uid, corrects or credits)
+        if not src:
+            return RedirectResponse(
+                f"/documents/{corrects or credits}?error=" + quote("Šo rēķinu vairs nevar koriģēt vai kreditēt."),
+                status_code=303)
+        ref_doc, ref_items = src
+        doc_type = "credit" if credits else "sell"
 
     # Converting an accepted offer into an invoice: load the offer and hand its
     # client, items and notes to the form as starting values. Nothing is saved
@@ -2971,8 +2994,14 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         prefill_doc, prefill_items = offer, offer_items
         doc_type = "sell"
 
-    # Out of this month's invoices: say so before the form, not after it was filled in
-    if doc_type != "offer":
+    if ref_doc:
+        # Credit notes keep their own notes; a correction carries the original's
+        prefill_doc = dict(ref_doc, notes="" if doc_type == "credit" else ref_doc.get("notes"))
+        prefill_items = ref_items
+
+    # Out of this month's invoices: say so before the form, not after it was
+    # filled in. Correcting or cancelling an invoice is never blocked by the limit.
+    if doc_type != "offer" and not ref_doc:
         allowed, used, maximum = _check_tier_limit(user, "documents")
         if not allowed:
             today = datetime.date.today()
@@ -2990,12 +3019,13 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         return RedirectResponse("/documents/new?doc_type=sell", status_code=302)
     stock_data = db.get_stock(uid) if stock_on else []
     stock_map = {s["id"]: s["stock"] for s in stock_data}
-    if doc_type == "buy":
-        doc_type_name = settings.get("buy_doc_name", "Rēķins")
-    elif doc_type == "offer":
-        doc_type_name = settings.get("offer_doc_name", "Piedāvājums")
-    else:
-        doc_type_name = settings.get("sell_doc_name", "Rēķins")
+    if ref_doc and doc_type == "sell" and stock_on:
+        # The invoice being replaced gives its goods back
+        conn = db.get_connection()
+        for pid, q in db.replaced_quantities(conn, ref_doc["id"]).items():
+            stock_map[pid] = stock_map.get(pid, 0) + q
+        conn.close()
+    doc_type_name = _doc_type_name(doc_type, settings)
     ctx.update({
         "clients": clients,
         "products": products,
@@ -3012,15 +3042,26 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         "doc": prefill_doc,
         "edit_items": prefill_items,
         "prefill": prefill_doc is not None,
-        "from_offer": prefill_doc["id"] if prefill_doc else 0,
-        "from_offer_number": prefill_doc["doc_number"] if prefill_doc else "",
+        "from_offer": prefill_doc["id"] if prefill_doc and not ref_doc else 0,
+        "from_offer_number": prefill_doc["doc_number"] if prefill_doc and not ref_doc else "",
         "offer_presets": (db.get_offer_presets(uid)
                           if doc_type == "offer" and _branded_offers_enabled(uid) else []),
         "offer_meta": None,
         # "Izrakstīt rēķinu" from the clients list starts the form on that client.
         "preselect_client_id": client_id if any(c["id"] == client_id for c in clients) else 0,
+        "ref_doc": ref_doc,
     })
     return templates.TemplateResponse("document_form.html", ctx)
+
+
+def _doc_type_name(doc_type, settings):
+    if doc_type == "buy":
+        return settings.get("buy_doc_name", "Rēķins")
+    if doc_type == "offer":
+        return settings.get("offer_doc_name", "Piedāvājums")
+    if doc_type == "credit":
+        return "Kredītrēķins"
+    return settings.get("sell_doc_name", "Rēķins")
 
 
 _ITEM_KEY = re.compile(r"^items\[(\d+)\]\[quantity\]$")
@@ -3061,9 +3102,26 @@ async def create_document(request: Request):
 
     form = await request.form()
     doc_type = form.get("doc_type", "sell")
+    if doc_type not in ("sell", "buy", "offer", "credit"):
+        doc_type = "sell"
 
-    # Tier limit applies to invoices only — offers are unlimited
-    if doc_type != "offer":
+    # A credit note or corrective invoice names the invoice it changes; the id
+    # arrives from a form field, so it must be this account's live invoice.
+    ref_raw = (form.get("ref_doc_id") or "").strip()
+    ref_doc = None
+    if ref_raw.isdigit() and doc_type in ("sell", "credit"):
+        src = _followup_source(user["account_id"], int(ref_raw))
+        if not src:
+            return RedirectResponse(f"/documents/{ref_raw}?error=" + quote("Šo rēķinu vairs nevar koriģēt vai kreditēt."),
+                                    status_code=303)
+        ref_doc = src[0]
+    if doc_type == "credit" and not ref_doc:
+        return RedirectResponse("/documents?error=" + quote("Kredītrēķinu izraksta no rēķina, ko tas kreditē."),
+                                status_code=303)
+
+    # Tier limit applies to invoices only — offers are unlimited, and correcting
+    # or cancelling an invoice is never blocked
+    if doc_type != "offer" and not ref_doc:
         allowed, current, maximum = _check_tier_limit(user, "documents")
         if not allowed:
             return RedirectResponse(f"/documents/new?doc_type={doc_type}", status_code=303)
@@ -3073,18 +3131,19 @@ async def create_document(request: Request):
         return RedirectResponse("/documents?error=Iegādes dokumenti nav pieejami bez noliktavas pārvaldības.", status_code=303)
     client_id = int(form.get("client_id", 0))
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
-    payment_due_date = form.get("payment_due_date", "")
-    vat_rate = float(form.get("vat_rate", 21.0))
-    reverse_charge = form.get("reverse_charge", "0") == "1"
-    if reverse_charge:
-        vat_rate = 0.0
+    payment_due_date = form.get("payment_due_date", "") if doc_type != "credit" else ""
+    vat_rate, reverse_charge = _form_vat(form, user)
     notes = form.get("notes", "")
     template = _resolve_template(user, form.get("template", ""))
+    if ref_doc:
+        client_id = ref_doc["client_id"]  # same buyer as the invoice it changes
 
     items = _parse_doc_items(form)
 
     if not items:
-        return RedirectResponse(f"/documents/new?doc_type={doc_type}&error=no_items", status_code=303)
+        back = (f"/documents/new?{'credits' if doc_type == 'credit' else 'corrects'}={ref_doc['id']}"
+                if ref_doc else f"/documents/new?doc_type={doc_type}")
+        return RedirectResponse(f"{back}&error=no_items", status_code=303)
 
     # Link back to the offer this invoice was built from, but only if that
     # offer really belongs to the user — the id arrives from a form field.
@@ -3106,10 +3165,14 @@ async def create_document(request: Request):
             converted_from_offer_id=converted_from,
             created_by_user_id=user["id"],
             offer_meta=offer_meta,
+            ref_doc_id=ref_doc["id"] if ref_doc else None,
         )
     except ValueError as e:
         logger.warning("Document creation error: %s", e)
         return RedirectResponse(f"/documents/new?doc_type={doc_type}&error={quote(str(e))}", status_code=303)
+
+    if ref_doc:
+        db.refresh_original_status(user["account_id"], ref_doc["id"])
 
     try:
         _generate_doc_pdf(doc_id, template)
@@ -3141,18 +3204,15 @@ async def edit_document_page(request: Request, doc_id: int):
     doc, items = db.get_document(doc_id)
     if not doc or doc.get("user_id") != uid:
         raise HTTPException(status_code=404, detail="Dokuments nav atrasts")
+    if db.is_locked(doc):
+        return RedirectResponse(f"/documents/{doc_id}?error={quote(db.SENT_LOCK_MESSAGE)}", status_code=303)
     clients = _with_document_client(db.get_all_clients(uid), uid, doc)
     products = db.get_all_products(uid)
     settings = _user_settings(uid)
     stock_on = _stock_enabled(uid)
     stock_data = db.get_stock(uid) if stock_on else []
     stock_map = {s["id"]: s["stock"] for s in stock_data}
-    if doc["doc_type"] == "buy":
-        doc_type_name = settings.get("buy_doc_name", "Rēķins")
-    elif doc["doc_type"] == "offer":
-        doc_type_name = settings.get("offer_doc_name", "Piedāvājums")
-    else:
-        doc_type_name = settings.get("sell_doc_name", "Rēķins")
+    doc_type_name = _doc_type_name(doc["doc_type"], settings)
     ctx.update({
         "clients": clients,
         "products": products,
@@ -3173,24 +3233,40 @@ async def edit_document_page(request: Request, doc_id: int):
         "offer_presets": (db.get_offer_presets(uid)
                           if doc["doc_type"] == "offer" and _branded_offers_enabled(uid) else []),
         "offer_meta": _decode_offer_meta(doc),
+        "ref_doc": db.get_document(doc["ref_doc_id"])[0] if doc.get("ref_doc_id") else None,
     })
     return templates.TemplateResponse("document_form.html", ctx)
+
+
+def _form_vat(form, user):
+    """(vat_rate, reverse_charge) from the form. A business that isn't a VAT
+    payer charges no VAT, whatever the form says."""
+    if _user_settings(user["account_id"]).get("is_vat_payer", "1") != "1":
+        return 0.0, False
+    reverse = form.get("reverse_charge", "0") == "1"
+    try:
+        rate = float(form.get("vat_rate", 21.0))
+    except (TypeError, ValueError):
+        rate = 21.0
+    return (0.0 if reverse else rate), reverse
 
 
 @app.post("/documents/{doc_id}/update")
 async def update_document(request: Request, doc_id: int):
     user = request.state.user
     form = await request.form()
-    doc_type = form.get("doc_type", "sell")
+    current, _ = db.get_document(doc_id)
+    if not current or current.get("user_id") != user["account_id"]:
+        raise HTTPException(status_code=404)
+    doc_type = current["doc_type"]
     client_id = int(form.get("client_id", 0))
+    if current.get("ref_doc_id"):
+        client_id = current["client_id"]  # stays with the invoice it changes
     doc_date = form.get("doc_date", datetime.date.today().isoformat())
-    vat_rate = float(form.get("vat_rate", 21.0))
-    reverse_charge = form.get("reverse_charge", "0") == "1"
-    if reverse_charge:
-        vat_rate = 0.0
+    vat_rate, reverse_charge = _form_vat(form, user)
     notes = form.get("notes", "")
     template = _resolve_template(user, form.get("template", ""))
-    payment_due_date = form.get("payment_due_date", "")
+    payment_due_date = form.get("payment_due_date", "") if doc_type != "credit" else ""
 
     items = _parse_doc_items(form)
 
@@ -3207,8 +3283,11 @@ async def update_document(request: Request, doc_id: int):
                            offer_meta=offer_meta)
     except ValueError as e:
         logger.warning("Document update error: %s", e)
+        if str(e) == db.SENT_LOCK_MESSAGE:
+            return RedirectResponse(f"/documents/{doc_id}?error={quote(str(e))}", status_code=303)
         return RedirectResponse(f"/documents/{doc_id}/edit?error={quote(str(e))}", status_code=303)
 
+    db.refresh_original_status(user["account_id"], current.get("ref_doc_id"))
     try:
         _generate_doc_pdf(doc_id, template)
     except Exception as e:
@@ -3227,9 +3306,21 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
     client = db.get_client(doc["client_id"])
     settings = _user_settings(user["account_id"])
 
-    subtotal = sum(item["quantity"] * item["price_per_unit"] for item in items)
-    vat_amount = subtotal * (doc["vat_rate"] / 100)
-    total = subtotal + vat_amount
+    amounts = document_amounts(doc, items)  # stored totals; sets each item's line_amount
+    subtotal, vat_amount, total = amounts["subtotal"], amounts["vat"], amounts["total"]
+
+    uid = user["account_id"]
+    original = None
+    if doc.get("ref_doc_id"):
+        o, _ = db.get_document(doc["ref_doc_id"])
+        original = o if o and o.get("user_id") == uid else None
+    followups = db.get_document_followups(uid, doc_id) if doc["doc_type"] == "sell" else []
+    einvoice_problems = []
+    if doc["doc_type"] in ("sell", "credit"):
+        try:
+            einvoice_problems = einvoice_problems_for(doc_id)
+        except Exception:
+            logger.exception("e-invoice check failed for doc %s", doc_id)
 
     template = _resolve_template(user, template)
 
@@ -3246,7 +3337,14 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "today": datetime.date.today().isoformat(),
         "subtotal": subtotal,
         "vat_amount": vat_amount,
+        "rounding": amounts["rounding"],
         "total": total,
+        "locked": db.is_locked(doc),
+        "original": original,
+        "followups": followups,
+        "credited": sum(f["total"] or 0 for f in followups if f["doc_type"] == "credit"),
+        "einvoice_problems": einvoice_problems,
+        "ref_line": ref_line(doc, original) if original else "",
         "templates": TEMPLATES,
         "selected_template": template,
         "has_logo": _get_logo_path(user["account_id"]) is not None,
@@ -3426,10 +3524,72 @@ async def delete_document(request: Request, doc_id: int):
     # offers list rather than dumping them in Dokumenti, where it never was.
     doc, _ = db.get_document(doc_id)
     is_offer = bool(doc) and doc.get("user_id") == user["account_id"] and doc.get("doc_type") == "offer"
-    db.delete_document(user["account_id"], doc_id)
-    if "application/json" in request.headers.get("accept", ""):
+    wants_json = "application/json" in request.headers.get("accept", "")
+    try:
+        db.delete_document(user["account_id"], doc_id)
+    except ValueError as e:
+        # Sent: it stays, and is cancelled or corrected by a new document instead
+        if wants_json:
+            return JSONResponse({"error": str(e)}, status_code=409)
+        return RedirectResponse(f"/documents/{doc_id}?error={quote(str(e))}", status_code=303)
+    if doc and doc.get("user_id") == user["account_id"]:
+        db.refresh_original_status(user["account_id"], doc.get("ref_doc_id"))
+    if wants_json:
         return JSONResponse({"ok": True})  # a swipe on a phone list, which offers undo
     return RedirectResponse("/offers" if is_offer else "/documents", status_code=303)
+
+
+@app.post("/documents/{doc_id}/mark-sent")
+async def mark_document_sent(request: Request, doc_id: int):
+    """"Nosūtīju pats": the user handed the PDF or XML over outside the app.
+    From now on the invoice is changed only by a credit note or a correction."""
+    user = request.state.user
+    doc, _ = db.get_document(doc_id)
+    if not doc or doc.get("user_id") != user["account_id"]:
+        raise HTTPException(status_code=404)
+    db.mark_document_sent(user["account_id"], doc_id)
+    return RedirectResponse(f"/documents/{doc_id}?marked=1", status_code=303)
+
+
+@app.post("/documents/{doc_id}/cancel")
+async def cancel_document(request: Request, doc_id: int):
+    """Anulēt: a credit note for the whole invoice, dated today, pointing back at
+    it. The invoice itself stays as it was issued (an e-invoice can't be
+    deleted) and is marked cancelled."""
+    user = request.state.user
+    uid = user["account_id"]
+    src = _followup_source(uid, doc_id)
+    if not src:
+        return RedirectResponse(f"/documents/{doc_id}?error=" + quote("Šo rēķinu vairs nevar anulēt."), status_code=303)
+    original, items = src
+    if db.credited_total(uid, doc_id):
+        return RedirectResponse(
+            f"/documents/{doc_id}?error=" + quote("Rēķinam jau ir kredītrēķins. Atlikušo summu kreditējiet ar jaunu kredītrēķinu."),
+            status_code=303)
+    form = await request.form()
+    reason = (form.get("reason") or "").strip() or "Darījums atcelts"
+    lines = [{
+        "product_id": i.get("product_id"),
+        "description": i.get("product_name") or i.get("description") or "",
+        "quantity": i["quantity"],
+        "unit": i.get("unit") or "gab",
+        "price_per_unit": i["price_per_unit"],
+        "included_in_price": bool(i.get("included_in_price")),
+    } for i in items]
+    credit_id, number = db.create_document(
+        uid, "credit", original["client_id"], datetime.date.today().isoformat(), lines,
+        vat_rate=original["vat_rate"], notes=f"Pamatojums: {reason}",
+        reverse_charge=bool(original.get("reverse_charge")),
+        created_by_user_id=user["id"], ref_doc_id=doc_id,
+        rounding=original.get("rounding") or 0,
+    )
+    db.refresh_original_status(uid, doc_id)
+    try:
+        db.log_event(uid, "document_created", document_id=credit_id, client_id=original["client_id"],
+                     meta={"doc_number": number, "doc_type": "credit"})
+    except Exception:
+        logger.exception("Failed to log credit note event")
+    return RedirectResponse(f"/documents/{credit_id}?created=1", status_code=303)
 
 
 # =============================================================================
@@ -3533,6 +3693,9 @@ async def trash_page(request: Request):
 async def restore_document(request: Request, doc_id: int):
     user = request.state.user
     db.restore_document(user["account_id"], doc_id)
+    doc, _ = db.get_document(doc_id)
+    if doc and doc.get("user_id") == user["account_id"]:
+        db.refresh_original_status(user["account_id"], doc.get("ref_doc_id"))
     if "application/json" in request.headers.get("accept", ""):
         return JSONResponse({"ok": True})
     return RedirectResponse("/trash", status_code=303)
@@ -3551,6 +3714,12 @@ async def toggle_document_status(request: Request, doc_id: int):
     doc, _ = db.get_document(doc_id)
     if not doc or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
+    if doc.get("doc_type") == "credit" or doc.get("status") not in ("issued", "paid"):
+        # Credit notes aren't paid; a cancelled or replaced invoice isn't owed
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"status": doc.get("status"), "error": "Šim dokumentam apmaksas statuss nav maināms."},
+                                status_code=409)
+        return RedirectResponse(f"/documents/{doc_id}", status_code=303)
     new_status = "paid" if doc.get("status", "issued") == "issued" else "issued"
     db.update_document_status(user["account_id"], doc_id, new_status)
     # Return JSON for AJAX requests, fall back to redirect
@@ -3638,11 +3807,9 @@ async def recurring_page(request: Request):
     for rec in recurring:
         try:
             items = json.loads(rec.get("items_json") or "[]")
-            subtotal = sum(it.get("quantity", 0) * it.get("price_per_unit", 0) for it in items)
-        except (ValueError, TypeError):
-            subtotal = 0
-        vat_rate = rec.get("vat_rate", 0) or 0
-        rec["total"] = round(subtotal * (1 + vat_rate / 100), 2)
+            rec["total"] = float(money.document_totals(items, rec.get("vat_rate", 0) or 0)["total"])
+        except (ValueError, TypeError, ArithmeticError):
+            rec["total"] = 0.0
     ctx.update({
         "recurring": recurring,
         "frequency_labels": FREQUENCY_LABELS,
@@ -4300,7 +4467,7 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
     elif source == "doc_type_code":
         val = "Pirk." if doc.get("doc_type") == "buy" else "Pārd."
     elif source == "doc_type_name":
-        val = "Pārdošana" if doc.get("doc_type") == "sell" else "Iegāde"
+        val = {"sell": "Pārdošana", "credit": "Kredītrēķins"}.get(doc.get("doc_type"), "Iegāde")
     elif source == "doc_number":
         val = doc.get("doc_number", "")
     elif source in _DATE_FIELDS:
@@ -4322,17 +4489,10 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
     elif source == "status":
         val = doc.get("status", "") or ""
     elif source in ("subtotal_no_vat", "vat_amount", "total_with_vat"):
-        # Calculated from items
-        items = doc.get("items", [])
-        subtotal = sum(i["quantity"] * i["price_per_unit"] for i in items)
-        vat_rate = doc.get("vat_rate", 21.0) or 21.0
-        vat_amount = subtotal * (vat_rate / 100)
-        if source == "subtotal_no_vat":
-            val = round(subtotal, 2)
-        elif source == "vat_amount":
-            val = round(vat_amount, 2)
-        else:
-            val = round(subtotal + vat_amount, 2)
+        # The document's stored totals (app/money.py). A credit note takes
+        # money back, so it goes to the books as negative amounts.
+        field = {"subtotal_no_vat": "subtotal", "vat_amount": "vat_amount", "total_with_vat": "total"}[source]
+        val = round(_credit_sign(doc) * (doc.get(field) or 0), 2)
     elif source.startswith("client_"):
         val = doc.get(source, "") or ""
     elif source.startswith("company_"):
@@ -4350,12 +4510,18 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
     elif source == "product_unit":
         val = (item or {}).get("product_unit", "") or (item or {}).get("unit", "")
     elif source == "quantity":
-        val = (item or {}).get("quantity", "")
+        q = (item or {}).get("quantity", "")
+        val = _credit_sign(doc) * q if isinstance(q, (int, float)) else q
     elif source == "price_per_unit":
         val = (item or {}).get("price_per_unit", "")
     elif source == "line_total":
-        val = (item or {}).get("total", "")
+        t = (item or {}).get("total", "")
+        val = round(_credit_sign(doc) * t, 2) if isinstance(t, (int, float)) else t
     return val
+
+
+def _credit_sign(doc):
+    return -1 if doc.get("doc_type") == "credit" else 1
 
 
 @app.post("/export/accounting")
@@ -4602,8 +4768,12 @@ def _doc_list_rows(docs, status_tracking):
         "client_name": d["client_name"],
         "client_id": d.get("client_id", 0),
         "doc_date": d["doc_date"],
-        "total_with_vat": round(d.get("total_with_vat") or 0, 2),
+        "total_with_vat": round(d.get("total_with_vat") or 0, 2),  # negative on a credit note
         "status": d.get("status", "issued") if status_tracking else None,
+        # Cancelled by a credit note / replaced by a corrective invoice, shown
+        # whether or not payment tracking is on
+        "state": d.get("status") if d.get("status") in ("cancelled", "replaced") else None,
+        "locked": db.is_locked(d),
         "payment_due_date": d.get("payment_due_date") or "",
         "excluded_from_stats": d.get("excluded_from_stats", 0),
     } for d in docs]

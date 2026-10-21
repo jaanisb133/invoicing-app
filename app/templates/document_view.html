@@ -1,12 +1,15 @@
 {% extends "base.html" %}
-{% set tracking = settings.get('status_tracking', '0') == '1' and doc.doc_type != 'offer' %}
+{% set tracking = settings.get('status_tracking', '0') == '1' and doc.doc_type not in ('offer', 'credit') %}
 {% set is_offer = doc.doc_type == 'offer' %}
 {% set list_href = '/offers' if is_offer else '/documents' %}
 {% set list_label = 'Piedāvājumi' if is_offer else ('Dokumenti' if stock_enabled else 'Rēķini') %}
-{% set doc_name = settings.get('buy_doc_name', 'Rēķins') if doc.doc_type == 'buy' else (settings.get('offer_doc_name', 'Piedāvājums') if is_offer else settings.get('sell_doc_name', 'Rēķins')) %}
+{% set is_credit = doc.doc_type == 'credit' %}
+{% set doc_name = settings.get('buy_doc_name', 'Rēķins') if doc.doc_type == 'buy' else (settings.get('offer_doc_name', 'Piedāvājums') if is_offer else ('Kredītrēķins' if is_credit else settings.get('sell_doc_name', 'Rēķins'))) %}
+{% set state = doc.status if doc.status in ('cancelled', 'replaced') else '' %}
+{% set fixable = locked and doc.doc_type == 'sell' and not state %}
 {% set due = doc.payment_due_date if (doc.payment_due_date and not is_offer) else '' %}
 {% set is_paid = doc.status == 'paid' %}
-{% set is_late = tracking and not is_paid and due and due < today %}
+{% set is_late = tracking and not is_paid and due and due < today and doc.status not in ('cancelled', 'replaced') %}
 {% macro dmy(iso) %}{{ iso[8:10] }}.{{ iso[5:7] }}.{{ iso[:4] }}{% endmacro %}
 
 {% block title %}{{ doc.doc_number }} · {{ client.name }} · V-Rēķini{% endblock %}
@@ -32,6 +35,10 @@
 .rail-actions form { margin: 0; }
 .rail-actions .btn { width: 100%; }
 .link-note { font-size: 13px; color: var(--muted); }
+.lock-note { margin: 14px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.einv-note { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 13px; line-height: 1.45; color: var(--muted); }
+.einv-note b { color: var(--text); font-weight: 500; }
+.einv-note ul { margin: 4px 0 0; padding-left: 18px; }
 .link-note a { color: var(--text); }
 .tpl-switch .pro { font-size: 10px; font-weight: 600; color: var(--faint); margin-left: 4px; }
 @media (max-width: 1100px) {
@@ -51,6 +58,10 @@
             <h1>{{ doc.doc_number }}</h1>
             {% if is_offer %}
                 <span class="pill {{ offer_status_pill.get(doc.status, 'pill-neutral') }}">{{ offer_statuses.get(doc.status, 'Gaida atbildi') | lower }}</span>
+            {% elif is_credit %}
+                <span class="pill pill-outline">kredītrēķins</span>
+            {% elif state %}
+                <span class="pill pill-outline">{{ 'anulēts' if state == 'cancelled' else 'aizstāts' }}</span>
             {% elif tracking %}
                 {% if is_paid %}<span class="pill pill-success">apmaksāts</span>
                 {% elif is_late %}<span class="pill pill-danger">kavēts</span>
@@ -66,7 +77,7 @@
         <a href="/documents/new?from_offer={{ doc.id }}" class="btn {% if offer_invoices %}btn-outline{% else %}btn-primary{% endif %}"
            {% if offer_invoices %}onclick="return confirm('Šim piedāvājumam jau ir rēķins {{ offer_invoices[0].doc_number }}. Izveidot vēl vienu?')"{% endif %}>Izveidot rēķinu</a>
         {% elif email_enabled %}
-        <button type="button" class="btn btn-primary" onclick="showSendModal()">Nosūtīt klientam</button>
+        <button type="button" class="btn {{ 'btn-outline' if state else 'btn-primary' }}" onclick="showSendModal()">Nosūtīt klientam</button>
         {% endif %}
         <a href="/documents/{{ doc.id }}/pdf?template={{ selected_template }}" id="downloadBtn" class="btn {% if not is_offer and not email_enabled %}btn-primary{% else %}btn-outline{% endif %}" target="_blank">Lejupielādēt PDF</a>
         <div class="view-menu-wrapper" id="actionsWrapper">
@@ -74,7 +85,14 @@
                 <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
             </button>
             <div class="view-menu-dropdown" id="actionsDropdown">
+                {% if fixable %}
+                <a href="/documents/new?corrects={{ doc.id }}" class="view-menu-item">Koriģēt (jauns rēķins aizstās šo)</a>
+                <a href="/documents/new?credits={{ doc.id }}" class="view-menu-item">Izrakstīt kredītrēķinu</a>
+                <button type="button" class="view-menu-item" onclick="closeAllMenus();openCancel()">Anulēt…</button>
+                <div class="view-menu-divider"></div>
+                {% elif not locked %}
                 <a href="/documents/{{ doc.id }}/edit" class="view-menu-item">Rediģēt</a>
+                {% endif %}
                 {% if is_offer and email_enabled %}
                 <button type="button" class="view-menu-item" onclick="closeAllMenus();showSendModal()">Nosūtīt klientam</button>
                 {% elif not email_enabled %}
@@ -86,7 +104,8 @@
                     {% else %}
                     <a href="/pricing" class="view-menu-item view-menu-disabled">E-rēķins (XML) · {{ plans.mini.label }}</a>
                     {% endif %}
-                    {% if recurring_enabled %}
+                    {% if is_credit %}
+                    {% elif recurring_enabled %}
                     <button type="button" class="view-menu-item" onclick="closeAllMenus();showRecurringModal()">Padarīt periodisku</button>
                     {% else %}
                     <a href="/pricing" class="view-menu-item view-menu-disabled">Padarīt periodisku · {{ plans.starter.label }}</a>
@@ -96,10 +115,12 @@
                         <button type="submit" class="view-menu-item">{{ 'Ieskaitīt pārskatos' if doc.excluded_from_stats else 'Neieskaitīt pārskatos' }}</button>
                     </form>
                 {% endif %}
+                {% if not locked %}
                 <div class="view-menu-divider"></div>
                 <form method="post" action="/documents/{{ doc.id }}/delete" style="margin:0" onsubmit="return confirm('Pārvietot {{ doc.doc_number }} uz papīrgrozu?')">
                     <button type="submit" class="view-menu-item row-menu-danger">Pārvietot uz papīrgrozu</button>
                 </form>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -111,6 +132,23 @@
     {% endif %}
     {% if request.query_params.get('updated') %}
     <div class="alert alert-success">Izmaiņas saglabātas.</div>
+    {% endif %}
+    {% if request.query_params.get('marked') %}
+    <div class="alert alert-success">Atzīmēts kā nosūtīts. Turpmāk šo dokumentu maina tikai ar koriģējošo rēķinu vai kredītrēķinu.</div>
+    {% endif %}
+    {% if original %}
+    <div class="alert">
+        {% if is_credit %}Kredītrēķins rēķinam{% else %}Koriģējošais rēķins: aizstāj rēķinu{% endif %}
+        <a href="/documents/{{ original.id }}">{{ original.doc_number }}</a> no {{ dmy(original.doc_date) }}.
+    </div>
+    {% endif %}
+    {% if followups %}
+    <div class="alert">
+        {% for f in followups %}
+        {% if f.doc_type == 'credit' %}Kredītrēķins <a href="/documents/{{ f.id }}">{{ f.doc_number }}</a> ({{ f.total | eur }}){% else %}Aizstāts ar rēķinu <a href="/documents/{{ f.id }}">{{ f.doc_number }}</a>{% endif %}{{ ', ' if not loop.last else '.' }}
+        {% endfor %}
+        {% if state == 'cancelled' %}Rēķins ir anulēts.{% elif credited and not state %}Kreditēti {{ credited | eur }} no {{ total | eur }}.{% endif %}
+    </div>
     {% endif %}
     {% if request.query_params.get('scheduled') %}
     <div class="alert alert-success">Periodiskais rēķins izveidots. Nākamos rēķinus atradīsiet sadaļā <a href="/recurring">Periodiskie rēķini</a>.</div>
@@ -143,10 +181,10 @@
         <aside class="rail">
             <section class="card">
                 <div class="card-body">
-                    <div class="kpi-label">{{ 'Summa' if is_offer else 'Kopā apmaksai' }}</div>
+                    <div class="kpi-label">{{ 'Summa' if (is_offer or state) else ('Kreditētā summa' if is_credit else 'Kopā apmaksai') }}</div>
                     <div class="sum-total">{{ total | eur }}</div>
                     {% if settings.get('is_vat_payer', '1') == '1' %}
-                    <div class="sum-sub">bez PVN {{ subtotal | eur }} · PVN {{ vat_amount | eur }}</div>
+                    <div class="sum-sub">bez PVN {{ subtotal | eur }} · PVN {{ vat_amount | eur }}{% if rounding %} · noapaļošana {{ rounding | eur }}{% endif %}</div>
                     {% endif %}
                     <dl class="facts">
                         <dt>{{ 'Piegādātājs' if doc.doc_type == 'buy' else 'Klients' }}</dt>
@@ -163,8 +201,29 @@
                         {% if client.email %}
                         <dt>E-pasts</dt><dd>{{ client.email }}</dd>
                         {% endif %}
+                        {% if doc.doc_type in ('sell', 'credit') %}
+                        <dt>Nosūtīts</dt><dd>{% if doc.sent_at %}{{ dmy(doc.sent_at[:10]) }}{% else %}vēl nav{% endif %}</dd>
+                        {% endif %}
                     </dl>
-                    {% if tracking %}
+                    {% if doc.doc_type in ('sell', 'credit') %}
+                    <p class="lock-note">
+                        {% if locked %}
+                        Nosūtītu dokumentu vairs nemaina un nedzēš: {% if fixable %}kļūdu labo ar koriģējošo rēķinu, darījumu atceļ ar kredītrēķinu.{% else %}tā prasa e-rēķinu kārtība.{% endif %}
+                        {% else %}
+                        Kamēr nav nosūtīts, to var labot. Ja sūtāt PDF pats, atzīmējiet to:
+                        <form method="post" action="/documents/{{ doc.id }}/mark-sent" style="margin:8px 0 0" onsubmit="return confirm('Pēc tam {{ doc.doc_number }} vairs nevarēs labot vai dzēst. Turpināt?')">
+                            <button type="submit" class="btn btn-outline btn-sm">Atzīmēt kā nosūtītu</button>
+                        </form>
+                        {% endif %}
+                    </p>
+                    {% endif %}
+                    {% if einvoice_problems and einvoice_enabled %}
+                    <div class="einv-note">
+                        <b>E-rēķinam (XML)</b>
+                        <ul>{% for p in einvoice_problems %}<li>{{ p }}</li>{% endfor %}</ul>
+                    </div>
+                    {% endif %}
+                    {% if tracking and not state %}
                     <div class="rail-actions">
                         <form method="post" action="/documents/{{ doc.id }}/status">
                             {% if is_paid %}
@@ -260,6 +319,31 @@
     </div>
 </div>
 
+{% if fixable %}
+<!-- Cancel: a credit note for the whole invoice -->
+<div class="modal-overlay" id="cancelModal" onclick="if(event.target===this)this.classList.remove('active')">
+    <div class="modal" style="max-width:520px">
+        <div class="modal-title">Anulēt {{ doc.doc_number }}</div>
+        <p class="text-muted" style="margin:-8px 0 16px">
+            Tiks izrakstīts kredītrēķins par visu summu ({{ total | eur }}) ar šodienas datumu.
+            Rēķins {{ doc.doc_number }} paliks tāds, kāds tas izsniegts, un tiks atzīmēts kā anulēts.
+            Kredītrēķins pēc tam jānosūta klientam.
+        </p>
+        <form method="post" action="/documents/{{ doc.id }}/cancel">
+            <div class="form-group">
+                <label for="cancelReason">Pamatojums</label>
+                <input type="text" name="reason" id="cancelReason" class="form-control" value="Darījums atcelts" maxlength="200">
+                <div class="field-hint">Piemēram: darījums atcelts, rēķins izrakstīts kļūdaini, nosūtīts nepareizam klientam.</div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('cancelModal').classList.remove('active')">Atcelt</button>
+                <button type="submit" class="btn btn-primary">Izrakstīt kredītrēķinu</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <!-- Recurring -->
 <div class="modal-overlay" id="recurringModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal">
@@ -335,16 +419,26 @@ const docData = {
     },
     items: [
         {% for item in items %}
-        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: {{ item.quantity | tojson }}, price: {{ item.price_per_unit | tojson }}, included: {{ 'true' if item.get('included_in_price') else 'false' }} },
+        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: {{ item.quantity | tojson }}, price: {{ item.price_per_unit | tojson }}, amount: {{ item.line_amount | tojson }}, included: {{ 'true' if item.get('included_in_price') else 'false' }} },
         {% endfor %}
     ],
     subtotal: {{ subtotal | tojson }},
     vatRate: {{ doc.vat_rate | tojson }},
     vat: {{ (0 if doc.reverse_charge else vat_amount) | tojson }},
-    total: {{ (subtotal if doc.reverse_charge else total) | tojson }},
+    rounding: {{ rounding | tojson }},
+    total: {{ total | tojson }},
+    ref: {{ ref_line | tojson }},
     vatPayer: {{ 'true' if settings.get('is_vat_payer', '1') == '1' else 'false' }},
     reverseCharge: {{ 'true' if doc.reverse_charge else 'false' }}
 };
+
+function openCancel() {
+    const m = document.getElementById('cancelModal');
+    if (!m) return;
+    m.classList.add('active');
+    setTimeout(() => document.getElementById('cancelReason').focus(), 50);
+}
+if (new URLSearchParams(location.search).get('cancel')) openCancel();
 
 function renderPreview(template) {
     const preview = document.getElementById('docPreview');

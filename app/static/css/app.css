@@ -1613,6 +1613,7 @@ td.c-swipe { display: none; }
 .pp-classic .pp-amount b { font: 600 17px/1.2 "Source Serif 4", Georgia, serif; }
 .pp-minimal .pp-amount b { font: 400 18px/1.2 "DM Sans", sans-serif; }
 .pp-notes { margin-top: 25.5px; font-size: 8.4px; line-height: 12.4px; }
+.pp-ref { margin-bottom: 19.8px; font-size: 8.8px; line-height: 12.8px; }  /* the invoice a credit note or correction changes */
 .pp-edoc { margin-top: 34px; font-size: 7.4px; line-height: 10.4px; color: var(--mu); }
 .pp-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 39.7px; margin-top: 22.7px; }
 .pp-sign div { padding-top: 49.9px; border-bottom: 0; font-size: 7.4px; color: var(--mu); position: relative; }

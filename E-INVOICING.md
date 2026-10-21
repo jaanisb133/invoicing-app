@@ -114,46 +114,43 @@ through one channel is enough; never file the same invoice again through another
   only e-invoices. How that maps to third-party software is **UNKNOWN**.
 - Scale: 1 146 593 e-invoice messages through e-adrese by 13.11.2025.
 
-## 7. What's wrong in V-Rēķini today (`app/einvoice.py` and around it)
+## 7. What was wrong in V-Rēķini, and what is fixed (2026-10-21)
 
-These would fail VID's Schematron or the rules above:
+All fixed in the same change unless marked otherwise:
 
-1. **Non-VAT-payer invoices** are written as category `Z` with `Percent 0`. PEPPOL
-   requires a seller VAT ID for `Z`, so every non-VAT-payer XML is rejected. The
-   correct category is `O` ("Darījumi, kas neietilpst PVN darbības jomā", as VID's FAQ
-   says), with no Percent and an exemption reason.
-2. **Rounding:** the header totals come from the unrounded sum, while each line is
-   rounded on its own. Example: two lines of 1,5 × 0,33 give lines 0,49 + 0,49 but a
-   total of 0,99, which breaks BR-CO-10 (checked: Python rounds 0,495 to 0,49).
-   Quantities and prices are also cut to 2 decimals, so a line like 1000 × 0,0145
-   prints as 1000 × 0,01 = 14,50 and fails the line check. The fix is line-rounded totals everywhere:
-   PDF, preview and XML must agree, and the XML is the legal document. (This settles
-   the "per-line rounding" item in CLAUDE.md.)
-3. **EndpointID** always uses scheme `9939` (Latvian VAT number), even when the value
-   is a registration number. Use `0218` (Latvian unified registration number) for a
-   reg. no. For persons it falls back to `"N/A"`.
-4. **The VAT number's `LV` prefix isn't enforced**. PEPPOL requires the country prefix.
-5. **The buyer country is hardcoded `LV`**, which is wrong for foreign clients.
-6. **No credit note (381), corrective reference (BT-25) or advance (386)**. Only 380
-   exists.
-7. **Invoices stay editable after sending.**
-8. **Delete → trash → hard purge after 7 days, and the number is reused on restore.**
-   For e-invoices this is impossible, and it already conflicts with GL 28 retention.
-9. **No validation before export** (the EC validator at itb.ec.europa.eu/invoice is
-   what VID recommends).
+1. **Non-VAT-payer invoices** were written as category `Z` with `Percent 0`, which needs a
+   seller VAT ID, so every non-VAT-payer XML failed BR-Z-02. Now `O` ("Nav PVN maksātājs",
+   VATEX-EU-O), no Percent, no VAT IDs (BR-O-02).
+2. **Rounding**: header totals came from the unrounded sum (2 × 1,5 × 0,33 gave lines
+   0,49 + 0,49 but a total of 0,99, failing BR-CO-10), and quantities and prices were cut to
+   2 decimals (1000 × 0,0145 printed as 1000 × 0,01 = 14,50). Now `app/money.py`: lines
+   rounded half-up, VAT on their sum, quantities and prices as entered.
+3. **EndpointID**: `0218` + registration number for Latvian entities, the country's VAT
+   scheme otherwise; a self-employed seller uses their personal code; a private buyer gets
+   none (they need no e-invoice, and `problems()` says so).
+4. **VAT number prefix** added when missing (`40003…` → `LV40003…`).
+5. **Buyer country** from the VAT prefix instead of always `LV`.
+6. **Credit notes (381)** and **corrective invoices** (380 + BillingReference, BT-25) exist.
+7. **Sent invoices lock**: e-mailed from the app, marked paid, or marked sent by hand.
+8. **No delete, purge or number reuse** for sent invoices; daily numbering no longer
+   reuses a taken number.
+9. **Validation**: no live validator in the app (the EC one needs network and XSLT2), but
+   `problems()` catches what the Schematron would reject for missing data, and the
+   generator itself was validated against the official rules (CLAUDE.md says how).
 
-## 8. Suggested build order
+Also found on the way: the accountant export added 21 % VAT to 0 % invoices
+(`vat_rate or 21.0`), and the dashboard's "Izrakstīti rēķini" counted offers and purchases.
 
-1. **Correct XML** (§7 items 1–5, 9) plus line-rounded totals. Without this, nothing
-   else matters. Self-check against the EC validator on sample invoices.
-2. **Issued-document integrity:** lock on send, "Anulēt" via credit note, corrective
-   invoice, no delete or number reuse for sent invoices.
-3. **Filing tracker:** per-invoice status (nav jāiesniedz / jāiesniedz līdz dd.mm. /
+## 8. Build order
+
+1. ~~Correct XML plus line-rounded totals.~~ Done.
+2. ~~Issued-document integrity: lock on send, credit note, corrective invoice, no delete.~~ Done.
+3. **Filing tracker**: per-invoice status (nav jāiesniedz / jāiesniedz līdz dd.mm. /
    iesniegts / noraidīts) with a Latvian working-day calendar. Manual filing at first:
    download XML → EDS upload, or latvija.gov.lv upload, which also delivers via e-adrese.
 4. **EDS API filing** with the user's certificate (90-day renewal reminders, encrypted
    storage, frozen XML, retry queue).
-5. **E-adrese operator integration** (VDAA) for real one-click B2B delivery + filing.
+5. **E-adrese operator integration** (VDAA) for one-click B2B delivery + filing.
 
 ## 9. Open questions and how to settle them
 

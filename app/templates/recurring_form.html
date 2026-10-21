@@ -437,20 +437,20 @@ function onProductChange(select, idx) {
 }
 
 function recalculate() {
-    let subtotal = 0;
+    const amounts = [];
     document.querySelectorAll('.item-row').forEach(row => {
         const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
         const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
-        const lineTotal = qty * price;
-        subtotal += lineTotal;
+        const lineTotal = vrLine(qty, price);  // rounded per line, as app/money.py
+        amounts.push(lineTotal);
         const idx = row.id.split('-')[1];
         document.getElementById('total-' + idx).textContent = fmtNum(lineTotal);
     });
 
     const vatRateInput = document.querySelector('input[name="vat_rate"]');
     const vatRate = isVatPayer && vatRateInput ? (parseFloat(vatRateInput.value) || 0) : 0;
-    const vat = subtotal * (vatRate / 100);
-    const total = subtotal + vat;
+    const t = vrTotals(amounts, vatRate);
+    const subtotal = t.subtotal, vat = t.vat, total = t.total;
 
     const sd = document.getElementById('subtotalDisplay');
     if (sd) sd.textContent = fmtEur(subtotal);

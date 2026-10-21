@@ -12,6 +12,7 @@ import secrets
 import bcrypt
 
 from app import fmt
+from app import money
 
 DB_NAME = "veggie_invoices.db"
 
@@ -401,8 +402,52 @@ def _run_migrations():
     if "included_in_price" not in item_cols:
         cursor.execute("ALTER TABLE document_items ADD COLUMN included_in_price INTEGER NOT NULL DEFAULT 0")
 
+    # Stored totals (app/money.py), the moment a document reached the client,
+    # and the invoice a credit note or corrective invoice refers to. A sent
+    # sales invoice can't be edited or deleted any more: it is corrected or
+    # cancelled by a new document that points back to it (E-INVOICING.md §5).
+    doc_cols = {row[1] for row in cursor.execute("PRAGMA table_info(documents)").fetchall()}
+    for col, ddl in (("subtotal", "REAL"), ("vat_amount", "REAL"), ("total", "REAL"),
+                     ("rounding", "REAL NOT NULL DEFAULT 0"), ("sent_at", "TIMESTAMP"),
+                     ("ref_doc_id", "INTEGER")):
+        if col not in doc_cols:
+            cursor.execute(f"ALTER TABLE documents ADD COLUMN {col} {ddl}")
+    if "sent_at" not in doc_cols:
+        # First run: an invoice that was e-mailed or has been paid is already
+        # in the client's hands.
+        cursor.execute("""UPDATE documents SET sent_at =
+                              (SELECT MIN(e.sent_at) FROM email_log e WHERE e.document_id = documents.id)
+                          WHERE doc_type = 'sell'""")
+        cursor.execute("""UPDATE documents SET sent_at = COALESCE(sent_at, created_at, CURRENT_TIMESTAMP)
+                          WHERE doc_type = 'sell' AND status = 'paid'""")
+    _backfill_legacy_totals(cursor)
+
     conn.commit()
     conn.close()
+
+
+def _backfill_legacy_totals(cursor):
+    """Store totals for documents saved before they were stored.
+
+    These documents were printed with the old arithmetic (unrounded lines, VAT
+    on the unrounded sum, each figure rounded for display), so that is what is
+    stored: an invoice the client already has keeps every cent it showed.
+    """
+    rows = cursor.execute(
+        "SELECT id, vat_rate, reverse_charge FROM documents WHERE total IS NULL"
+    ).fetchall()
+    for doc in rows:
+        items = cursor.execute(
+            "SELECT quantity, price_per_unit, included_in_price FROM document_items WHERE document_id = ?",
+            (doc["id"],),
+        ).fetchall()
+        subtotal = sum(0 if i["included_in_price"] else i["quantity"] * i["price_per_unit"] for i in items)
+        rate = 0.0 if doc["reverse_charge"] else (doc["vat_rate"] or 0)
+        vat = subtotal * (rate / 100)
+        cursor.execute(
+            "UPDATE documents SET subtotal = ?, vat_amount = ?, total = ? WHERE id = ?",
+            (float(f"{subtotal:.2f}"), float(f"{vat:.2f}"), float(f"{subtotal + vat:.2f}"), doc["id"]),
+        )
 
 
 # --- Global Settings (system-level) ---
@@ -571,6 +616,16 @@ def get_all_products(user_id, active_only=True):
     return [dict(r) for r in rows]
 
 
+# Revenue as the books see it: a sales invoice counts at its own date, a credit
+# note subtracts at its own date, and an invoice replaced by a corrective one
+# drops out (the corrective invoice carries the sale instead).
+REVENUE_SQL = ("(CASE WHEN d.doc_type = 'credit' THEN -d.total "
+               "WHEN d.doc_type = 'sell' AND d.status != 'replaced' THEN d.total ELSE 0 END)")
+REVENUE_NET_SQL = ("(CASE WHEN d.doc_type = 'credit' THEN -d.subtotal "
+                   "WHEN d.doc_type = 'sell' AND d.status != 'replaced' THEN d.subtotal ELSE 0 END)")
+INVOICE_SQL = "(d.doc_type = 'sell' AND d.status != 'replaced')"
+
+
 def get_unpaid_invoices(user_id):
     """Every issued, unpaid sales invoice with its total, oldest due date first.
 
@@ -580,14 +635,11 @@ def get_unpaid_invoices(user_id):
     conn = get_connection()
     rows = conn.execute(
         """SELECT d.id, d.doc_number, d.doc_date, d.payment_due_date, d.client_id,
-                  COALESCE(c.name, '') AS client_name,
-                  SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) AS total
+                  COALESCE(c.name, '') AS client_name, d.total
            FROM documents d
-           JOIN document_items di ON di.document_id = d.id
            LEFT JOIN clients c ON c.id = d.client_id
            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0
              AND d.doc_type = 'sell' AND d.status = 'issued'
-           GROUP BY d.id
            ORDER BY (d.payment_due_date IS NULL OR d.payment_due_date = ''),
                     d.payment_due_date, d.doc_date""",
         (user_id,),
@@ -908,14 +960,20 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         # Offers always use their own prefix (default "P") and their own counter,
         # independent of the user's prefix toggle for invoices.
         prefix = settings.get("offer_doc_prefix", "P")
+    elif doc_type == "credit":
+        # Credit notes likewise: their own series, so invoice numbers stay unbroken.
+        prefix = settings.get("credit_doc_prefix", "KR") or "KR"
     elif settings.get("use_prefixes", "0") == "1":
         prefix = settings.get("sell_doc_prefix", "") if doc_type == "sell" else settings.get("buy_doc_prefix", "")
     else:
         prefix = ""
 
-    # Offers get a sequence scoped to doc_type='offer' so their numbering is
-    # independent of invoices.
-    offer_scope = " AND doc_type='offer'" if doc_type == "offer" else " AND doc_type!='offer'"
+    # Offers and credit notes count in their own sequences; invoices (sales and
+    # purchases) share one.
+    if doc_type in ("offer", "credit"):
+        offer_scope = f" AND doc_type='{doc_type}'"
+    else:
+        offer_scope = " AND doc_type NOT IN ('offer','credit')"
 
     if isinstance(doc_date, str):
         doc_date_obj = datetime.date.fromisoformat(doc_date)
@@ -932,11 +990,13 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         month = doc_date_obj.month
         date_str = doc_date_obj.isoformat()
 
+        # The highest number used that day, not a count: with a count, deleting
+        # the day's 2nd of 3 documents made the next one a second "03".
         row = conn.execute(
-            f"SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_date = ? AND deleted_at IS NULL{offer_scope}",
+            f"SELECT MAX(seq_num) as max_num FROM documents WHERE user_id = ? AND doc_date = ? AND deleted_at IS NULL{offer_scope}",
             (user_id, date_str)
         ).fetchone()
-        next_num = (row["cnt"] if row else 0) + 1
+        next_num = (row["max_num"] or 0) + 1
 
         doc_number = f"{next_num:02d}/{day:02d}-{month:02d}"
         if prefix:
@@ -987,7 +1047,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
 
-def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None, created_by_user_id=None, offer_meta=None):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None, created_by_user_id=None, offer_meta=None, ref_doc_id=None, rounding=0):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id (int or None), description (str, used
@@ -998,11 +1058,13 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
     try:
         stock_on = get_user_setting(user_id, "stock_enabled", "0") == "1"
         if stock_on and doc_type == "sell":
+            # A corrective invoice replaces its original, whose goods come back
+            back = replaced_quantities(conn, ref_doc_id) if ref_doc_id else {}
             for item in items:
                 pid = item.get("product_id")
                 if not pid:
                     continue  # Free-text items don't affect stock
-                available = _get_product_stock(conn, pid, user_id)
+                available = _get_product_stock(conn, pid, user_id) + back.get(pid, 0)
                 product = get_product(pid)
                 if item["quantity"] > available:
                     product_name = product["name"] if product else f"ID:{pid}"
@@ -1012,30 +1074,21 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
                     )
 
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
+        totals = _totals(items, vat_rate, reverse_charge, rounding)
 
         cursor = conn.execute(
-            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge, converted_from_offer_id, created_by_user_id, offer_meta)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge, converted_from_offer_id, created_by_user_id, offer_meta,
+                                      ref_doc_id, subtotal, vat_amount, rounding, total)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
              payment_due_date or None, vat_rate, notes, int(reverse_charge),
              converted_from_offer_id or None, created_by_user_id or user_id,
-             json.dumps(offer_meta, ensure_ascii=False) if offer_meta else None)
+             json.dumps(offer_meta, ensure_ascii=False) if offer_meta else None,
+             ref_doc_id or None, *totals["doc"])
         )
         doc_id = cursor.lastrowid
-
-        for item in items:
-            included = 1 if item.get("included_in_price") else 0
-            price = 0.0 if included else item["price_per_unit"]
-            total = 0.0 if included else item["quantity"] * price
-            pid = item.get("product_id") or None
-            description = item.get("description", "") or ""
-            conn.execute(
-                """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total, included_in_price)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (doc_id, pid, description, item["quantity"], item["unit"],
-                 price, total, included)
-            )
+        _insert_items(conn, doc_id, items, totals["lines"])
 
         conn.commit()
         return doc_id, doc_number
@@ -1044,6 +1097,42 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         raise
     finally:
         conn.close()
+
+
+def replaced_quantities(conn, doc_id):
+    """{product_id: quantity} sold on an invoice, for the stock check of the
+    corrective invoice that replaces it."""
+    rows = conn.execute(
+        "SELECT product_id, SUM(quantity) AS q FROM document_items "
+        "WHERE document_id = ? AND product_id IS NOT NULL GROUP BY product_id",
+        (doc_id,),
+    ).fetchall()
+    return {r["product_id"]: r["q"] for r in rows}
+
+
+# Sales invoices and credit notes stop being editable once they reach the client.
+LOCKED_DOC_TYPES = ("sell", "credit")
+SENT_LOCK_MESSAGE = ("Nosūtītu rēķinu vairs nevar labot vai dzēst. "
+                     "Izrakstiet koriģējošo rēķinu vai kredītrēķinu.")
+
+
+def _totals(items, vat_rate, reverse_charge=False, rounding=0):
+    """Totals as stored: per-line amounts and (subtotal, vat, rounding, total) as floats."""
+    t = money.document_totals(items, 0 if reverse_charge else vat_rate, rounding)
+    return {"lines": [float(x) for x in t["lines"]],
+            "doc": (float(t["subtotal"]), float(t["vat"]), float(t["rounding"]), float(t["total"]))}
+
+
+def _insert_items(conn, doc_id, items, line_totals):
+    for item, total in zip(items, line_totals):
+        included = 1 if item.get("included_in_price") else 0
+        price = 0.0 if included else item["price_per_unit"]
+        conn.execute(
+            """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total, included_in_price)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (doc_id, item.get("product_id") or None, item.get("description", "") or "",
+             item["quantity"], item["unit"], price, total, included)
+        )
 
 
 def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, offer_meta=None):
@@ -1082,6 +1171,10 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
                         f"Pieejams: {fmt.qty(available)}, pieprasīts: {fmt.qty(item['quantity'])}"
                     )
 
+        if doc["sent_at"] and doc["doc_type"] in LOCKED_DOC_TYPES:
+            raise ValueError(SENT_LOCK_MESSAGE)
+
+        totals = _totals(items, vat_rate, reverse_charge, doc["rounding"] or 0)
         # Update document fields. offer_meta is replaced only when the edit
         # form actually posts branded-offer content — a plain invoice update
         # passes None and keeps whatever the document already carries.
@@ -1101,21 +1194,14 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
                 (client_id, doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
                  payment_due_date or None, vat_rate, notes, int(reverse_charge), doc_id, user_id)
             )
+        conn.execute(
+            "UPDATE documents SET subtotal = ?, vat_amount = ?, rounding = ?, total = ? WHERE id = ?",
+            (*totals["doc"], doc_id),
+        )
 
         # Delete old items and insert new ones
         conn.execute("DELETE FROM document_items WHERE document_id = ?", (doc_id,))
-        for item in items:
-            included = 1 if item.get("included_in_price") else 0
-            price = 0.0 if included else item["price_per_unit"]
-            total = 0.0 if included else item["quantity"] * price
-            pid = item.get("product_id") or None
-            description = item.get("description", "") or ""
-            conn.execute(
-                """INSERT INTO document_items (document_id, product_id, description, quantity, unit, price_per_unit, total, included_in_price)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (doc_id, pid, description, item["quantity"], item["unit"],
-                 price, total, included)
-            )
+        _insert_items(conn, doc_id, items, totals["lines"])
 
         conn.commit()
     except Exception:
@@ -1144,7 +1230,7 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
                   status=None, exclude_doc_types=None):
     conn = get_connection()
     query = """SELECT d.*, c.name as client_name,
-               ROUND(COALESCE((SELECT SUM(di.total) FROM document_items di WHERE di.document_id = d.id), 0) * (1 + d.vat_rate / 100.0), 2) as total_with_vat
+               (CASE WHEN d.doc_type = 'credit' THEN -d.total ELSE d.total END) as total_with_vat
                FROM documents d
                JOIN clients c ON d.client_id = c.id
                WHERE d.user_id = ? AND d.deleted_at IS NULL"""
@@ -1169,6 +1255,8 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
     if status:
         query += " AND d.status = ?"
         params.append(status)
+        if status in ("issued", "paid"):
+            query += " AND d.doc_type != 'credit'"  # payment tabs: credit notes aren't paid
 
     query += " ORDER BY d.doc_date DESC, d.id DESC"
     rows = conn.execute(query, params).fetchall()
@@ -1182,6 +1270,75 @@ def update_document_status(user_id, doc_id, status):
                  (status, doc_id, user_id))
     conn.commit()
     conn.close()
+    if status == "paid":
+        mark_document_sent(user_id, doc_id)  # paid means the client had it
+
+
+def mark_document_sent(user_id, doc_id):
+    """The document has reached the client: from now on a sales invoice or
+    credit note is corrected or cancelled by a new document, never edited.
+    Keeps the first moment; purchase documents and offers are unaffected."""
+    conn = get_connection()
+    conn.execute(
+        f"""UPDATE documents SET sent_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ? AND sent_at IS NULL
+              AND doc_type IN ({",".join("?" * len(LOCKED_DOC_TYPES))})""",
+        (doc_id, user_id, *LOCKED_DOC_TYPES),
+    )
+    conn.commit()
+    conn.close()
+
+
+def is_locked(doc):
+    """A sent sales invoice or credit note: no edit, no delete."""
+    return bool(doc and doc.get("sent_at") and doc.get("doc_type") in LOCKED_DOC_TYPES)
+
+
+def get_document_followups(user_id, doc_id):
+    """Documents that refer to this one (credit notes, corrective invoices), oldest first."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT id, doc_type, doc_number, doc_date, total, sent_at FROM documents
+           WHERE user_id = ? AND ref_doc_id = ? AND deleted_at IS NULL
+           ORDER BY id""",
+        (user_id, doc_id),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def refresh_original_status(user_id, original_id):
+    """Set an invoice's lifecycle from the documents that refer to it: replaced
+    while a corrective invoice exists, cancelled once credit notes cover its
+    total, otherwise back to awaiting payment if it had been either."""
+    if not original_id:
+        return
+    original, _ = get_document(original_id)
+    if not original or original.get("user_id") != user_id or original.get("doc_type") != "sell":
+        return
+    followups = get_document_followups(user_id, original_id)
+    if any(f["doc_type"] == "sell" for f in followups):
+        status = "replaced"
+    elif credited_total(user_id, original_id) >= (original.get("total") or 0) - 0.005:
+        status = "cancelled" if any(f["doc_type"] == "credit" for f in followups) else original["status"]
+    elif original["status"] in ("cancelled", "replaced"):
+        status = "issued"
+    else:
+        status = original["status"]
+    if status != original["status"]:
+        update_document_status(user_id, original_id, status)
+
+
+def credited_total(user_id, doc_id):
+    """How much of an invoice its credit notes have taken back."""
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT COALESCE(SUM(total), 0) AS t FROM documents
+           WHERE user_id = ? AND ref_doc_id = ? AND doc_type = 'credit' AND deleted_at IS NULL""",
+        (user_id, doc_id),
+    ).fetchone()
+    conn.close()
+    return row["t"] if row else 0
 
 
 def set_document_excluded(user_id, doc_id, excluded):
@@ -1206,14 +1363,25 @@ def set_document_excluded(user_id, doc_id, excluded):
 
 
 def delete_document(user_id, doc_id):
-    """Soft-delete a document (move to trash). Permanently deleted after 7 days."""
+    """Soft-delete a document (move to trash). Permanently deleted after 7 days.
+
+    A sent sales invoice or credit note can't be deleted (it is an accounting
+    document the client has, and its number must never come back): raises
+    ValueError with the message to show.
+    """
     conn = get_connection()
-    conn.execute(
-        "UPDATE documents SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
-        (doc_id, user_id)
-    )
-    conn.commit()
-    conn.close()
+    try:
+        doc = conn.execute("SELECT * FROM documents WHERE id = ? AND user_id = ?",
+                           (doc_id, user_id)).fetchone()
+        if doc and is_locked(dict(doc)):
+            raise ValueError(SENT_LOCK_MESSAGE)
+        conn.execute(
+            "UPDATE documents SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+            (doc_id, user_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def restore_document(user_id, doc_id):
@@ -1234,12 +1402,16 @@ def restore_document(user_id, doc_id):
 
         # Is the seq_num occupied by another active doc in the same scope?
         year = row["doc_date"][:4] if row["doc_date"] else None
+        # Same numbering scope as get_next_doc_number: offers and credit notes
+        # count on their own, invoices share one series
         collision = conn.execute(
             """SELECT 1 FROM documents
                WHERE user_id = ? AND id != ? AND deleted_at IS NULL
                  AND seq_num = ?
+                 AND (CASE WHEN doc_type IN ('offer', 'credit') THEN doc_type ELSE 'invoice' END)
+                   = (CASE WHEN ? IN ('offer', 'credit') THEN ? ELSE 'invoice' END)
                  AND (? IS NULL OR strftime('%Y', doc_date) = ?)""",
-            (user_id, doc_id, row["seq_num"], year, year)
+            (user_id, doc_id, row["seq_num"], row["doc_type"], row["doc_type"], year, year)
         ).fetchone()
 
         if collision:
@@ -1262,9 +1434,12 @@ def restore_document(user_id, doc_id):
 
 
 def permanently_delete_document(user_id, doc_id):
-    """Permanently delete a document (no recovery)."""
+    """Permanently delete a trashed document (no recovery). Only what is in the
+    trash can go, and a sent invoice never gets there."""
     conn = get_connection()
-    conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
+    conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL "
+                 "AND NOT (sent_at IS NOT NULL AND doc_type IN ('sell', 'credit'))",
+                 (doc_id, user_id))
     conn.commit()
     conn.close()
 
@@ -1274,7 +1449,7 @@ def get_deleted_documents(user_id):
     conn = get_connection()
     rows = conn.execute(
         """SELECT d.*, c.name as client_name,
-           ROUND(COALESCE((SELECT SUM(di.total) FROM document_items di WHERE di.document_id = d.id), 0) * (1 + d.vat_rate / 100.0), 2) as total_with_vat
+           (CASE WHEN d.doc_type = 'credit' THEN -d.total ELSE d.total END) as total_with_vat
            FROM documents d
            JOIN clients c ON d.client_id = c.id
            WHERE d.user_id = ? AND d.deleted_at IS NOT NULL
@@ -1289,7 +1464,8 @@ def purge_old_deleted_documents():
     """Permanently delete documents that have been in trash for more than 7 days."""
     conn = get_connection()
     conn.execute(
-        "DELETE FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-7 days')"
+        "DELETE FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-7 days') "
+        "AND NOT (sent_at IS NOT NULL AND doc_type IN ('sell', 'credit'))"
     )
     conn.commit()
     conn.close()
@@ -1320,12 +1496,12 @@ def _get_product_stock(conn, product_id, user_id):
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = ? AND d.doc_type = 'buy' AND d.user_id = ?{date_filter}), 0
+                 WHERE di.product_id = ? AND d.doc_type IN ('buy', 'credit') AND d.user_id = ?{date_filter}), 0
             ) -
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = ? AND d.doc_type = 'sell' AND d.user_id = ?{date_filter}), 0
+                 WHERE di.product_id = ? AND d.doc_type = 'sell' AND d.status != 'replaced' AND d.user_id = ?{date_filter}), 0
             ) as stock
     """, params_buy + params_sell).fetchone()
     return row["stock"] if row else 0
@@ -1364,12 +1540,12 @@ def get_stock(user_id, date_from=None, date_to=None):
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = p.id AND d.doc_type = 'buy' AND d.user_id = ?{date_filter}), 0
+                 WHERE di.product_id = p.id AND d.doc_type IN ('buy', 'credit') AND d.user_id = ?{date_filter}), 0
             ) as bought,
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = p.id AND d.doc_type = 'sell' AND d.user_id = ?{date_filter}), 0
+                 WHERE di.product_id = p.id AND d.doc_type = 'sell' AND d.status != 'replaced' AND d.user_id = ?{date_filter}), 0
             ) as sold
         FROM products p
         WHERE p.user_id = ? AND p.active = 1
@@ -1750,20 +1926,18 @@ def get_dashboard_stats(user_id: int) -> dict:
     docs_last_7_days = row["cnt"] if row else 0
 
     # Total revenue (sum of sell document totals)
-    row = conn.execute("""
-        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
+    row = conn.execute(f"""
+        SELECT COALESCE(SUM({REVENUE_SQL}), 0) as total
         FROM documents d
-        JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell'
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0
     """, (user_id,)).fetchone()
     total_revenue = row["total"] if row else 0
 
     # Revenue last 7 days
-    row = conn.execute("""
-        SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as total
+    row = conn.execute(f"""
+        SELECT COALESCE(SUM({REVENUE_SQL}), 0) as total
         FROM documents d
-        JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.doc_date >= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ?
     """, (user_id, week_ago)).fetchone()
     revenue_last_7_days = row["total"] if row else 0
 
@@ -1906,14 +2080,13 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     cmp_to_str = cmp_to.isoformat()
 
     # Revenue, expenses, doc count, and average in one pass
-    row = conn.execute("""
+    row = conn.execute(f"""
         SELECT
-            COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
-            COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit ELSE 0 END), 0) as revenue_net,
-            COALESCE(SUM(CASE WHEN d.doc_type='buy'  THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as expenses,
-            COUNT(DISTINCT d.id) as doc_count
+            COALESCE(SUM({REVENUE_SQL}), 0) as revenue,
+            COALESCE(SUM({REVENUE_NET_SQL}), 0) as revenue_net,
+            COALESCE(SUM(CASE WHEN d.doc_type='buy' THEN d.total ELSE 0 END), 0) as expenses,
+            COALESCE(SUM(CASE WHEN {INVOICE_SQL} THEN 1 ELSE 0 END), 0) as doc_count
         FROM documents d
-        JOIN document_items di ON di.document_id = d.id
         WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, date_from, date_to)).fetchone()
     total_revenue = row["revenue"] if row else 0
@@ -1928,12 +2101,11 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     doc_count = row["doc_count"] if row else 0
 
     # Previous period revenue + doc count for comparison
-    prev_row = conn.execute("""
+    prev_row = conn.execute(f"""
         SELECT
-            COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
-            COUNT(DISTINCT d.id) as doc_count
+            COALESCE(SUM({REVENUE_SQL}), 0) as revenue,
+            COALESCE(SUM(CASE WHEN {INVOICE_SQL} THEN 1 ELSE 0 END), 0) as doc_count
         FROM documents d
-        JOIN document_items di ON di.document_id = d.id
         WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, prev_from_str, prev_to_str)).fetchone()
     prev_revenue = prev_row["revenue"] if prev_row else 0
@@ -1945,26 +2117,21 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     if (cmp_from_str, cmp_to_str) == (date_from, date_to):
         cmp_revenue, cmp_doc_count = total_revenue, doc_count
     else:
-        cmp_row = conn.execute("""
+        cmp_row = conn.execute(f"""
             SELECT
-                COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
-                COUNT(DISTINCT d.id) as doc_count
+                COALESCE(SUM({REVENUE_SQL}), 0) as revenue,
+                COALESCE(SUM(CASE WHEN {INVOICE_SQL} THEN 1 ELSE 0 END), 0) as doc_count
             FROM documents d
-            JOIN document_items di ON di.document_id = d.id
             WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
         """, (user_id, cmp_from_str, cmp_to_str)).fetchone()
         cmp_revenue = cmp_row["revenue"] if cmp_row else 0
         cmp_doc_count = cmp_row["doc_count"] if cmp_row else 0
 
     # Average sell invoice value
-    row = conn.execute("""
-        SELECT AVG(inv_total) as avg_val FROM (
-            SELECT SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) as inv_total
-            FROM documents d
-            JOIN document_items di ON di.document_id = d.id
-            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
-            GROUP BY d.id
-        )
+    row = conn.execute(f"""
+        SELECT AVG(d.total) as avg_val
+        FROM documents d
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND {INVOICE_SQL} AND d.doc_date >= ? AND d.doc_date <= ?
     """, (user_id, date_from, date_to)).fetchone()
     avg_invoice = row["avg_val"] if row and row["avg_val"] else 0
 
@@ -1975,12 +2142,9 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
             SUM(CASE WHEN payment_due_date IS NOT NULL AND payment_due_date != '' AND payment_due_date < ? THEN 1 ELSE 0 END) as overdue_count,
             COALESCE(SUM(CASE WHEN payment_due_date IS NOT NULL AND payment_due_date != '' AND payment_due_date < ? THEN inv_total ELSE 0 END), 0) as overdue_total
         FROM (
-            SELECT d.id, d.payment_due_date,
-                   SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) as inv_total
+            SELECT d.id, d.payment_due_date, d.total as inv_total
             FROM documents d
-            JOIN document_items di ON di.document_id = d.id
             WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.status = 'issued'
-            GROUP BY d.id
         )
     """, (today_str, today_str, user_id)).fetchone()
     unpaid_total = row["unpaid_total"] if row and row["unpaid_total"] else 0
@@ -1988,13 +2152,12 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     overdue_total = row["overdue_total"] if row and row["overdue_total"] else 0
 
     # Top client
-    row = conn.execute("""
-        SELECT c.name, COUNT(DISTINCT d.id) as cnt,
-               COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as revenue
+    row = conn.execute(f"""
+        SELECT c.name, SUM(CASE WHEN {INVOICE_SQL} THEN 1 ELSE 0 END) as cnt,
+               COALESCE(SUM({REVENUE_SQL}), 0) as revenue
         FROM documents d
-        JOIN document_items di ON di.document_id = d.id
         JOIN clients c ON d.client_id = c.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type IN ('sell', 'credit') AND d.doc_date >= ? AND d.doc_date <= ?
         GROUP BY d.client_id
         ORDER BY revenue DESC
         LIMIT 1
@@ -2002,12 +2165,11 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     top_client = {"name": row["name"], "count": row["cnt"], "revenue": row["revenue"]} if row else None
 
     # Daily revenue for chart
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         SELECT d.doc_date,
-               COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0) as daily_total
+               COALESCE(SUM({REVENUE_SQL}), 0) as daily_total
         FROM documents d
-        JOIN document_items di ON di.document_id = d.id
-        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.doc_date >= ? AND d.doc_date <= ?
+        WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type IN ('sell', 'credit') AND d.doc_date >= ? AND d.doc_date <= ?
         GROUP BY d.doc_date
         ORDER BY d.doc_date
     """, (user_id, date_from, date_to)).fetchall()
@@ -2016,13 +2178,12 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     # Sparkline series. The chart above only plots days that have documents;
     # a sparkline needs a gap-free line, so fill every day in the range and
     # bucket longer ranges so the arrays stay small enough to inline.
-    spark_rows = conn.execute("""
+    spark_rows = conn.execute(f"""
         SELECT d.doc_date,
-               COALESCE(SUM(CASE WHEN d.doc_type='sell' THEN di.quantity * di.price_per_unit * (1 + d.vat_rate / 100) ELSE 0 END), 0) as revenue,
-               COUNT(DISTINCT d.id) as docs,
-               COUNT(DISTINCT CASE WHEN d.doc_type='sell' THEN d.id END) as sell_docs
+               COALESCE(SUM({REVENUE_SQL}), 0) as revenue,
+               COUNT(*) as docs,
+               COALESCE(SUM(CASE WHEN {INVOICE_SQL} THEN 1 ELSE 0 END), 0) as sell_docs
         FROM documents d
-        JOIN document_items di ON di.document_id = d.id
         WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_date >= ? AND d.doc_date <= ?
         GROUP BY d.doc_date
     """, (user_id, date_from, date_to)).fetchall()
@@ -2441,7 +2602,7 @@ def get_emails_sent_this_month(user_id: int) -> int:
 
 
 def log_email_sent(user_id: int, document_id: int, recipient: str, source: str = "manual"):
-    """Record an email send event."""
+    """Record an email send event. A document that was e-mailed has been sent."""
     conn = get_connection()
     conn.execute(
         "INSERT INTO email_log (user_id, document_id, recipient, source) VALUES (?, ?, ?, ?)",
@@ -2449,6 +2610,8 @@ def log_email_sent(user_id: int, document_id: int, recipient: str, source: str =
     )
     conn.commit()
     conn.close()
+    if document_id:
+        mark_document_sent(user_id, document_id)
 
 
 def get_email_log(user_id: int, source: str = None) -> list:
@@ -2508,8 +2671,7 @@ def get_recent_events(user_id: int, limit: int = 10) -> list:
         """SELECT e.id, e.event_type, e.document_id, e.client_id, e.meta, e.created_at,
                   d.doc_number, d.doc_type,
                   COALESCE(c.name, dc.name) as client_name,
-                  (SELECT COALESCE(SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)), 0)
-                   FROM document_items di WHERE di.document_id = d.id) as amount
+                  (CASE WHEN d.doc_type = 'credit' THEN -d.total ELSE d.total END) as amount
            FROM events e
            LEFT JOIN documents d ON e.document_id = d.id
            LEFT JOIN clients c ON e.client_id = c.id
@@ -2687,10 +2849,13 @@ def get_documents_for_export(user_id, doc_type=None, date_from=None, date_to=Non
                c.email as client_email
                FROM documents d
                JOIN clients c ON d.client_id = c.id
-               WHERE d.user_id = ? AND d.deleted_at IS NULL"""
+               WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.doc_type != 'offer'"""
     params = [user_id]
 
-    if doc_type:
+    if doc_type == "sell":
+        # Sales include their credit notes: both belong in the sales ledger
+        query += " AND d.doc_type IN ('sell', 'credit')"
+    elif doc_type:
         query += " AND d.doc_type = ?"
         params.append(doc_type)
     if date_from:

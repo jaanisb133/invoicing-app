@@ -14,6 +14,7 @@
 <div class="page-body help">
     <nav class="help-toc" aria-label="Saturs">
         <a href="#pirmais" class="plain">Pirmais rēķins</a>
+        <a href="#labot" class="plain">Kļūda nosūtītā rēķinā</a>
         <a href="#klienti" class="plain">Klienti un produkti</a>
         <a href="#nosutit" class="plain">Nosūtīšana klientam</a>
         <a href="#apmaksa" class="plain">Apmaksa un kavētie rēķini</a>
@@ -38,6 +39,17 @@
                 <li>Spiediet <b>Izveidot rēķinu</b> ({{ mod }}&nbsp;+&nbsp;Enter). Numurs tiek piešķirts saglabājot.</li>
             </ol>
             <p>Saglabātu rēķinu var labot, lejupielādēt PDF vai nosūtīt klientam no rēķina lapas.</p>
+        </section>
+
+        <section class="card help-sec" id="labot">
+            <h2>Kļūda nosūtītā rēķinā</h2>
+            <p>Kamēr rēķins nav nosūtīts, to var labot un dzēst. Kad tas nosūtīts no V-Rēķini, atzīmēts kā apmaksāts vai Jūs to atzīmējat kā nosūtītu, tas paliek tāds, kāds izsniegts: e-rēķinu nevar mainīt vai dzēst, to labo ar jaunu dokumentu.</p>
+            <ul>
+                <li><b>Koriģēt</b>: jauns rēķins ar jaunu numuru aizstāj kļūdaino. Der, ja kļūdaina cena, daudzums vai rinda.</li>
+                <li><b>Kredītrēķins</b>: kreditē daļu, piemēram, atgrieztās preces vai atlaidi. Rēķins paliek spēkā par pārējo.</li>
+                <li><b>Anulēt</b>: kredītrēķins par visu summu, ja darījums atcelts vai rēķins nosūtīts nepareizam klientam.</li>
+            </ul>
+            <p>Abi dokumenti atsaucas uz sākotnējo rēķinu, un arī tie jānosūta klientam. Kredītrēķiniem ir sava numerācija (KR-…).</p>
         </section>
 
         <section class="card help-sec" id="klienti">
@@ -71,6 +83,7 @@
         <section class="card help-sec" id="e-rekini">
             <h2>E-rēķini (PEPPOL)</h2>
             <p>Katru rēķinu var lejupielādēt arī kā e-rēķinu PEPPOL BIS 3.0 formātā vai pievienot to e-pastam. Valsts iestādēm e-rēķini jāsūta jau tagad, un no 2028. gada 1. janvāra tie būs obligāti arī starp uzņēmumiem. Pieejams no Mini plāna.</p>
+            <p>E-rēķina dati piecu darbdienu laikā pēc nosūtīšanas jāiesniedz VID (iestādēm jau tagad, uzņēmumiem no 2028. gada). V-Rēķini to vēl nedara automātiski: augšupielādējiet XML VID EDS sadaļā „E-rēķini” vai nosūtiet to caur e-adresi portālā Latvija.gov.lv, kas kopiju VID nodod pati. Ja rēķina lapā redzams brīdinājums „E-rēķinam (XML)”, vispirms papildiniet norādītos datus.</p>
         </section>
 
         <section class="card help-sec" id="eksports">
@@ -85,7 +98,7 @@
 
         <section class="card help-sec" id="telefons">
             <h2>Telefonā</h2>
-            <p>Sarakstā <a href="/documents">Dokumenti</a> pavelciet rēķinu pa kreisi, lai to atzīmētu kā apmaksātu vai pārvietotu uz papīrgrozu; dzēšanu var uzreiz atsaukt. Piedāvājumu tāpat var pārvērst rēķinā.</p>
+            <p>Sarakstā <a href="/documents">Dokumenti</a> pavelciet rēķinu pa kreisi, lai to atzīmētu kā apmaksātu vai pārvietotu uz papīrgrozu (nosūtītu rēķinu dzēst nevar); dzēšanu var uzreiz atsaukt. Piedāvājumu tāpat var pārvērst rēķinā.</p>
             <p>V-Rēķini strādā telefona pārlūkā. Lai to atvērtu kā lietotni:</p>
             <ul>
                 <li><b>iPhone:</b> Safari spiediet „Kopīgot” un „Pievienot sākuma ekrānam”.</li>

@@ -22,6 +22,7 @@
 .docs .due-late { color: var(--negative); }
 .docs .status-btn { border: 0; cursor: pointer; font: inherit; }
 .docs .status-btn:hover { filter: brightness(.96); }
+.docs tr.void .c-sum { color: var(--faint); text-decoration: line-through; }  /* replaced: the correction carries it */
 .list-foot { display: flex; justify-content: space-between; gap: 12px; padding: 12px var(--card-pad); border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .list-foot b { color: var(--text); font-weight: 600; }
 .quota { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -227,8 +228,12 @@ let docsData = {{ doc_rows | tojson }};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 function daysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
 
+const STATE_LABEL = { cancelled: 'anulēts', replaced: 'aizstāts' };
 function statusCell(d) {
     if (!statusTracking) return '';
+    // Credit notes aren't paid; a cancelled or replaced invoice isn't owed
+    if (d.doc_type === 'credit') return '<td class="c-status"></td>';
+    if (d.state) return '<td class="c-status"><span class="pill pill-outline">' + STATE_LABEL[d.state] + '</span></td>';
     const paid = d.status === 'paid';
     let label = 'gaida', cls = 'pill-neutral';
     if (paid) { label = 'apmaksāts'; cls = 'pill-success'; }
@@ -240,17 +245,19 @@ function statusCell(d) {
 
 function rowHtml(d) {
     const date = fmtDate(d.doc_date);
-    const typeTag = d.doc_type === 'buy' ? ' <span class="pill pill-warning">iegāde</span>' : '';
-    const excl = d.excluded_from_stats ? ' <span class="pill pill-outline" title="Netiek ieskaitīts pārskatos">ārpus pārskata</span>' : '';
+    const typeTag = d.doc_type === 'buy' ? ' <span class="pill pill-warning">iegāde</span>'
+        : d.doc_type === 'credit' ? ' <span class="pill pill-outline">kredītrēķins</span>' : '';
+    const excl = (d.excluded_from_stats ? ' <span class="pill pill-outline" title="Netiek ieskaitīts pārskatos">ārpus pārskata</span>' : '')
+        + (d.state && !statusTracking ? ' <span class="pill pill-outline">' + STATE_LABEL[d.state] + '</span>' : '');
     let due = '';
     if (statusTracking) {
-        if (!d.payment_due_date || d.doc_type !== 'sell') due = '<td class="c-due num muted">—</td>';
+        if (!d.payment_due_date || d.doc_type !== 'sell' || d.state) due = '<td class="c-due num muted">—</td>';
         else {
             const late = d.status !== 'paid' && d.payment_due_date < TODAY;
             due = '<td class="c-due num' + (late ? ' due-late' : '') + '">' + fmtDate(d.payment_due_date) + '</td>';
         }
     }
-    return '<tr class="clickable-row" data-swipe data-id="' + d.id + '" data-href="/documents/' + d.id + '">'
+    return '<tr class="clickable-row' + (d.state === 'replaced' ? ' void' : '') + '" data-swipe data-id="' + d.id + '" data-href="/documents/' + d.id + '">'
         + '<td class="c-num"><a href="/documents/' + d.id + '" class="row-link">' + esc(d.doc_number) + '</a>' + excl + '</td>'
         + '<td class="c-client"><a href="/documents/' + d.id + '" class="plain">' + esc(d.client_name) + '</a>' + typeTag + '</td>'
         + '<td class="c-meta">' + esc(d.doc_number) + ' · ' + date + '</td>'
@@ -277,16 +284,22 @@ function renderDocs(docs) {
         return;
     }
     tbody.innerHTML = docs.map(rowHtml).join('');
-    // The footer is computed from the rows on screen, so it always agrees with them.
-    const total = docs.reduce((a, d) => a + Number(d.total_with_vat || 0), 0);
+    // The footer is computed from the rows on screen, so it always agrees with
+    // them: credit notes subtract, a replaced invoice counts through its correction.
+    const total = docs.reduce((a, d) => a + (d.state === 'replaced' ? 0 : Number(d.total_with_vat || 0)), 0);
     const n = docs.length;
     foot.hidden = false;
     foot.innerHTML = '<span>' + n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? 'dokuments' : 'dokumenti') + '</span><span>Kopā <b>' + fmtEur(total) + '</b></span>';
 }
 
 function menuHtml(d) {
+    // A sent invoice isn't edited or deleted: it is corrected or cancelled by a new document
+    const fixable = d.locked && d.doc_type === 'sell' && !d.state;
     let items = '<a href="/documents/' + d.id + '" class="row-menu-item">Atvērt</a>'
-        + '<a href="/documents/' + d.id + '/edit" class="row-menu-item">Rediģēt</a>'
+        + (d.locked ? '' : '<a href="/documents/' + d.id + '/edit" class="row-menu-item">Rediģēt</a>')
+        + (fixable ? '<a href="/documents/new?corrects=' + d.id + '" class="row-menu-item">Koriģēt</a>'
+            + '<a href="/documents/new?credits=' + d.id + '" class="row-menu-item">Izrakstīt kredītrēķinu</a>'
+            + '<a href="/documents/' + d.id + '?cancel=1" class="row-menu-item">Anulēt…</a>' : '')
         + '<a href="/documents/' + d.id + '/pdf" class="row-menu-item" target="_blank">Lejupielādēt PDF</a>'
         + (einvoiceEnabled
             ? '<a href="/documents/' + d.id + '/einvoice" class="row-menu-item" target="_blank">E-rēķins (XML)</a>'
@@ -298,8 +311,8 @@ function menuHtml(d) {
         + (recurringEnabled
             ? '<button type="button" class="row-menu-item" data-action="recurring" data-doc-id="' + d.id + '">Padarīt periodisku</button>'
             : '<a href="/pricing" class="row-menu-item row-menu-disabled">Padarīt periodisku · {{ plans.starter.label }}</a>')
-        + '<div class="row-menu-divider"></div>'
-        + '<form method="post" action="/documents/' + d.id + '/delete"><button type="submit" class="row-menu-item row-menu-danger">Pārvietot uz papīrgrozu</button></form>';
+        + (d.locked ? '' : '<div class="row-menu-divider"></div>'
+            + '<form method="post" action="/documents/' + d.id + '/delete"><button type="submit" class="row-menu-item row-menu-danger">Pārvietot uz papīrgrozu</button></form>');
     return '<div class="row-menu-wrapper"><button type="button" class="row-menu-trigger" aria-label="Darbības ar ' + esc(d.doc_number) + '">'
         + '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>'
         + '</button><div class="row-menu-dropdown">' + items + '</div></div>';
@@ -330,7 +343,12 @@ async function toggleStatus(el) {
 /* ------------------------------------------------------------ swipe (phones) */
 async function swipeDelete(d) {
     const res = await fetch('/documents/' + d.id + '/delete', { method: 'POST', headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
-    if (!res.ok) { alert('Neizdevās dzēst'); return; }
+    if (!res.ok) {
+        let msg = 'Neizdevās dzēst';
+        try { msg = (await res.json()).error || msg; } catch (e) {}
+        alert(msg);
+        return;
+    }
     const at = docsData.indexOf(d);
     renderDocs(docsData.filter(x => x !== d));
     vrSwipe.snack(d.doc_number + ' pārvietots uz papīrgrozu', async () => {
@@ -345,11 +363,11 @@ if (window.vrSwipe) vrSwipe.attach(document.getElementById('docsBody'), function
     const d = docsData.find(x => String(x.id) === tr.dataset.id);
     if (!d) return [];
     const acts = [];
-    if (statusTracking) acts.push({
+    if (statusTracking && d.doc_type === 'sell' && !d.state) acts.push({
         label: d.status === 'paid' ? 'Neapmaksāts' : 'Apmaksāts', tone: d.status === 'paid' ? '' : 'pos',
         run: row => { const b = row.querySelector('.status-btn'); if (b) toggleStatus(b); }
     });
-    acts.push({ label: 'Dzēst', tone: 'neg', run: () => swipeDelete(d) });
+    if (!d.locked) acts.push({ label: 'Dzēst', tone: 'neg', run: () => swipeDelete(d) });
     return acts;
 });
 

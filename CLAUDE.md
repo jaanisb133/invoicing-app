@@ -213,16 +213,48 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   strip any left over.
 
 ### Still open
-1. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
-   the preview mirrors the server exactly, but a printed line can differ by a cent from
-   its rounded parts. Pre-existing accounting behaviour; change only deliberately
-2. **Last payment logos** — all marks are official files from the owner, committed in
+1. **Last payment logos** — all marks are official files from the owner, committed in
    `app/static/img/payments/` (see SOURCES.txt). EveryPay is still missing and prints as
    text; Mastercard's supplied PNG is tiny (74×52) and soft on the terms page — swap in an
    SVG when the owner has one. Logo presence is read at startup: restart after adding files.
-3. **E-invoices and VID filing** — researched 2026-10-21, see `E-INVOICING.md` (law, VID
-   behaviour, every correction/cancellation case, what's wrong in `app/einvoice.py` today,
-   build order, open questions). Read it before touching e-invoices, numbering or delete.
+2. **VID filing** — not built. Researched in `E-INVOICING.md` (law, VID behaviour, the
+   90-day EDS credential, the e-adrese route). Steps 1–2 of its build order are done (below).
+
+### Money and the life of an invoice (2026-10-21)
+- **One rounding rule** (`app/money.py`, JS twin `vrLine` / `vrTotals` / `vrRound2` in
+  `base.html`): each line rounded to the cent half-up on the decimal value, VAT once on the
+  sum of rounded lines. It is what EN 16931 checks, so PDF, previews, lists, dashboard and
+  XML agree to the cent. Never compute a total from `quantity * price` anywhere else.
+- **Totals are stored**: `documents.subtotal / vat_amount / rounding / total`, written on
+  every create/update; `document_items.total` is the rounded line. Documents saved before
+  this were backfilled with the totals they always printed (old arithmetic), so nothing
+  issued moved by a cent. Readers use the stored values (`pdf_generator.document_amounts`).
+- `rounding` (BT-114) exists only for subscription invoices: 1,99 € at 21 % has no
+  two-decimal net, so `money.net_for_gross` gives 1,64 + 0,34 + 0,01 rounding.
+- Unit prices print with their real decimals (`fmt.price` / `fmtPrice`): 0,0145, not 0,01.
+- **Sent = locked** (`documents.sent_at`, `db.is_locked`): set when a sales invoice or
+  credit note is e-mailed from the app, marked paid, or the user presses "Atzīmēt kā
+  nosūtītu". Not on download. Locked documents can't be edited, deleted, trashed or purged
+  (server-side in `update_document` / `delete_document`; UI hides the actions). First
+  migration locked everything already e-mailed or paid.
+- **Fixing a sent invoice** (MK 877 p.25.1): `doc_type='credit'` credit notes (own series,
+  prefix `credit_doc_prefix`, default "KR"; positive amounts, subtracted in revenue at their
+  own date) and corrective invoices (`doc_type='sell'` with `ref_doc_id`). Both point at the
+  original via `ref_doc_id`; the original's status becomes `cancelled` (fully credited) or
+  `replaced` (corrected) through `db.refresh_original_status`, called after every
+  create/update/delete/restore of a follow-up. "Anulēt" = `POST /documents/{id}/cancel`
+  (full credit note); "Koriģēt" = `/documents/new?corrects=`; partial = `?credits=`.
+  Same client as the original, enforced on the server; never blocked by the monthly limit.
+- Revenue SQL lives in `database.REVENUE_SQL` / `INVOICE_SQL`: credit notes subtract, a
+  replaced invoice drops out (its correction carries the sale). Status values for sales:
+  `issued` (awaiting payment), `paid`, `cancelled`, `replaced`.
+- **E-invoice XML** (`app/einvoice.py`): Invoice 380 (corrective = 380 + BillingReference;
+  384 is German-only), CreditNote 381; category O for non-VAT payers, AE for reverse charge,
+  endpoints 0218 (LV reg. no.) / country VAT schemes. `problems(doc_id)` lists what the
+  user must fill in; the document page shows it. Validated against PEPPOL BIS 3.0 + EN 16931
+  Schematron and the UBL 2.1 XSD in 13 scenarios; to re-run, fetch the rules from
+  github.com/OpenPEPPOL/peppol-bis-invoice-3 (`rules/sch`), compile with the ISO Schematron
+  XSLT2 skeleton and run with saxonche in a scratch venv (not an app dependency).
 
 ### Invoice PDFs (redesigned 2026-10-21)
 - `app/pdf_generator.py`: three templates built from shared parts (`_head_*`, `_parties`,
@@ -291,6 +323,9 @@ can't kill the main form logic.
   skips it — keyboard tests must branch on that.
 - **`[hidden]` is `display:none !important`** in `app.css`; component display rules
   used to override the attribute.
+- **Numbering never reuses a sent number.** Type 2 (daily) numbering counts from the day's
+  highest `seq_num`, not the number of documents: with a count, deleting the 2nd of three
+  made the next one a second "03".
 - **Phone lists act by swipe** (`static/js/swipe.js`): the ⋯ menu is hidden ≤ 768px, so rows
   carry `data-swipe` and the page passes their actions to `vrSwipe.attach`. Delete and
   restore answer JSON when asked (`Accept: application/json`) so the swipe can offer undo.

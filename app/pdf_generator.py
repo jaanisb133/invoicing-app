@@ -12,7 +12,7 @@ The editor and document previews (static/js/paper.js) draw the same layouts
 in HTML at scale, so a change here needs the same change there.
 """
 
-from app import fmt
+from app import fmt, money
 import os
 import datetime
 from xml.sax.saxutils import escape as _xml_escape
@@ -252,6 +252,8 @@ def _get_doc_data(doc_id):
         doc_type_label = settings.get("buy_doc_name", "Rēķins")
     elif doc["doc_type"] == "offer":
         doc_type_label = settings.get("offer_doc_name", "Piedāvājums")
+    elif doc["doc_type"] == "credit":
+        doc_type_label = "Kredītrēķins"
     else:
         doc_type_label = settings.get("sell_doc_name", "Rēķins")
     doc_type_label = (doc_type_label or "Rēķins").strip()
@@ -289,14 +291,17 @@ def _get_doc_data(doc_id):
         supplier = party_info(None, from_settings=True)
         buyer = party_info(client)
 
-    subtotal = sum(
-        0 if item.get("included_in_price") else item["quantity"] * item["price_per_unit"]
-        for item in items
-    )
     # Under reverse charge the supplier charges no VAT, whatever rate is stored
     vat_rate = 0.0 if doc.get("reverse_charge") else doc["vat_rate"]
-    vat_amount = subtotal * (vat_rate / 100)
-    total = subtotal + vat_amount
+    totals = document_amounts(doc, items)
+
+    # A credit note or corrective invoice names the invoice it changes (PVN
+    # likums asks for its number and date; MK 877 p.25.1 for the number)
+    ref = ""
+    if doc.get("ref_doc_id"):
+        original, _ = db.get_document(doc["ref_doc_id"])
+        if original and original.get("user_id") == doc.get("user_id"):
+            ref = ref_line(doc, original)
 
     display_due_date = _date(doc.get("payment_due_date")) if doc.get("doc_type") != "offer" else ""
 
@@ -310,14 +315,46 @@ def _get_doc_data(doc_id):
         "doc_type_label": doc_type_label,
         "supplier": supplier,
         "buyer": buyer,
-        "subtotal": subtotal,
+        "subtotal": totals["subtotal"],
         "vat_rate": vat_rate,
-        "vat_amount": vat_amount,
-        "total": total,
+        "vat_amount": totals["vat"],
+        "rounding": totals["rounding"],
+        "total": totals["total"],
+        "ref_line": ref,
         "is_vat_payer": settings.get("is_vat_payer", "1") == "1",
         "entity_type": entity_type,
         "reverse_charge": bool(doc.get("reverse_charge", 0)),
     }
+
+
+def document_amounts(doc, items):
+    """The document's stored totals (app/money.py) as floats, with each item's
+    "line_amount". Falls back to computing them for a document that has none."""
+    if doc.get("total") is None:
+        t = money.document_totals(items, 0 if doc.get("reverse_charge") else doc.get("vat_rate") or 0,
+                                  doc.get("rounding") or 0)
+        for item, line in zip(items, t["lines"]):
+            item["line_amount"] = float(line)
+        return {k: float(t[k]) for k in ("subtotal", "vat", "rounding", "total")}
+    for item in items:
+        if item.get("total") is not None and not item.get("included_in_price"):
+            item["line_amount"] = item["total"]
+        else:
+            item["line_amount"] = float(money.line_total(item["quantity"], item["price_per_unit"],
+                                                         item.get("included_in_price")))
+    return {"subtotal": doc["subtotal"], "vat": doc["vat_amount"],
+            "rounding": doc.get("rounding") or 0, "total": doc["total"]}
+
+
+def ref_line(doc, original):
+    """The line a credit note or corrective invoice prints under its title."""
+    what = "Kredītrēķins rēķinam" if doc["doc_type"] == "credit" else "Koriģējošais rēķins, aizstāj rēķinu"
+    return f"{what} Nr. {original['doc_number']} no {_date(original['doc_date'])}"
+
+
+def amount_label(kind):
+    """What the big figure is called: owed on an invoice, given back on a credit note."""
+    return {"sell": "Apmaksai", "credit": "Kreditētā summa"}.get(kind, "Kopā")
 
 
 FREE_PLAN_FOOTER = "Sagatavots ar V-Rēķini · v-rekini.lv"
@@ -518,6 +555,8 @@ def _build(doc_id, template):
 
     story = []
     story += {"classic": _head_classic, "modern": _head_modern, "minimal": _head_minimal}[template](ctx)
+    if data["ref_line"]:
+        story += [Paragraph(_x(data["ref_line"]), st["body"]), Spacer(1, 7 * mm)]
     story += _parties(ctx)
     story.append(_lines(ctx))
     story.append(KeepTogether(_summary(ctx)))
@@ -638,8 +677,7 @@ def _head_modern(ctx):
     ]))
 
     # The panel: what is owed and by when, before anything else
-    payable = ctx["kind"] == "sell"
-    cells = [("Apmaksai" if payable else "Kopā", fmt.eur(data["total"]))]
+    cells = [(amount_label(ctx["kind"]), fmt.eur(data["total"]))]
     if data["display_due_date"]:
         cells.append(("Apmaksāt līdz", data["display_due_date"]))
     cells.append(("Datums", data["display_date"]))
@@ -720,8 +758,8 @@ def _lines(ctx):
             row += [Paragraph("iekļauts cenā", st["cell_mr"]), ""]
             spans.append(("SPAN", (4, i), (5, i)))
         else:
-            row += [Paragraph(fmt.num(item["price_per_unit"]), st["cell_r"]),
-                    Paragraph(fmt.num(item["quantity"] * item["price_per_unit"]), st["cell_r"])]
+            row += [Paragraph(fmt.price(item["price_per_unit"]), st["cell_r"]),
+                    Paragraph(fmt.num(item["line_amount"]), st["cell_r"])]
         rows.append(row)
     if len(rows) == 1:
         rows.append(["", Paragraph("Nav rindu", st["cell_m"]), "", "", "", ""])
@@ -765,14 +803,17 @@ def _totals(ctx, box_w):
         else:
             rows = [("Summa bez PVN", fmt.eur(data["subtotal"])),
                     (f"PVN {fmt.qty(data['vat_rate'])}\u00a0%", fmt.eur(data["vat_amount"]))]
+        if data["rounding"]:
+            rows.append(("Noapaļošana", fmt.eur(data["rounding"])))
         t = Table([[Paragraph(_x(k), st["kv_k"]), Paragraph(v, st["kv_vr"])] for k, v in rows],
                   colWidths=[box_w * 0.64, box_w * 0.36])
         t.setStyle(TableStyle(plain))
         out += [t, Spacer(1, 2.2 * mm), _Rule(INK, weight=0.9 if ctx["template"] == "classic" else 0.6),
                 Spacer(1, 2.6 * mm)]
-    label = "Apmaksai" if ctx["kind"] == "sell" else "Kopā"
+    label = amount_label(ctx["kind"])
+    split = 0.45 if ctx["kind"] == "credit" else 0.3  # "Kreditētā summa" on one line
     t = Table([[Paragraph(label, st["amount_k"]), Paragraph(fmt.eur(data["total"]), st["amount_v"])]],
-              colWidths=[box_w * 0.3, box_w * 0.7])
+              colWidths=[box_w * split, box_w * (1 - split)])
     t.setStyle(TableStyle(plain + [("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
     out.append(t)
     return out

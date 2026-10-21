@@ -1,394 +1,364 @@
 """
 E-invoice (e-rēķins) generator for V-Rēķini.
-Generates PEPPOL BIS Billing 3.0 compliant UBL 2.1 XML invoices
-conforming to LVS EN 16931-1:2017 (Latvian e-invoice standard).
 
-Mandatory in Latvia from 2028.
+Writes UBL 2.1 XML to PEPPOL BIS Billing 3.0 (EN 16931, LVS EN 16931-1:2017):
+an Invoice (380), a corrective invoice (384, pointing at the invoice it
+replaces) or a CreditNote (381, pointing at the invoice it credits). VID
+rejects anything that fails the PEPPOL Schematron, so the rules that bite are
+handled here and `problems()` names what the user still has to fill in.
+See E-INVOICING.md for the law behind it.
+
+Amounts follow app/money.py: lines rounded to the cent, VAT on their sum.
 Reference: https://docs.peppol.eu/poacc/billing/3.0/
 """
 
-import os
-import datetime
+import re
+import tempfile
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom.minidom import parseString
 
 from app import database as db
+from app import money
 
-# Register namespace prefixes so ElementTree uses cbc:/cac: instead of ns0:/ns1:
-ET.register_namespace("", NS_INVOICE := "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2")
-ET.register_namespace("cac", NS_CAC := "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2")
-ET.register_namespace("cbc", NS_CBC := "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2")
+NS_INVOICE = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+NS_CREDIT = "urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+NS_CAC = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+NS_CBC = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+ET.register_namespace("cac", NS_CAC)
+ET.register_namespace("cbc", NS_CBC)
 
-# PEPPOL BIS 3.0 identifiers
 CUSTOMIZATION_ID = "urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0"
 PROFILE_ID = "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
+CURRENCY = "EUR"
 
-# (Namespace constants NS_INVOICE, NS_CAC, NS_CBC defined above via register_namespace)
-
-# Mapping from app unit names to UN/ECE Recommendation 20 codes
-# https://docs.peppol.eu/poacc/billing/3.0/codelist/UNECERec20/
-UNIT_CODE_MAP = {
-    "kg": "KGM",       # kilogram
-    "gab": "C62",      # piece / one (unit)
-    "gab.": "C62",
-    "kaste": "CT",      # carton
-    "iepak.": "PK",     # package
-    "l": "LTR",         # litre
-    "h": "HUR",         # hour
-    "m": "MTR",         # metre
-    "m²": "MTK",        # square metre
-    "m³": "MTQ",        # cubic metre
-    "t": "TNE",         # tonne
-    "km": "KMT",        # kilometre
-    "diena": "DAY",     # day
-    "dienas": "DAY",
-    "kompl.": "SET",    # set
-    "komplekts": "SET",
+# Electronic address schemes (PEPPOL EAS) and legal identifier schemes (ICD)
+SCHEME_LV_REG = "0218"   # Latvian unified registration number (Uzņēmumu reģistrs)
+# VAT numbers as electronic addresses, by country prefix (PEPPOL EAS code list)
+VAT_SCHEMES = {
+    "LV": "9939", "LT": "9937", "EE": "9931", "PL": "9945", "DE": "9930",
+    "AT": "9914", "BE": "9925", "BG": "9926", "CY": "9928", "CZ": "9929", "EL": "9933",
+    "HR": "9934", "IE": "9935", "LU": "9938", "MT": "9943", "NL": "9944", "PT": "9946",
+    "RO": "9947", "SI": "9949", "SK": "9950", "ES": "9920", "FR": "9957", "HU": "9910",
+    "IT": "0211", "GB": "9932", "CH": "9927",
 }
 
-# Default currency
-DEFAULT_CURRENCY = "EUR"
-# Default country
-DEFAULT_COUNTRY = "LV"
+# App unit names → UN/ECE Recommendation 20
+UNIT_CODE_MAP = {
+    "gab": "C62", "gab.": "C62", "pakalp.": "C62", "pakalpojums": "C62",
+    "h": "HUR", "st.": "HUR", "st": "HUR", "stunda": "HUR", "stundas": "HUR",
+    "diena": "DAY", "dienas": "DAY", "d.": "DAY",
+    "mēn.": "MON", "mēnesis": "MON", "gads": "ANN",
+    "kompl.": "SET", "komplekts": "SET",
+    "kg": "KGM", "t": "TNE", "l": "LTR",
+    "m": "MTR", "m²": "MTK", "m2": "MTK", "m³": "MTQ", "m3": "MTQ", "km": "KMT",
+    "kaste": "CT", "iepak.": "PK", "pak.": "PK", "lpp.": "C62", "kWh": "KWH",
+}
 
 
 def _unit_code(unit_text):
-    """Convert a Latvian unit name to UN/ECE Rec 20 code."""
     if not unit_text:
-        return "C62"  # default: piece
-    normalized = unit_text.strip().lower()
-    return UNIT_CODE_MAP.get(normalized, "C62")
+        return "C62"
+    return UNIT_CODE_MAP.get(unit_text.strip(), UNIT_CODE_MAP.get(unit_text.strip().lower(), "C62"))
 
 
-def _tax_category_id(vat_rate, reverse_charge=False):
-    """Determine the PEPPOL tax category ID based on VAT rate.
-    S = Standard rate, Z = Zero rate, AE = Reverse charge, E = Exempt, O = Not subject to VAT.
-    """
-    if reverse_charge:
-        return "AE"
-    if vat_rate is None or vat_rate == 0:
-        return "Z"
-    return "S"
+def _lv_reg(value):
+    """An 11-digit Latvian registration number, or ''."""
+    digits = re.sub(r"\D", "", value or "")
+    return digits if len(digits) == 11 else ""
 
 
-def _fmt_amount(amount):
-    """Format amount to 2 decimal places."""
-    return f"{round(amount, 2):.2f}"
+def _vat_id(value):
+    """A VAT number with its country prefix: '40003...' → 'LV40003...'."""
+    v = re.sub(r"\s", "", value or "").upper()
+    if re.fullmatch(r"\d{11}", v):
+        return "LV" + v
+    return v
+
+
+def _country(party):
+    vat = _vat_id(party.get("vat"))
+    return vat[:2] if re.match(r"^[A-Z]{2}", vat) and vat[:2] != "EL" else (
+        "GR" if vat.startswith("EL") else "LV")
+
+
+def _dec_text(value):
+    """A quantity or unit price exactly as entered: 1.5, 0.0145, 120."""
+    d = money.dec(value).normalize()
+    s = format(d, "f")
+    return s if "." not in s else s.rstrip("0").rstrip(".") or "0"
+
+
+def _amount(parent, tag, value):
+    el = SubElement(parent, f"{{{NS_CBC}}}{tag}")
+    el.set("currencyID", CURRENCY)
+    el.text = f"{money.cents(value):.2f}"
+    return el
+
+
+def _text(parent, tag, value, ns=NS_CBC, **attrs):
+    el = SubElement(parent, f"{{{ns}}}{tag}")
+    for k, v in attrs.items():
+        el.set(k, v)
+    el.text = str(value)
+    return el
 
 
 def _get_einvoice_data(doc_id):
-    """Fetch all data needed for e-invoice generation (reuses PDF pattern)."""
     doc, items = db.get_document(doc_id)
     if not doc:
         raise ValueError(f"Dokuments ar ID {doc_id} nav atrasts")
-
-    client = db.get_client(doc["client_id"])
+    client = db.get_client(doc["client_id"]) or {}
     user_id = doc.get("user_id", 0)
     settings = db.get_all_user_settings(user_id) if user_id else db.get_all_settings()
-    user = db.get_user(user_id) if user_id else {}
+    user = (db.get_user(user_id) if user_id else None) or {}
 
-    def party_info(source_client, from_settings=False):
-        if from_settings:
-            return {
-                "name": (settings.get("company_name", "") or "").strip(),
-                "reg": (settings.get("reg_number", "") or "").strip(),
-                "vat": (settings.get("vat_number", "") or "").strip(),
-                "addr": (settings.get("legal_address", "") or "").strip(),
-                "bank": (settings.get("bank_name", "") or "").strip(),
-                "account": (settings.get("bank_account", "") or "").strip(),
-                "email": ((user or {}).get("email", "") or "").strip(),
-                "phone": ((user or {}).get("phone", "") or "").strip(),
-                "contact": ((user or {}).get("display_name", "") or "").strip(),
-            }
-        return {
-            "name": (source_client["name"] if source_client else "").strip(),
-            "reg": ((source_client["reg_number"] or "") if source_client else "").strip(),
-            "vat": ((source_client["vat_number"] or "") if source_client else "").strip(),
-            "addr": ((source_client["legal_address"] or "") if source_client else "").strip(),
-            "bank": ((source_client["bank_name"] or "") if source_client else "").strip(),
-            "account": ((source_client["bank_account"] or "") if source_client else "").strip(),
-            "email": ((source_client["email"] or "") if source_client else "").strip(),
-            "phone": ((source_client["phone"] or "") if source_client else "").strip(),
-            "contact": ((source_client["contact_person"] or "") if source_client else "").strip(),
-        }
-
-    if doc["doc_type"] == "buy":
-        supplier = party_info(client)
-        buyer = party_info(None, from_settings=True)
-    else:
-        supplier = party_info(None, from_settings=True)
-        buyer = party_info(client)
-
-    subtotal = sum(item["quantity"] * item["price_per_unit"] for item in items)
-    vat_rate = doc["vat_rate"] or 0
-    vat_amount = subtotal * (vat_rate / 100)
-    total = subtotal + vat_amount
-
-    return {
-        "doc": doc,
-        "items": items,
-        "client": client,
-        "settings": settings,
-        "supplier": supplier,
-        "buyer": buyer,
-        "subtotal": subtotal,
-        "vat_rate": vat_rate,
-        "vat_amount": vat_amount,
-        "total": total,
-        "reverse_charge": bool(doc.get("reverse_charge", 0)),
+    own = {
+        "name": (settings.get("company_name") or "").strip(),
+        "reg": (settings.get("reg_number") or "").strip(),
+        "vat": (settings.get("vat_number") or "").strip(),
+        "addr": (settings.get("legal_address") or "").strip(),
+        "account": (settings.get("bank_account") or "").strip(),
+        "email": (settings.get("company_email") or user.get("email") or "").strip(),
+        "phone": (settings.get("company_phone") or "").strip(),
+        "person": settings.get("entity_type") == "individual",
+        "vat_payer": settings.get("is_vat_payer", "1") == "1",
     }
+    other = {
+        "name": (client.get("name") or "").strip(),
+        "reg": (client.get("reg_number") or "").strip(),
+        "vat": (client.get("vat_number") or "").strip(),
+        "addr": (client.get("legal_address") or "").strip(),
+        "account": (client.get("bank_account") or "").strip(),
+        "email": (client.get("email") or "").strip(),
+        "phone": (client.get("phone") or "").strip(),
+        "person": (client.get("client_type") or "business") == "individual",
+        "vat_payer": bool(client.get("vat_payer")) or bool(client.get("vat_number")),
+    }
+    supplier, buyer = (other, own) if doc["doc_type"] == "buy" else (own, other)
+
+    reverse = bool(doc.get("reverse_charge"))
+    rate = 0.0 if reverse else float(doc.get("vat_rate") or 0)
+    if not supplier["vat_payer"]:
+        category = "O"
+    elif reverse:
+        category = "AE"
+    elif rate == 0:
+        category = "Z"
+    else:
+        category = "S"
+    if category == "O":
+        rate = 0.0
+
+    # The XML is checked line by line, so its amounts come from money.py even
+    # for an old document whose stored totals predate it.
+    totals = money.document_totals(items, rate, doc.get("rounding") or 0)
+
+    original = None
+    if doc.get("ref_doc_id"):
+        o, _ = db.get_document(doc["ref_doc_id"])
+        if o and o.get("user_id") == user_id:
+            original = o
+
+    return {"doc": doc, "items": items, "supplier": supplier, "buyer": buyer,
+            "category": category, "rate": rate, "totals": totals, "original": original,
+            "is_credit": doc["doc_type"] == "credit"}
 
 
-def _add_party(parent_tag, parent_el, party, is_supplier=True):
-    """Add AccountingSupplierParty or AccountingCustomerParty element."""
-    party_wrapper = SubElement(parent_el, f"{{{NS_CAC}}}{parent_tag}")
-    party_el = SubElement(party_wrapper, f"{{{NS_CAC}}}Party")
+def problems(doc_id):
+    """What stops this document from being a valid e-invoice, in Latvian, for the user."""
+    d = _get_einvoice_data(doc_id)
+    sup, buy, out = d["supplier"], d["buyer"], []
+    if not sup["name"]:
+        out.append("Iestatījumos nav norādīts uzņēmuma nosaukums.")
+    if not (_lv_reg(sup["reg"]) or (sup["vat_payer"] and sup["vat"])):
+        out.append("Iestatījumos nav norādīts reģistrācijas numurs (vai personas kods), "
+                   "pēc kura e-rēķinā identificē izrakstītāju.")
+    if buy["person"]:
+        out.append("Klients ir privātpersona: tai e-rēķins nav jāsūta, pietiek ar PDF.")
+    elif not (_lv_reg(buy["reg"]) or VAT_SCHEMES.get(_vat_id(buy["vat"])[:2])):
+        out.append("Klientam nav Latvijas reģistrācijas numura vai ES PVN numura, "
+                   "kas kalpotu par e-rēķina adresi.")
+    if d["category"] == "AE" and not (sup["vat"] and buy["vat"]):
+        out.append("Nodokļa apgrieztajai maksāšanai vajag gan Jūsu, gan klienta PVN numuru.")
+    if d["category"] in ("S", "Z") and not sup["vat"]:
+        out.append("PVN maksātājam iestatījumos jānorāda PVN numurs.")
+    if not d["items"]:
+        out.append("Dokumentā nav rindu.")
+    if (d["is_credit"] or d["doc"].get("ref_doc_id")) and not d["original"]:
+        out.append("Nav atrodams rēķins, uz kuru šis dokuments atsaucas.")
+    return out
 
-    # EndpointID — use VAT number or reg number as electronic address
-    endpoint_id = party.get("vat") or party.get("reg") or "N/A"
-    ep = SubElement(party_el, f"{{{NS_CBC}}}EndpointID")
-    ep.set("schemeID", "9939")  # 9939 = LV national scheme
-    ep.text = endpoint_id
 
-    # PartyIdentification
-    if party.get("reg"):
-        party_id_wrapper = SubElement(party_el, f"{{{NS_CAC}}}PartyIdentification")
-        party_id = SubElement(party_id_wrapper, f"{{{NS_CBC}}}ID")
-        party_id.text = party["reg"]
+def _party(parent, tag, party, category, is_supplier):
+    wrap = SubElement(parent, f"{{{NS_CAC}}}{tag}")
+    p = SubElement(wrap, f"{{{NS_CAC}}}Party")
 
-    # PartyName
-    party_name_wrapper = SubElement(party_el, f"{{{NS_CAC}}}PartyName")
-    party_name = SubElement(party_name_wrapper, f"{{{NS_CBC}}}Name")
-    party_name.text = party.get("name") or "N/A"
+    reg = "" if party["person"] else _lv_reg(party["reg"])
+    vat = _vat_id(party["vat"]) if party["vat_payer"] or not is_supplier else ""
+    vat_scheme = VAT_SCHEMES.get(vat[:2]) if vat else None
+    # Electronic address: the registration number for a Latvian entity (that is
+    # what e-adrese and VID file it under), else the VAT number. A self-employed
+    # seller has no company number; their taxpayer code at VID is the personal
+    # code, so that is their address. A private buyer gets none: they don't
+    # need an e-invoice, and a personal code doesn't belong in one.
+    person_code = _lv_reg(party["reg"]) if party["person"] and is_supplier else ""
+    if reg or person_code:
+        _text(p, "EndpointID", reg or person_code, schemeID=SCHEME_LV_REG)
+    elif vat_scheme:
+        _text(p, "EndpointID", vat, schemeID=vat_scheme)
+    if reg:
+        pid = SubElement(p, f"{{{NS_CAC}}}PartyIdentification")
+        _text(pid, "ID", reg, schemeID=SCHEME_LV_REG)
 
-    # PostalAddress
-    postal = SubElement(party_el, f"{{{NS_CAC}}}PostalAddress")
-    if party.get("addr"):
-        street = SubElement(postal, f"{{{NS_CBC}}}StreetName")
-        street.text = party["addr"]
-    country_el = SubElement(postal, f"{{{NS_CAC}}}Country")
-    country_code = SubElement(country_el, f"{{{NS_CBC}}}IdentificationCode")
-    country_code.text = DEFAULT_COUNTRY
+    name = SubElement(p, f"{{{NS_CAC}}}PartyName")
+    _text(name, "Name", party["name"] or "—")
 
-    # PartyTaxScheme (VAT registration)
-    if party.get("vat"):
-        tax_scheme_wrapper = SubElement(party_el, f"{{{NS_CAC}}}PartyTaxScheme")
-        company_id = SubElement(tax_scheme_wrapper, f"{{{NS_CBC}}}CompanyID")
-        company_id.text = party["vat"]
-        tax_scheme = SubElement(tax_scheme_wrapper, f"{{{NS_CAC}}}TaxScheme")
-        tax_scheme_id = SubElement(tax_scheme, f"{{{NS_CBC}}}ID")
-        tax_scheme_id.text = "VAT"
+    addr = SubElement(p, f"{{{NS_CAC}}}PostalAddress")
+    if party["addr"]:
+        _text(addr, "StreetName", party["addr"])
+    country = SubElement(addr, f"{{{NS_CAC}}}Country")
+    _text(country, "IdentificationCode", _country(party))
 
-    # PartyLegalEntity
-    legal = SubElement(party_el, f"{{{NS_CAC}}}PartyLegalEntity")
-    reg_name = SubElement(legal, f"{{{NS_CBC}}}RegistrationName")
-    reg_name.text = party.get("name") or "N/A"
-    if party.get("reg"):
-        company_id_legal = SubElement(legal, f"{{{NS_CBC}}}CompanyID")
-        company_id_legal.text = party["reg"]
+    # No VAT identifiers at all on an invoice outside the scope of VAT (BR-O-02)
+    if vat and category != "O":
+        ts = SubElement(p, f"{{{NS_CAC}}}PartyTaxScheme")
+        _text(ts, "CompanyID", vat)
+        scheme = SubElement(ts, f"{{{NS_CAC}}}TaxScheme")
+        _text(scheme, "ID", "VAT")
 
-    # Contact (optional but useful — email and phone)
-    if party.get("email") or party.get("phone") or party.get("contact"):
-        contact_el = SubElement(party_el, f"{{{NS_CAC}}}Contact")
-        if party.get("contact"):
-            contact_name = SubElement(contact_el, f"{{{NS_CBC}}}Name")
-            contact_name.text = party["contact"]
-        if party.get("phone"):
-            contact_phone = SubElement(contact_el, f"{{{NS_CBC}}}Telephone")
-            contact_phone.text = party["phone"]
-        if party.get("email"):
-            contact_email = SubElement(contact_el, f"{{{NS_CBC}}}ElectronicMail")
-            contact_email.text = party["email"]
+    legal = SubElement(p, f"{{{NS_CAC}}}PartyLegalEntity")
+    _text(legal, "RegistrationName", party["name"] or "—")
+    if reg:
+        _text(legal, "CompanyID", reg, schemeID=SCHEME_LV_REG)
+    elif person_code:
+        _text(legal, "CompanyID", person_code)
+
+    if party["email"] or party["phone"]:
+        contact = SubElement(p, f"{{{NS_CAC}}}Contact")
+        if party["phone"]:
+            _text(contact, "Telephone", party["phone"])
+        if party["email"]:
+            _text(contact, "ElectronicMail", party["email"])
+
+
+def _tax_category(parent, tag, category, rate):
+    cat = SubElement(parent, f"{{{NS_CAC}}}{tag}")
+    _text(cat, "ID", category)
+    if category != "O":
+        _text(cat, "Percent", f"{money.dec(rate).normalize():f}")
+    if tag == "TaxCategory":
+        if category == "AE":
+            _text(cat, "TaxExemptionReasonCode", "VATEX-EU-AE")
+            _text(cat, "TaxExemptionReason", "Nodokļa apgrieztā maksāšana")
+        elif category == "O":
+            _text(cat, "TaxExemptionReasonCode", "VATEX-EU-O")
+            _text(cat, "TaxExemptionReason", "Nav PVN maksātājs")
+    scheme = SubElement(cat, f"{{{NS_CAC}}}TaxScheme")
+    _text(scheme, "ID", "VAT")
 
 
 def generate_einvoice_xml(doc_id):
-    """Generate a PEPPOL BIS Billing 3.0 compliant UBL 2.1 XML invoice.
+    """(xml_string, filename) for a sales invoice, corrective invoice or credit note."""
+    d = _get_einvoice_data(doc_id)
+    doc, items, totals = d["doc"], d["items"], d["totals"]
+    credit = d["is_credit"]
+    ns = NS_CREDIT if credit else NS_INVOICE
+    ET.register_namespace("", ns)
+    root = Element(f"{{{ns}}}{'CreditNote' if credit else 'Invoice'}")
 
-    Returns (xml_string, filename) tuple.
-    """
-    data = _get_einvoice_data(doc_id)
-    doc = data["doc"]
-    items = data["items"]
-    supplier = data["supplier"]
-    buyer = data["buyer"]
+    _text(root, "CustomizationID", CUSTOMIZATION_ID)
+    _text(root, "ProfileID", PROFILE_ID)
+    _text(root, "ID", doc["doc_number"])
+    _text(root, "IssueDate", doc["doc_date"])
+    if not credit and doc.get("payment_due_date"):
+        _text(root, "DueDate", doc["payment_due_date"])
+    if credit:
+        _text(root, "CreditNoteTypeCode", "381")
+    else:
+        # A corrective invoice is a commercial invoice that names the one it
+        # replaces (BillingReference below): that reference is what VID reads.
+        # PEPPOL keeps 384 for German parties only.
+        _text(root, "InvoiceTypeCode", "380")
+    if (doc.get("notes") or "").strip():
+        _text(root, "Note", doc["notes"].strip())
+    _text(root, "DocumentCurrencyCode", CURRENCY)
+    # BuyerReference (or an order reference) is required; the buyer's own
+    # registration number is what Latvian recipients route on
+    buyer_reg = "" if d["buyer"]["person"] else d["buyer"]["reg"]  # never a personal code
+    _text(root, "BuyerReference", buyer_reg or doc["doc_number"])
 
-    currency = DEFAULT_CURRENCY
+    if d["original"]:
+        ref = SubElement(root, f"{{{NS_CAC}}}BillingReference")
+        inv = SubElement(ref, f"{{{NS_CAC}}}InvoiceDocumentReference")
+        _text(inv, "ID", d["original"]["doc_number"])
+        _text(inv, "IssueDate", d["original"]["doc_date"])
 
-    # --- Root element (namespaces registered globally via ET.register_namespace) ---
-    root = Element(f"{{{NS_INVOICE}}}Invoice")
+    _party(root, "AccountingSupplierParty", d["supplier"], d["category"], True)
+    _party(root, "AccountingCustomerParty", d["buyer"], d["category"], False)
 
-    # --- Header fields ---
-    cust_id = SubElement(root, f"{{{NS_CBC}}}CustomizationID")
-    cust_id.text = CUSTOMIZATION_ID
+    account = re.sub(r"\s", "", d["supplier"]["account"])
+    if not credit and account:
+        pm = SubElement(root, f"{{{NS_CAC}}}PaymentMeans")
+        _text(pm, "PaymentMeansCode", "30")  # credit transfer
+        _text(pm, "PaymentID", doc["doc_number"])
+        fa = SubElement(pm, f"{{{NS_CAC}}}PayeeFinancialAccount")
+        _text(fa, "ID", account)
+        if d["supplier"]["name"]:
+            _text(fa, "Name", d["supplier"]["name"])
+    if not credit and doc.get("payment_due_date"):
+        pt = SubElement(root, f"{{{NS_CAC}}}PaymentTerms")
+        y, m, dd = doc["payment_due_date"].split("-")
+        _text(pt, "Note", f"Apmaksāt līdz {dd}.{m}.{y}")
 
-    prof_id = SubElement(root, f"{{{NS_CBC}}}ProfileID")
-    prof_id.text = PROFILE_ID
+    tax = SubElement(root, f"{{{NS_CAC}}}TaxTotal")
+    _amount(tax, "TaxAmount", totals["vat"])
+    sub = SubElement(tax, f"{{{NS_CAC}}}TaxSubtotal")
+    _amount(sub, "TaxableAmount", totals["subtotal"])
+    _amount(sub, "TaxAmount", totals["vat"])
+    _tax_category(sub, "TaxCategory", d["category"], d["rate"])
 
-    inv_id = SubElement(root, f"{{{NS_CBC}}}ID")
-    inv_id.text = doc["doc_number"]
+    lmt = SubElement(root, f"{{{NS_CAC}}}LegalMonetaryTotal")
+    tax_inclusive = totals["subtotal"] + totals["vat"]
+    _amount(lmt, "LineExtensionAmount", totals["subtotal"])
+    _amount(lmt, "TaxExclusiveAmount", totals["subtotal"])
+    _amount(lmt, "TaxInclusiveAmount", tax_inclusive)
+    if totals["rounding"]:
+        _amount(lmt, "PayableRoundingAmount", totals["rounding"])
+    _amount(lmt, "PayableAmount", totals["total"])
 
-    issue_date = SubElement(root, f"{{{NS_CBC}}}IssueDate")
-    issue_date.text = doc["doc_date"]
+    line_tag, qty_tag = ("CreditNoteLine", "CreditedQuantity") if credit else ("InvoiceLine", "InvoicedQuantity")
+    for idx, (item, line) in enumerate(zip(items, totals["lines"]), 1):
+        el = SubElement(root, f"{{{NS_CAC}}}{line_tag}")
+        _text(el, "ID", idx)
+        unit = item.get("unit") or "gab"
+        qty, unit_price = money.dec(item["quantity"]), money.dec(item["price_per_unit"])
+        if unit_price < 0:
+            # A unit price can't be negative (BR-27): a discount line is a negative quantity
+            qty, unit_price = -qty, -unit_price
+        _text(el, qty_tag, _dec_text(qty), unitCode=_unit_code(unit))
+        _amount(el, "LineExtensionAmount", line)
+        it = SubElement(el, f"{{{NS_CAC}}}Item")
+        _text(it, "Name", item.get("product_name") or item.get("description") or f"Pozīcija {idx}")
+        _tax_category(it, "ClassifiedTaxCategory", d["category"], d["rate"])
+        prop = SubElement(it, f"{{{NS_CAC}}}AdditionalItemProperty")
+        _text(prop, "Name", "Mērvienība")
+        _text(prop, "Value", unit)
+        price = SubElement(el, f"{{{NS_CAC}}}Price")
+        p = SubElement(price, f"{{{NS_CBC}}}PriceAmount")
+        p.set("currencyID", CURRENCY)
+        # "Included in the price" lines carry no amount; the quantity stays
+        p.text = "0" if item.get("included_in_price") else _dec_text(unit_price)
 
-    if doc.get("payment_due_date"):
-        due_date = SubElement(root, f"{{{NS_CBC}}}DueDate")
-        due_date.text = doc["payment_due_date"]
-
-    inv_type = SubElement(root, f"{{{NS_CBC}}}InvoiceTypeCode")
-    inv_type.text = "380"  # 380 = Commercial invoice
-
-    doc_currency = SubElement(root, f"{{{NS_CBC}}}DocumentCurrencyCode")
-    doc_currency.text = currency
-
-    # BuyerReference — use buyer reg number or invoice number as fallback
-    buyer_ref = SubElement(root, f"{{{NS_CBC}}}BuyerReference")
-    buyer_ref.text = buyer.get("reg") or doc["doc_number"]
-
-    # --- Parties ---
-    _add_party("AccountingSupplierParty", root, supplier, is_supplier=True)
-    _add_party("AccountingCustomerParty", root, buyer, is_supplier=False)
-
-    # --- PaymentMeans ---
-    if supplier.get("account"):
-        payment_means = SubElement(root, f"{{{NS_CAC}}}PaymentMeans")
-        payment_code = SubElement(payment_means, f"{{{NS_CBC}}}PaymentMeansCode")
-        payment_code.text = "30"  # 30 = Credit transfer
-        payment_id = SubElement(payment_means, f"{{{NS_CBC}}}PaymentID")
-        payment_id.text = doc["doc_number"]
-        fin_account = SubElement(payment_means, f"{{{NS_CAC}}}PayeeFinancialAccount")
-        account_id = SubElement(fin_account, f"{{{NS_CBC}}}ID")
-        account_id.text = supplier["account"]
-        if supplier.get("bank"):
-            account_name = SubElement(fin_account, f"{{{NS_CBC}}}Name")
-            account_name.text = supplier["bank"]
-
-    # --- PaymentTerms ---
-    if doc.get("payment_due_date"):
-        payment_terms = SubElement(root, f"{{{NS_CAC}}}PaymentTerms")
-        note = SubElement(payment_terms, f"{{{NS_CBC}}}Note")
-        note.text = f"Apmaksas termiņš: {doc['payment_due_date']}"
-
-    # --- TaxTotal ---
-    vat_rate = data["vat_rate"]
-    vat_amount = data["vat_amount"]
-    subtotal = data["subtotal"]
-    total = data["total"]
-    reverse_charge = data["reverse_charge"]
-    tax_cat_id = _tax_category_id(vat_rate, reverse_charge)
-
-    tax_total = SubElement(root, f"{{{NS_CAC}}}TaxTotal")
-    tax_amount = SubElement(tax_total, f"{{{NS_CBC}}}TaxAmount")
-    tax_amount.set("currencyID", currency)
-    tax_amount.text = _fmt_amount(vat_amount)
-
-    tax_subtotal = SubElement(tax_total, f"{{{NS_CAC}}}TaxSubtotal")
-    taxable_amount = SubElement(tax_subtotal, f"{{{NS_CBC}}}TaxableAmount")
-    taxable_amount.set("currencyID", currency)
-    taxable_amount.text = _fmt_amount(subtotal)
-    tax_sub_amount = SubElement(tax_subtotal, f"{{{NS_CBC}}}TaxAmount")
-    tax_sub_amount.set("currencyID", currency)
-    tax_sub_amount.text = _fmt_amount(vat_amount)
-
-    tax_category = SubElement(tax_subtotal, f"{{{NS_CAC}}}TaxCategory")
-    tax_cat = SubElement(tax_category, f"{{{NS_CBC}}}ID")
-    tax_cat.text = tax_cat_id
-    tax_pct = SubElement(tax_category, f"{{{NS_CBC}}}Percent")
-    tax_pct.text = str(vat_rate)
-    if reverse_charge:
-        reason_code = SubElement(tax_category, f"{{{NS_CBC}}}TaxExemptionReasonCode")
-        reason_code.text = "vatex-eu-ae"
-        reason = SubElement(tax_category, f"{{{NS_CBC}}}TaxExemptionReason")
-        reason.text = "Nodokļa apgrieztā maksāšana"
-    tax_scheme = SubElement(tax_category, f"{{{NS_CAC}}}TaxScheme")
-    tax_scheme_id = SubElement(tax_scheme, f"{{{NS_CBC}}}ID")
-    tax_scheme_id.text = "VAT"
-
-    # --- LegalMonetaryTotal ---
-    monetary = SubElement(root, f"{{{NS_CAC}}}LegalMonetaryTotal")
-
-    line_ext = SubElement(monetary, f"{{{NS_CBC}}}LineExtensionAmount")
-    line_ext.set("currencyID", currency)
-    line_ext.text = _fmt_amount(subtotal)
-
-    tax_excl = SubElement(monetary, f"{{{NS_CBC}}}TaxExclusiveAmount")
-    tax_excl.set("currencyID", currency)
-    tax_excl.text = _fmt_amount(subtotal)
-
-    tax_incl = SubElement(monetary, f"{{{NS_CBC}}}TaxInclusiveAmount")
-    tax_incl.set("currencyID", currency)
-    tax_incl.text = _fmt_amount(total)
-
-    payable = SubElement(monetary, f"{{{NS_CBC}}}PayableAmount")
-    payable.set("currencyID", currency)
-    payable.text = _fmt_amount(total)
-
-    # --- InvoiceLines ---
-    for idx, item in enumerate(items, 1):
-        line_total = item["quantity"] * item["price_per_unit"]
-
-        inv_line = SubElement(root, f"{{{NS_CAC}}}InvoiceLine")
-
-        line_id = SubElement(inv_line, f"{{{NS_CBC}}}ID")
-        line_id.text = str(idx)
-
-        qty = SubElement(inv_line, f"{{{NS_CBC}}}InvoicedQuantity")
-        unit_text = item.get("unit") or "gab"
-        qty.set("unitCode", _unit_code(unit_text))
-        qty.text = _fmt_amount(item["quantity"])
-
-        line_ext_amount = SubElement(inv_line, f"{{{NS_CBC}}}LineExtensionAmount")
-        line_ext_amount.set("currencyID", currency)
-        line_ext_amount.text = _fmt_amount(line_total)
-
-        # Item
-        item_el = SubElement(inv_line, f"{{{NS_CAC}}}Item")
-        item_name = SubElement(item_el, f"{{{NS_CBC}}}Name")
-        item_name.text = item.get("product_name") or item.get("name") or f"Pozīcija {idx}"
-
-        # ClassifiedTaxCategory (must come before AdditionalItemProperty per UBL schema)
-        classified_tax = SubElement(item_el, f"{{{NS_CAC}}}ClassifiedTaxCategory")
-        cls_tax_id = SubElement(classified_tax, f"{{{NS_CBC}}}ID")
-        cls_tax_id.text = tax_cat_id
-        cls_tax_pct = SubElement(classified_tax, f"{{{NS_CBC}}}Percent")
-        cls_tax_pct.text = str(vat_rate)
-        cls_tax_scheme = SubElement(classified_tax, f"{{{NS_CAC}}}TaxScheme")
-        cls_tax_scheme_id = SubElement(cls_tax_scheme, f"{{{NS_CBC}}}ID")
-        cls_tax_scheme_id.text = "VAT"
-
-        # AdditionalItemProperty — human-readable unit name
-        if unit_text:
-            add_prop = SubElement(item_el, f"{{{NS_CAC}}}AdditionalItemProperty")
-            prop_name = SubElement(add_prop, f"{{{NS_CBC}}}Name")
-            prop_name.text = "Mērvienība"
-            prop_val = SubElement(add_prop, f"{{{NS_CBC}}}Value")
-            prop_val.text = unit_text
-
-        # Price
-        price_el = SubElement(inv_line, f"{{{NS_CAC}}}Price")
-        price_amount = SubElement(price_el, f"{{{NS_CBC}}}PriceAmount")
-        price_amount.set("currencyID", currency)
-        price_amount.text = _fmt_amount(item["price_per_unit"])
-
-    # --- Serialize to pretty XML ---
-    rough = tostring(root, encoding="unicode", xml_declaration=False)
-
-    # Use minidom for pretty printing
-    dom = parseString(f'<?xml version="1.0" encoding="UTF-8"?>\n{rough}')
-    xml_string = dom.toprettyxml(indent="  ", encoding=None)
-    # Remove extra xml declaration added by toprettyxml (we added our own)
-    if xml_string.startswith('<?xml'):
-        xml_string = xml_string.split('\n', 1)[1] if '\n' in xml_string else xml_string
-    xml_string = f'<?xml version="1.0" encoding="UTF-8"?>\n{xml_string.strip()}'
-
+    rough = tostring(root, encoding="unicode")
+    pretty = parseString(rough).toprettyxml(indent="  ")
+    xml_string = '<?xml version="1.0" encoding="UTF-8"?>\n' + pretty.split("\n", 1)[1].strip() + "\n"
     filename = f"{doc['doc_number'].replace('/', '_')}_e-rekins.xml"
-
     return xml_string, filename
 
 
 def generate_einvoice_file(doc_id):
-    """Generate e-invoice XML and save to a temp file. Returns file path."""
-    import tempfile
+    """Write the e-invoice XML to a temp file. Returns (path, filename)."""
     xml_string, filename = generate_einvoice_xml(doc_id)
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xml", mode="w", encoding="utf-8")
     tmp.write(xml_string)
