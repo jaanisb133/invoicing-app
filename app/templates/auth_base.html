@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}V-Rēķini{% endblock %}</title>
+    {% block meta %}<meta name="robots" content="noindex,follow">{% endblock %}
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0c0d0f" media="(prefers-color-scheme: dark)">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/site.css?v={{ css_version }}">
+    <script>
+    (function () {
+        var d = document.documentElement; d.classList.add('js');
+        try { var t = localStorage.getItem('vrekini-theme'); if (t === 'light' || t === 'dark') d.setAttribute('data-theme', t); } catch (e) {}
+    })();
+    </script>
+</head>
+<body class="auth">
+<header class="auth-bar">
+    <a href="/" class="wordmark"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M6 3.5h16a1 1 0 0 1 1 1V24l-2.5-1.8L18 24l-2.5-1.8L13 24l-2.5-1.8L8 24l-2.5-1.8L5 22.6V4.5a1 1 0 0 1 1-1z" fill="currentColor"/><path class="v" d="M10 9.5l4 7.5 4-7.5" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>V-Rēķini</span></a>
+    <span class="auth-bar-link">{% block bar_link %}{% endblock %}</span>
+</header>
+<main class="auth-main">
+    <section class="auth-card {% block card_class %}{% endblock %}">
+        <div class="tear" aria-hidden="true"></div>
+        <div class="auth-body">
+            {% block content %}{% endblock %}
+        </div>
+    </section>
+    {% block after_card %}{% endblock %}
+</main>
+<footer class="auth-foot">
+    <span>© {{ current_year() }} SIA „VN Media”</span>
+    <nav aria-label="Kājene"><a href="/pricing">Cenas</a><a href="/terms">Noteikumi</a><a href="/contacts">Kontakti</a></nav>
+</footer>
+{% block scripts %}{% endblock %}
+<script>
+// Show/hide password, for every password field with a toggle next to it
+document.querySelectorAll('[data-reveal]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var input = document.getElementById(btn.dataset.reveal);
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.textContent = show ? 'Slēpt' : 'Rādīt';
+        btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+        input.focus();
+    });
+});
+</script>
+</body>
+</html>

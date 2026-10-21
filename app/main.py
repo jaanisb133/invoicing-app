@@ -58,7 +58,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "43"
+CSS_VERSION = "45"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -66,6 +66,8 @@ templates.env.globals["css_version"] = CSS_VERSION
 templates.env.globals["tiers"] = db.TIER_LIMITS
 templates.env.filters["price"] = db.format_price
 templates.env.globals["plans"] = db.TIER_LIMITS
+templates.env.globals["lifetime_cap"] = db.LIFETIME_CAP
+templates.env.globals["current_year"] = lambda: datetime.date.today().year
 # Latvian count agreement: 1, 21, 31 … take the singular (1 diena, 21 rēķins; 11 dienas)
 templates.env.filters["plural"] = lambda n, one, many: one if int(n) % 10 == 1 and int(n) % 100 != 11 else many
 templates.env.filters["eur"] = fmt.eur
@@ -1173,7 +1175,7 @@ async def register(request: Request,
                    last_name: str = Form(""),
                    phone: str = Form(""),
                    password: str = Form(...),
-                   confirm_password: str = Form(...),
+                   confirm_password: str = Form(""),
                    plan: str = Form(""),
                    cycle: str = Form("monthly"),
                    entity_type: str = Form("business"),
@@ -1207,7 +1209,9 @@ async def register(request: Request,
         err = "Lūdzu norādiet vārdu un uzvārdu." if entity_type == "individual" else "Lūdzu norādiet uzņēmuma nosaukumu."
         return templates.TemplateResponse("register.html", {**error_ctx, "error": err})
 
-    if password != confirm_password:
+    # The form has one password field with a show/hide toggle; a second field
+    # is only compared when a client still sends one.
+    if confirm_password and password != confirm_password:
         return templates.TemplateResponse("register.html", {**error_ctx, "error": "Paroles nesakrīt."})
 
     if len(password) < 6:
@@ -1257,7 +1261,7 @@ async def register(request: Request,
     })
 
     # Store pending plan selection (if any) — checkout happens after onboarding
-    if plan in ("starter", "business"):
+    if plan in ("mini", "starter", "business", "lifetime"):
         db.save_all_user_settings(user_id, {
             "_pending_plan": plan,
             "_pending_plan_cycle": cycle,
@@ -1410,7 +1414,7 @@ async def save_setup(
     pending_plan = all_settings.get("_pending_plan", "")
     pending_cycle = all_settings.get("_pending_plan_cycle", "monthly")
 
-    if pending_plan in ("starter", "business"):
+    if pending_plan in ("mini", "starter", "business", "lifetime"):
         # Clear the pending plan and redirect to checkout
         db.save_all_user_settings(user["account_id"], {
             "_pending_plan": "",
@@ -1600,10 +1604,10 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     if tier not in ("mini", "starter", "business", "lifetime") or cycle not in ("monthly", "yearly", "lifetime"):
         return RedirectResponse("/pricing?error=invalid", status_code=303)
 
-    # Enforce 30-user cap for lifetime plan
+    # The lifetime licence closes once LIFETIME_CAP have been sold
     if tier == "lifetime":
         lifetime_count = db.count_lifetime_users()
-        if lifetime_count >= 10:
+        if lifetime_count >= db.LIFETIME_CAP:
             return RedirectResponse("/pricing?error=lifetime_sold_out", status_code=303)
 
     amount = db.get_plan_price(tier, cycle)

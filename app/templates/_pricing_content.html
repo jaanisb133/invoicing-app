@@ -1,431 +1,161 @@
-<div class="pricing-section">
-    <div style="text-align:center;margin-bottom:36px">
-        <{{ pricing_heading | default("h2") }} style="font-size:28px;font-weight:700;letter-spacing:-0.6px;margin:0 0 8px;color:var(--text)">Izvēlieties plānu</{{ pricing_heading | default("h2") }}>
-        <p style="color:var(--text-light);font-size:15px;margin:0">Sāciet bez maksas. Palieliniet plānu kad esat gatavs.</p>
-    </div>
+{#
+  Plans, built from TIER_LIMITS (the `plans` global) so the cards always match
+  what checkout charges and what the app enforces. Used by the public /pricing
+  page (site.css) and the signed-in one (app.css); styles are local and only
+  use tokens both sheets define.
+  Context: current_user (None for guests), lifetime_sold, optional pricing_heading.
+#}
+{% set h = pricing_heading | default("h2") %}
+{% set signed_in = current_user is not none and current_user %}
+{% set my_plan = current_user.plan_tier if signed_in else none %}
+{% set blurbs = {
+    'free': 'Lai izrakstītu dažus rēķinus mēnesī un iepazītu programmu.',
+    'mini': 'Pašnodarbinātajiem un sīkuzņēmumiem.',
+    'starter': 'Maziem uzņēmumiem un individuālajiem komersantiem.',
+    'business': 'Uzņēmumiem ar preču uzskaiti un komandu.'} %}
+{% macro features(p) -%}
+<ul class="px-feat">
+    <li>{% if p.max_documents is none %}Neierobežoti rēķini{% else %}{{ p.max_documents }} rēķini mēnesī{% endif %}</li>
+    <li>{% if p.max_clients is none %}Neierobežoti klienti{% else %}Līdz {{ p.max_clients }} klientiem{% endif %}, neierobežoti produkti</li>
+    <li>{% if p.max_emails_month is none %}Neierobežota nosūtīšana e-pastā{% else %}{{ p.max_emails_month }} e-pasti mēnesī{% endif %}</li>
+    <li>Visas trīs rēķinu veidnes</li>
+    {% if p.einvoice %}<li>E-rēķini (PEPPOL BIS 3.0)</li>{% endif %}
+    {% if p.accounting_export %}<li>Eksports grāmatvedim</li>{% endif %}
+    {% if p.recurring %}<li>Periodiskie rēķini{% if p.max_recurring %} (līdz {{ p.max_recurring }}){% endif %}</li>{% endif %}
+    {% if p.stock %}<li>Noliktava</li>{% endif %}
+    {% if p.max_users and p.max_users > 1 %}<li>{{ p.max_users }} lietotāji vienā kontā</li>{% endif %}
+</ul>
+{%- endmacro %}
 
-    <div class="pricing-toggle" style="display:flex;justify-content:center;margin-bottom:32px">
-        <div style="display:flex;background:var(--bg-input);border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px">
-            <button class="pricing-cycle-btn active" onclick="switchCycle('monthly')" id="btn-monthly"
-                    style="padding:9px 22px;border:none;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all 0.15s;background:var(--brand);color:#fff;box-shadow:0 2px 6px rgba(59,130,246,0.32);letter-spacing:-0.1px">
-                Mēnesī
-            </button>
-            <button class="pricing-cycle-btn" onclick="switchCycle('yearly')" id="btn-yearly"
-                    style="padding:9px 22px;border:none;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all 0.15s;background:transparent;color:var(--text-light);letter-spacing:-0.1px">
-                Gadā <span style="font-size:11px;opacity:0.85">(-18%)</span>
-            </button>
+<div class="px">
+    <div class="px-head">
+        <div>
+            <{{ h }} class="px-title">Cenas</{{ h }}>
+            <p class="px-sub">Jaunam kontam pirmās 14 dienas visas Pamata iespējas, pēc tam bezmaksas plāns. Cenas ar PVN.</p>
+        </div>
+        <div class="px-cycle" role="group" aria-label="Norēķinu periods">
+            <button type="button" data-cycle="monthly" aria-pressed="true">Mēnesī</button>
+            <button type="button" data-cycle="yearly" aria-pressed="false">Gadā, −18&nbsp;%</button>
         </div>
     </div>
 
-    <div class="pricing-grid pricing-grid-main">
-        <!-- Free -->
-        <div class="pricing-card">
-            <div class="pricing-card-header">
-                <span class="tier-badge tier-free">Bezmaksas</span>
-            </div>
-            <div class="pricing-price">
-                <span class="pricing-amount">0€</span>
-                <span class="pricing-period">/ mēnesī</span>
-            </div>
-            <p class="pricing-tagline">Izmēģiniet platformu bez maksas.</p>
-            <ul class="pricing-features">
-                <li>{{ tiers.free.max_documents }} dokumenti mēnesī</li>
-                <li>5 klienti</li>
-                <li>5 produkti</li>
-                <li>{{ tiers.free.max_emails_month }} e-pasti mēnesī</li>
-                <li>Pamata veidne</li>
-                <li>Rezerves kopiju veidošana</li>
-            </ul>
-            {% if current_user %}
-                {% if current_user.plan_tier == 'free' %}
-                <div class="btn btn-outline pricing-cta" style="pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
+    <div class="px-grid">
+        {% for key in ['free', 'mini', 'starter', 'business'] %}
+        {% set p = plans[key] %}
+        <section class="px-card{% if key == 'starter' %} is-main{% endif %}" aria-labelledby="px-{{ key }}">
+            <h3 id="px-{{ key }}">{{ p.label }}</h3>
+            <p class="px-for">{{ blurbs[key] }}</p>
+            <div class="px-price num">
+                {% if key == 'free' %}
+                <b>0&nbsp;€</b><span>mēnesī</span>
                 {% else %}
-                <div class="btn btn-outline pricing-cta" style="pointer-events:none;opacity:0.6">Bezmaksas plāns</div>
+                <b data-monthly="{{ p.price_monthly | price }}&nbsp;€" data-yearly="{{ p.price_yearly | price }}&nbsp;€">{{ p.price_monthly | price }}&nbsp;€</b>
+                <span data-monthly="mēnesī" data-yearly="gadā">mēnesī</span>
                 {% endif %}
-            {% else %}
-            <a href="/register" class="btn btn-outline pricing-cta">Sākt bez maksas</a>
-            {% endif %}
-        </div>
-
-        <!-- Mini -->
-        <div class="pricing-card">
-            <div class="pricing-card-header">
-                <span class="tier-badge tier-mini">Mini</span>
             </div>
-            <div class="pricing-price">
-                <span class="pricing-amount" id="price-mini">{{ tiers.mini.price_monthly | price }}€</span>
-                <span class="pricing-period" id="price-mini-period">/ mēnesī</span>
-            </div>
-            <p class="pricing-tagline">Pašnodarbinātajiem un sīkuzņēmumiem.</p>
-            <ul class="pricing-features">
-                <li>{{ tiers.mini.max_documents }} dokumenti mēnesī</li>
-                <li>25 klienti</li>
-                <li>25 produkti</li>
-                <li>{{ tiers.mini.max_emails_month }} e-pasti mēnesī</li>
-                <li>Pamata veidne</li>
-                <li>E-rēķinu ģenerēšana</li>
-                <li>Rezerves kopiju veidošana</li>
-            </ul>
-            {% if current_user %}
-                {% if current_user.plan_tier == 'mini' %}
-                <div class="btn btn-primary pricing-cta" style="pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
-                {% else %}
-                <form method="post" action="/billing/checkout" class="pricing-cta">
-                    <input type="hidden" name="tier" value="mini">
-                    <input type="hidden" name="cycle" value="monthly" class="cycle-input">
-                    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-                        {% if current_user.plan_tier == 'free' %}Uzlabot{% else %}Mainīt plānu{% endif %}
-                    </button>
-                </form>
-                {% endif %}
-            {% else %}
-            <a href="/register?plan=mini" class="btn btn-primary pricing-cta" id="link-mini">Izvēlēties plānu</a>
-            {% endif %}
-        </div>
-
-        <!-- Pamata (formerly Sākums) — POPULAR -->
-        <div class="pricing-card pricing-card-featured">
-            <div class="pricing-card-ribbon">Populārākais</div>
-            <div class="pricing-card-header">
-                <span class="tier-badge tier-starter">Pamata</span>
-            </div>
-            <div class="pricing-price">
-                <span class="pricing-amount" id="price-starter">{{ tiers.starter.price_monthly | price }}€</span>
-                <span class="pricing-period" id="price-starter-period">/ mēnesī</span>
-            </div>
-            <p class="pricing-tagline">Maziem uzņēmumiem un individuālajiem komersantiem.</p>
-            <ul class="pricing-features">
-                <li>{{ tiers.starter.max_documents }} dokumenti mēnesī</li>
-                <li>100 klienti</li>
-                <li>200 produkti</li>
-                <li>{{ tiers.starter.max_emails_month }} e-pasti mēnesī</li>
-                <li>Visas veidnes</li>
-                <li>{{ tiers.starter.max_recurring }} periodiskie rēķini</li>
-                <li>E-rēķinu ģenerēšana</li>
-                <li>Grāmatvedības eksports</li>
-                <li>Rezerves kopiju veidošana</li>
-            </ul>
-            {% if current_user %}
-                {% if current_user.plan_tier == 'starter' %}
-                <div class="btn btn-primary pricing-cta" style="pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
-                {% else %}
-                <form method="post" action="/billing/checkout" class="pricing-cta">
-                    <input type="hidden" name="tier" value="starter">
-                    <input type="hidden" name="cycle" value="monthly" class="cycle-input">
-                    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-                        {% if current_user.plan_tier in ('free', 'mini') %}Uzlabot{% else %}Mainīt plānu{% endif %}
-                    </button>
-                </form>
-                {% endif %}
-            {% else %}
-            <a href="/register?plan=starter" class="btn btn-primary pricing-cta" id="link-starter">Izvēlēties plānu</a>
-            {% endif %}
-        </div>
-
-        <!-- Business -->
-        <div class="pricing-card">
-            <div class="pricing-card-header">
-                <span class="tier-badge tier-business">Bizness</span>
-            </div>
-            <div class="pricing-price">
-                <span class="pricing-amount" id="price-business">{{ tiers.business.price_monthly | price }}€</span>
-                <span class="pricing-period" id="price-business-period">/ mēnesī</span>
-            </div>
-            <p class="pricing-tagline">Uzņēmumiem ar preču uzskaiti un lielāku apjomu.</p>
-            <ul class="pricing-features">
-                <li>{{ "{:,}".format(tiers.business.max_documents).replace(",", " ") }} dokumenti mēnesī</li>
-                <li>500 klienti</li>
-                <li>1 000 produkti</li>
-                <li>Neierobežoti e-pasti</li>
-                <li>Visas veidnes</li>
-                <li>Periodiskie rēķini</li>
-                <li>E-rēķinu ģenerēšana</li>
-                <li>Grāmatvedības eksports</li>
-                <li>{{ tiers.business.max_users }} lietotāji</li>
-                <li>Noliktavas pārvaldība</li>
-                <li>Prioritārais atbalsts</li>
-                <li>Rezerves kopiju veidošana</li>
-            </ul>
-            {% if current_user %}
-                {% if current_user.plan_tier == 'business' %}
-                <div class="btn btn-primary pricing-cta" style="pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
-                {% else %}
-                <form method="post" action="/billing/checkout" class="pricing-cta">
-                    <input type="hidden" name="tier" value="business">
-                    <input type="hidden" name="cycle" value="monthly" class="cycle-input">
-                    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-                        {% if current_user.plan_tier in ('free', 'mini', 'starter') %}Uzlabot{% else %}Mainīt plānu{% endif %}
-                    </button>
-                </form>
-                {% endif %}
-            {% else %}
-            <a href="/register?plan=business" class="btn btn-primary pricing-cta" id="link-business">Izvēlēties plānu</a>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Lifetime — featured full-width card below the grid -->
-    <div class="pricing-lifetime">
-        <div class="pricing-lifetime-ribbon">Ierobežots piedāvājums</div>
-        <div class="pricing-lifetime-body">
-            <div class="pricing-lifetime-info">
-                <span class="tier-badge" style="background:linear-gradient(135deg,#b8860b,#daa520);color:white;border:none">Mūža licence</span>
-                <div style="margin-top:14px;display:flex;align-items:baseline;gap:8px">
-                    <span style="font-size:42px;font-weight:700;letter-spacing:-1.2px;color:var(--text)">{{ tiers.lifetime.price_lifetime | price }}€</span>
-                    <span style="color:var(--text-light);font-size:14px">/ vienreiz</span>
-                </div>
-                <p style="color:var(--text-light);font-size:14px;margin:8px 0 12px;line-height:1.5">
-                    Neierobežots. Vienreizējs maksājums — mūža piekļuve. Visa Bizness plāna funkcionalitāte.
-                </p>
-                <p style="font-size:13px;color:#daa520;font-weight:600;margin:0" id="lifetime-slots">
-                    {% if current_user %}
-                    Pieejamas {{ 10 - lifetime_sold }} no 10 licencēm
+            <div class="px-cta">
+                {% if not signed_in %}
+                    {% if key == 'free' %}
+                    <a href="/register" class="btn btn-primary px-btn">Sākt bez maksas</a>
                     {% else %}
-                    Tikai 10 licences pieejamas
+                    <a href="/register?plan={{ key }}&cycle=monthly" class="btn btn-primary px-btn" data-plan-link="{{ key }}">Izvēlēties {{ p.label }}</a>
                     {% endif %}
-                </p>
-            </div>
-            <div class="pricing-lifetime-cta">
-                {% if current_user %}
-                    {% if current_user.plan_tier == 'lifetime' %}
-                    <div class="btn btn-primary" style="width:100%;justify-content:center;pointer-events:none;opacity:0.6">Pašreizējais plāns</div>
-                    {% elif lifetime_sold >= 10 %}
-                    <div class="btn btn-outline" style="width:100%;justify-content:center;pointer-events:none;opacity:0.6">Izpārdots</div>
-                    {% else %}
-                    <form method="post" action="/billing/checkout" style="width:100%">
-                        <input type="hidden" name="tier" value="lifetime">
-                        <input type="hidden" name="cycle" value="lifetime">
-                        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;background:linear-gradient(135deg,#b8860b,#daa520);border-color:#b8860b;box-shadow:0 4px 14px rgba(184,134,11,0.3)">
-                            Iegādāties
-                        </button>
+                {% elif my_plan == key %}
+                    <span class="px-current">{% if current_user.on_trial %}Pēc izmēģinājuma{% else %}Pašreizējais plāns{% endif %}</span>
+                {% elif key == 'free' %}
+                    <span class="px-current muted">Pēc izmēģinājuma</span>
+                {% else %}
+                    <form method="post" action="/billing/checkout">
+                        <input type="hidden" name="tier" value="{{ key }}">
+                        <input type="hidden" name="cycle" value="monthly" class="cycle-input">
+                        <button type="submit" class="btn btn-primary px-btn">Izvēlēties {{ p.label }}</button>
                     </form>
-                    {% endif %}
-                {% else %}
-                <a href="/register?plan=lifetime" class="btn btn-primary" style="width:100%;justify-content:center;background:linear-gradient(135deg,#b8860b,#daa520);border-color:#b8860b;box-shadow:0 4px 14px rgba(184,134,11,0.3)" id="link-lifetime">Izvēlēties plānu</a>
                 {% endif %}
             </div>
-        </div>
+            {{ features(p) }}
+        </section>
+        {% endfor %}
     </div>
 
-    <p style="text-align:center;color:var(--text-light);font-size:13px;margin:28px auto 0;line-height:1.6;max-width:760px">
-        Visas cenas norādītas <strong style="color:var(--text)">EUR</strong>. Norādītā cena ir galīgā cena (ieskaitot PVN) — papildu izmaksas netiek piemērotas.
-        <br>Apmaksa ar Visa / Mastercard / Google Pay / Apple Pay. Maksājumu apstrādi nodrošina EveryPay / SEB.
-    </p>
+    {% set lt = plans['lifetime'] %}
+    {% set lt_left = lifetime_cap - (lifetime_sold or 0) %}
+    {% if lt_left > 0 or my_plan == 'lifetime' %}
+    <section class="px-life" aria-labelledby="px-lifetime">
+        <div>
+            <h3 id="px-lifetime">{{ lt.label }}</h3>
+            <p>Visas Bizness plāna iespējas bez ierobežojumiem, vienreizējs maksājums. {% if lt_left > 0 %}Atlikušas {{ lt_left }} no {{ lifetime_cap }} licencēm.{% endif %}</p>
+        </div>
+        <div class="px-life-buy">
+            <b class="num">{{ lt.price_lifetime | price }}&nbsp;€</b>
+            {% if my_plan == 'lifetime' %}
+                <span class="px-current">Pašreizējais plāns</span>
+            {% elif not signed_in %}
+                <a href="/register?plan=lifetime" class="btn btn-primary px-btn">Iegādāties</a>
+            {% else %}
+                <form method="post" action="/billing/checkout">
+                    <input type="hidden" name="tier" value="lifetime">
+                    <input type="hidden" name="cycle" value="lifetime">
+                    <button type="submit" class="btn btn-primary px-btn">Iegādāties</button>
+                </form>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
+
+    <p class="px-note">Apmaksa ar Visa, Mastercard, Google Pay vai Apple Pay; maksājumus apstrādā EveryPay un SEB. Plānu var mainīt jebkurā brīdī.</p>
 </div>
 
 <style>
-    .pricing-grid-main {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 18px;
-        align-items: stretch;
-    }
-    .pricing-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        padding: 28px 22px;
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        transition: border-color 0.15s, transform 0.15s;
-    }
-    .pricing-card:hover {
-        border-color: var(--border-strong);
-    }
-    .pricing-card-featured {
-        border: 2px solid var(--brand);
-        box-shadow: 0 8px 28px rgba(59, 130, 246, 0.18);
-    }
-    .pricing-card-ribbon {
-        position: absolute;
-        top: -12px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--brand);
-        color: #fff;
-        padding: 4px 14px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-        white-space: nowrap;
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-    }
-    .pricing-card-header { margin-bottom: 18px; }
-    .pricing-price {
-        display: flex;
-        align-items: baseline;
-        gap: 6px;
-        margin-bottom: 8px;
-    }
-    .pricing-amount {
-        font-size: 36px;
-        font-weight: 700;
-        letter-spacing: -1.2px;
-        color: var(--text);
-        line-height: 1;
-    }
-    .pricing-period {
-        color: var(--text-light);
-        font-size: 13px;
-    }
-    .pricing-tagline {
-        color: var(--text-light);
-        font-size: 13px;
-        margin: 0 0 22px;
-        line-height: 1.5;
-        min-height: 40px;
-    }
-    .pricing-features {
-        list-style: none;
-        padding: 0;
-        margin: 0 0 24px;
-        flex: 1;
-    }
-    .pricing-features li {
-        padding: 7px 0;
-        font-size: 13.5px;
-        color: var(--text);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        line-height: 1.4;
-    }
-    .pricing-features li::before {
-        content: '';
-        width: 18px;
-        height: 18px;
-        background: var(--brand-soft);
-        border-radius: 50%;
-        flex-shrink: 0;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%233B82F6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: 11px;
-    }
-    .pricing-cta {
-        width: 100%;
-        justify-content: center;
-        margin-top: auto;
-    }
-    form.pricing-cta { margin-top: auto !important; }
-    form.pricing-cta .btn { width: 100%; justify-content: center; }
-
-    /* Lifetime — full-width banner */
-    .pricing-lifetime {
-        margin-top: 28px;
-        position: relative;
-        border: 2px solid #b8860b;
-        background: linear-gradient(135deg, rgba(184, 134, 11, 0.06) 0%, rgba(218, 165, 32, 0.04) 100%);
-        border-radius: var(--radius-lg);
-        padding: 36px 32px 28px;
-    }
-    .pricing-lifetime::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        right: 0;
-        width: 320px;
-        height: 100%;
-        background: radial-gradient(circle at 80% 0%, rgba(218, 165, 32, 0.18) 0%, rgba(218, 165, 32, 0) 70%);
-        pointer-events: none;
-        border-top-right-radius: var(--radius-lg);
-        border-bottom-right-radius: var(--radius-lg);
-    }
-    .pricing-lifetime-ribbon {
-        position: absolute;
-        top: -12px;
-        left: 32px;
-        background: linear-gradient(135deg, #b8860b, #daa520);
-        color: #fff;
-        padding: 4px 14px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-        white-space: nowrap;
-        box-shadow: 0 4px 12px rgba(184, 134, 11, 0.4);
-        z-index: 2;
-    }
-    .pricing-lifetime-body {
-        display: grid;
-        grid-template-columns: 1fr 280px;
-        gap: 32px;
-        align-items: center;
-        position: relative;
-    }
-    .pricing-lifetime-cta { width: 100%; }
-
-    @media (max-width: 1100px) {
-        .pricing-grid-main { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (max-width: 600px) {
-        .pricing-grid-main { grid-template-columns: 1fr; gap: 14px; }
-        .pricing-lifetime-body { grid-template-columns: 1fr; gap: 20px; }
-        .pricing-lifetime { padding: 24px 20px; }
-        .pricing-card { padding: 24px 20px; }
-        .pricing-amount { font-size: 32px; }
-    }
-</style>
-
-<script>
-// Same figures the checkout charges — see database.TIER_LIMITS.
-const TIER_PRICES = {
-{%- for key in ['mini', 'starter', 'business'] %}
-    {{ key }}: {monthly: "{{ tiers[key].price_monthly | price }}", yearly: "{{ tiers[key].price_yearly | price }}"},
-{%- endfor %}
-};
-
-function switchCycle(cycle) {
-    var monthly = document.getElementById('btn-monthly');
-    var yearly = document.getElementById('btn-yearly');
-    var priceMini = document.getElementById('price-mini');
-    var priceStarter = document.getElementById('price-starter');
-    var priceBusiness = document.getElementById('price-business');
-    var periodMini = document.getElementById('price-mini-period');
-    var periodStarter = document.getElementById('price-starter-period');
-    var periodBusiness = document.getElementById('price-business-period');
-    var linkMini = document.getElementById('link-mini');
-    var linkStarter = document.getElementById('link-starter');
-    var linkBusiness = document.getElementById('link-business');
-
-    document.querySelectorAll('.cycle-input').forEach(function(el) { el.value = cycle; });
-
-    if (cycle === 'yearly') {
-        monthly.style.background = 'transparent';
-        monthly.style.color = 'var(--text-light)';
-        monthly.style.boxShadow = 'none';
-        yearly.style.background = 'var(--brand)';
-        yearly.style.color = '#fff';
-        yearly.style.boxShadow = '0 2px 6px rgba(59,130,246,0.32)';
-        if (priceMini) priceMini.textContent = TIER_PRICES.mini.yearly + '€';
-        if (priceStarter) priceStarter.textContent = TIER_PRICES.starter.yearly + '€';
-        if (priceBusiness) priceBusiness.textContent = TIER_PRICES.business.yearly + '€';
-        if (periodMini) periodMini.textContent = '/ gadā';
-        if (periodStarter) periodStarter.textContent = '/ gadā';
-        if (periodBusiness) periodBusiness.textContent = '/ gadā';
-        if (linkMini) linkMini.href = '/register?plan=mini&cycle=yearly';
-        if (linkStarter) linkStarter.href = '/register?plan=starter&cycle=yearly';
-        if (linkBusiness) linkBusiness.href = '/register?plan=business&cycle=yearly';
-    } else {
-        yearly.style.background = 'transparent';
-        yearly.style.color = 'var(--text-light)';
-        yearly.style.boxShadow = 'none';
-        monthly.style.background = 'var(--brand)';
-        monthly.style.color = '#fff';
-        monthly.style.boxShadow = '0 2px 6px rgba(59,130,246,0.32)';
-        if (priceMini) priceMini.textContent = TIER_PRICES.mini.monthly + '€';
-        if (priceStarter) priceStarter.textContent = TIER_PRICES.starter.monthly + '€';
-        if (priceBusiness) priceBusiness.textContent = TIER_PRICES.business.monthly + '€';
-        if (periodMini) periodMini.textContent = '/ mēnesī';
-        if (periodStarter) periodStarter.textContent = '/ mēnesī';
-        if (periodBusiness) periodBusiness.textContent = '/ mēnesī';
-        if (linkMini) linkMini.href = '/register?plan=mini';
-        if (linkStarter) linkStarter.href = '/register?plan=starter';
-        if (linkBusiness) linkBusiness.href = '/register?plan=business';
-    }
+.px { --px-line: var(--border, var(--rule)); }
+.px-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; }
+.px-title { font-size: clamp(28px, 3vw, 40px); font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; margin: 0 0 8px; }
+.px-sub { color: var(--muted); margin: 0; max-width: 52ch; }
+.px-cycle { display: inline-flex; gap: 4px; padding: 4px; border-radius: 8px; background: var(--ground-2, var(--ground)); }
+.px-cycle button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 500 14px var(--font); cursor: pointer; }
+.px-cycle button[aria-pressed="true"] { background: var(--surface); color: var(--text); }
+.px-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.px-card { display: flex; flex-direction: column; padding: 24px 22px; border-radius: 8px; background: var(--surface); border: 1px solid var(--px-line); }
+.px-card h3 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 6px; }
+.px-for { color: var(--muted); font-size: 14px; line-height: 1.45; margin: 0 0 20px; min-height: 2.9em; }
+.px-price { display: flex; align-items: baseline; gap: 6px; margin-bottom: 18px; }
+.px-price b { font-size: 36px; font-weight: 600; letter-spacing: -0.03em; }
+.px-price span { color: var(--muted); font-size: 14px; }
+.px-cta { margin-bottom: 20px; }
+.px-cta form { margin: 0; }
+.px-btn { width: 100%; justify-content: center; }
+.px-current { display: block; text-align: center; padding: 10px 0; font-size: 14px; font-weight: 500; }
+.px-current.muted { color: var(--muted); font-weight: 400; }
+.px-feat { list-style: none; margin: 0; padding: 16px 0 0; border-top: 1px solid var(--px-line); display: grid; gap: 9px; font-size: 14px; }
+.px-feat li { padding-left: 18px; position: relative; line-height: 1.4; }
+.px-feat li::before { content: ""; position: absolute; left: 2px; top: .5em; width: 7px; height: 4px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); opacity: .7; }
+.px-card.is-main { background: var(--ink-field, var(--primary)); color: var(--on-ink, var(--on-primary)); border-color: transparent; }
+.px-card.is-main .px-for, .px-card.is-main .px-price span { color: var(--on-ink-muted, color-mix(in srgb, var(--on-primary) 70%, transparent)); }
+.px-card.is-main .px-feat { border-top-color: color-mix(in srgb, currentColor 18%, transparent); }
+.px-card.is-main .px-btn { background: var(--ink-btn, var(--on-primary)); color: var(--ink-btn-ink, var(--primary)); }
+.px-life { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-top: 12px; padding: 22px; border-radius: 8px; background: var(--surface); border: 1px solid var(--px-line); }
+.px-life h3 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+.px-life p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
+.px-life-buy { display: flex; align-items: center; gap: 16px; }
+.px-life-buy b { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.px-note { margin: 18px 0 0; color: var(--muted); font-size: 14px; }
+@media (max-width: 1100px) { .px-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+    .px-grid { grid-template-columns: 1fr; }
+    .px-card.is-main { order: -1; }
+    .px-for { min-height: 0; }
 }
+</style>
+<script>
+(function () {
+    var root = document.currentScript.previousElementSibling.previousElementSibling;
+    root.querySelectorAll('.px-cycle button').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var cycle = b.dataset.cycle;
+            root.querySelectorAll('.px-cycle button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+            root.querySelectorAll('[data-monthly]').forEach(function (el) { el.innerHTML = el.dataset[cycle]; });
+            root.querySelectorAll('.cycle-input').forEach(function (el) { el.value = cycle; });
+            root.querySelectorAll('[data-plan-link]').forEach(function (a) { a.href = '/register?plan=' + a.dataset.planLink + '&cycle=' + cycle; });
+        });
+    });
+})();
 </script>

@@ -1,129 +1,71 @@
 {% extends "base.html" %}
+{% block title %}Abonements{% endblock %}
 {% block content %}
+{% set paid = plans[current_user.plan_tier] if current_user.plan_tier in plans else plans['free'] %}
 <div class="page-header">
-    <h2>Mans abonements</h2>
+    <div>
+        <h1>Abonements</h1>
+        <p class="page-sub">
+            {% if current_user.on_trial %}Pamata izmēģinājums līdz {{ current_user.trial_until[8:10] }}.{{ current_user.trial_until[5:7] }}.{{ current_user.trial_until[:4] }}; pēc tam {{ paid.label }} plāns.
+            {% else %}{{ paid.label }} plāns{% if current_user.billing_cycle and current_user.plan_tier != 'free' %}, {{ 'maksājot katru mēnesi' if current_user.billing_cycle == 'monthly' else 'maksājot par gadu' }}{% endif %}.{% endif %}
+        </p>
+    </div>
 </div>
 <div class="page-body">
-    {% if request.query_params.get('error') == 'lifetime_sold_out' %}
-    <div class="alert alert-danger" style="margin-bottom:16px">Mūža licences ir izpārdotas. Visas 30 licences ir aizņemtas.</div>
+    {% set err = request.query_params.get('error') %}
+    {% if err == 'lifetime_sold_out' %}
+    <div class="alert alert-danger">Mūža licences ir izpārdotas: visas {{ lifetime_cap }} ir aizņemtas.</div>
+    {% elif err == 'payments_not_configured' %}
+    <div class="alert alert-danger">Maksājumi šobrīd nav pieejami. Lūdzu, mēģiniet vēlāk.</div>
     {% endif %}
-    <!-- Current subscription info -->
-    <div class="card" style="margin-bottom:28px">
-        <div class="card-body" style="padding:24px">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-                <span style="font-size:15px;font-weight:600">Pašreizējais plāns:</span>
-                <span class="tier-badge tier-{{ current_user.plan_tier }}">{{ limits.label }}</span>
-                {% if current_user.subscription_status == 'active' and current_user.plan_tier != 'free' %}
-                <span class="badge badge-paid">Aktīvs</span>
-                {% elif current_user.subscription_status == 'past_due' %}
-                <span class="badge badge-issued">Kavēts maksājums</span>
-                {% elif current_user.subscription_status == 'cancelled' %}
-                <span class="badge" style="background:var(--danger-soft);color:var(--danger)">Atcelts</span>
-                {% endif %}
-                {% if current_user.billing_cycle %}
-                <span style="font-size:12px;color:var(--text-light)">
-                    ({{ 'mēneša' if current_user.billing_cycle == 'monthly' else 'gada' }} plāns)
-                </span>
-                {% endif %}
-            </div>
+    {% if current_user.subscription_status == 'past_due' %}
+    <div class="alert alert-danger">Pēdējais maksājums neizdevās. Pārbaudiet karti, lai plāns netiktu pazemināts.</div>
+    {% endif %}
 
-            <div class="usage-section" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
-                <div class="usage-item">
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                        <span style="color:var(--text-light)">Dokumenti (šomēnes)</span>
-                        <span style="font-weight:600">{{ usage.documents }} / {{ limits.max_documents | limit_text }}</span>
-                    </div>
-                    <div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden">
-                        <div style="background:var(--accent);height:100%;border-radius:4px;width:{{ usage_pct(usage.documents, limits.max_documents) }}%"></div>
-                    </div>
-                </div>
-                <div class="usage-item">
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                        <span style="color:var(--text-light)">Klienti</span>
-                        <span style="font-weight:600">{{ usage.clients }} / {{ limits.max_clients | limit_text }}</span>
-                    </div>
-                    <div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden">
-                        <div style="background:var(--accent);height:100%;border-radius:4px;width:{{ usage_pct(usage.clients, limits.max_clients) }}%"></div>
-                    </div>
-                </div>
-                <div class="usage-item">
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                        <span style="color:var(--text-light)">Produkti</span>
-                        <span style="font-weight:600">{{ usage.products }} / {{ limits.max_products | limit_text }}</span>
-                    </div>
-                    <div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden">
-                        <div style="background:var(--accent);height:100%;border-radius:4px;width:{{ usage_pct(usage.products, limits.max_products) }}%"></div>
-                    </div>
-                </div>
+    <div class="card" style="margin-bottom:24px">
+        <div class="kpi-strip" style="--kpi-cols:3">
+            <div class="kpi">
+                <div class="kpi-label">Rēķini šomēnes</div>
+                <div class="kpi-value num">{{ usage.documents }}<small style="font-size:14px;color:var(--muted);font-weight:400"> / {{ limits.max_documents | limit_text }}</small></div>
             </div>
-
-            {% if current_user.subscription_end and current_user.plan_tier != 'free' %}
-            <div style="margin-top:16px;font-size:13px;color:var(--text-light)">
-                Nākamais apmaksas datums: <strong>{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong>
+            <div class="kpi">
+                <div class="kpi-label">Klienti</div>
+                <div class="kpi-value num">{{ usage.clients }}<small style="font-size:14px;color:var(--muted);font-weight:400"> / {{ limits.max_clients | limit_text }}</small></div>
             </div>
-            {% endif %}
-
-            {% if current_user.plan_tier != 'free' and has_payments %}
-            <div style="margin-top:12px">
-                <form method="post" action="/billing/cancel" style="display:inline"
-                      onsubmit="return confirm('Vai tiešām vēlaties atcelt abonementu? Jūsu plāns tiks pazemināts uz Bezmaksas.')">
-                    <button type="submit" class="btn btn-outline btn-sm" style="color:var(--danger)">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                        Atcelt abonementu
-                    </button>
-                </form>
+            <div class="kpi">
+                <div class="kpi-label">Produkti</div>
+                <div class="kpi-value num">{{ usage.products }}<small style="font-size:14px;color:var(--muted);font-weight:400"> / {{ limits.max_products | limit_text }}</small></div>
             </div>
+        </div>
+        {% if (current_user.subscription_end and current_user.plan_tier != 'free') or (current_user.plan_tier not in ('free', 'lifetime', 'admin') and has_payments) %}
+        <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid var(--border)">
+            <span class="muted" style="font-size:14px">
+                {% if current_user.subscription_end and current_user.plan_tier != 'free' %}Nākamais maksājums {{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}.{% endif %}
+            </span>
+            {% if current_user.plan_tier not in ('free', 'lifetime', 'admin') and has_payments %}
+            <form method="post" action="/billing/cancel" onsubmit="return confirm('Atcelt abonementu? Plāns kļūs par Bezmaksas, un visi dati paliks.')">
+                <button type="submit" class="btn btn-outline btn-sm">Atcelt abonementu</button>
+            </form>
             {% endif %}
         </div>
+        {% endif %}
     </div>
 
-    <!-- Pricing plans -->
     {% include "_pricing_content.html" %}
 </div>
 
-<style>
-    .pricing-grid .card {
-        transition: transform 0.15s, box-shadow 0.15s;
-        cursor: default;
-    }
-    .pricing-grid .card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    }
-    [data-theme="dark"] .pricing-grid .card:hover {
-        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    }
-    .pricing-grid .card.current-plan {
-        border: 2px solid var(--accent) !important;
-        background: var(--accent-soft);
-    }
-</style>
-
+{% if upgrade %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Highlight current plan card
-    var currentTier = '{{ current_user.plan_tier }}';
-    var tiers = ['free', 'starter', 'business', 'lifetime'];
-    var cards = document.querySelectorAll('.pricing-grid .card');
-    tiers.forEach(function(tier, i) {
-        if (tier === currentTier && cards[i]) {
-            cards[i].classList.add('current-plan');
-        }
-    });
-
-    {% if upgrade %}
-    // Auto-submit checkout for the selected plan after registration
-    var upgradeTier = '{{ upgrade }}';
-    var upgradeCycle = '{{ upgrade_cycle }}';
-    if (upgradeTier === 'starter' || upgradeTier === 'business' || upgradeTier === 'lifetime') {
-        var input = document.querySelector('form[action="/billing/checkout"] input[value="' + upgradeTier + '"]');
-        if (input) {
-            var cycleInput = input.parentElement.querySelector('.cycle-input');
-            if (cycleInput) cycleInput.value = upgradeCycle;
-            input.parentElement.submit();
-        }
-    }
-    {% endif %}
-});
+// Coming from sign-up with a plan picked: go straight on to its checkout
+(function () {
+    var tier = {{ upgrade | tojson }}, cycle = {{ upgrade_cycle | tojson }};
+    if (['mini', 'starter', 'business', 'lifetime'].indexOf(tier) === -1) return;
+    var input = document.querySelector('form[action="/billing/checkout"] input[name="tier"][value="' + tier + '"]');
+    if (!input) return;
+    var cycleInput = input.form.querySelector('.cycle-input');
+    if (cycleInput && (cycle === 'monthly' || cycle === 'yearly')) cycleInput.value = cycle;
+    input.form.submit();
+})();
 </script>
+{% endif %}
 {% endblock %}

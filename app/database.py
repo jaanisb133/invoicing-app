@@ -2219,6 +2219,9 @@ TIER_LIMITS = {
 # users.max_documents/max_clients/max_products are NOT NULL columns kept in sync
 # on subscription changes. Nothing reads them (checks go through TIER_LIMITS),
 # but NULL would raise, so unlimited is stored as a sentinel.
+# The lifetime licence is a limited offer: this many are sold, then it closes
+LIFETIME_CAP = 10
+
 _UNLIMITED_COLUMN_VALUE = 999999999
 
 _PRICE_KEY_BY_CYCLE = {
