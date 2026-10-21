@@ -159,6 +159,11 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   relative to today via the `day(n)` helper so "kavēts 4 d." stays true. Prices come from
   `TIER_LIMITS`; FAQ items are one Jinja list rendered as text and as FAQPage JSON-LD.
 - `app/static/og-image.png` is a 1200×630 render of the hero; re-render if the hero changes.
+- **Portfolio screenshots** (`docs/screenshots/vnmedia/`, used on vnmedia.lv/projekti/v-rekini):
+  `scripts/footage/showcase.py` seeds a lived-in fictional account (invoices since January last
+  year, created in date order so numbers run with dates; overdue, credit note, offers, recurring),
+  `scripts/footage/screens.py` captures desktop/phone × dark/light, the landing and the three PDF
+  designs. See the folder's README; re-shoot after visible UI changes.
 
 ### SEO state (2026-10-21)
 - Indexable: `/`, `/pricing`, `/contacts`, `/terms` — listed in `SITEMAP_PAGES` with real
