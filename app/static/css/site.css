@@ -41,29 +41,7 @@
     --r: 8px;                 /* the one radius */
     --gap: clamp(120px, 14vw, 200px);
     --ease: cubic-bezier(.32, .72, 0, 1);
-}
-
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-        --ground: #0c0d0f; --ground-2: #16181b; --surface: #141518;
-        --text: #f1f2f4; --muted: #a3a7ad; --faint: #9a9ea4;
-        --primary: #f1f2f4; --on-primary: #0c0d0f;
-        --data: #6aa1ec; --data-tint: rgba(106, 161, 236, .16);
-        --pill-bg: #23262a; --pill-ink: #c9ccd1;
-        --pill-neg-bg: #3a1618; --pill-neg-ink: #f2a3a6;
-        --pill-pos-bg: #15301a; --pill-pos-ink: #9fd7a5;
-        --ink-field: #e9ebee; --rule: #26292d; --on-ink: #0a0a0a; --on-ink-muted: #45484d; --on-ink-faint: #6a6e74; --ink-btn: #0a0a0a; --ink-btn-ink: #f4f5f7;
-    }
-}
-:root[data-theme="dark"] {
-    --ground: #0c0d0f; --ground-2: #16181b; --surface: #141518;
-    --text: #f1f2f4; --muted: #a3a7ad; --faint: #9a9ea4;
-    --primary: #f1f2f4; --on-primary: #0c0d0f;
-    --data: #6aa1ec; --data-tint: rgba(106, 161, 236, .16);
-    --pill-bg: #23262a; --pill-ink: #c9ccd1;
-    --pill-neg-bg: #3a1618; --pill-neg-ink: #f2a3a6;
-    --pill-pos-bg: #15301a; --pill-pos-ink: #9fd7a5;
-    --ink-field: #e9ebee; --rule: #26292d; --on-ink: #0a0a0a; --on-ink-muted: #45484d; --on-ink-faint: #6a6e74; --ink-btn: #0a0a0a; --ink-btn-ink: #f4f5f7;
+    color-scheme: light;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -250,14 +228,29 @@ img { display: block; max-width: 100%; }
 [data-ui].paper .hl { background: rgba(29, 95, 191, .10); box-shadow: 0 0 0 4px rgba(29, 95, 191, .10); border-radius: 3px; transition: background .5s var(--ease), box-shadow .5s var(--ease); }
 
 /* the three real templates */
-[data-ui].paper.t-modern .p-head { margin: -34px -34px 26px; padding: 26px 34px; background: #0f172a; color: #fff; border-radius: 4px 4px 0 0; }
-[data-ui].paper.t-modern .p-meta, [data-ui].paper.t-modern .p-meta b { color: #e2e8f0; }
-[data-ui].paper.t-classic .p-head { padding-bottom: 18px; border-bottom: 2px solid #0f172a; }
-[data-ui].paper.t-classic .p-title { font-weight: 500; letter-spacing: 0; }
-[data-ui].paper.t-classic th { border-bottom-width: 2px; }
-[data-ui].paper.t-minimal .p-title { font-weight: 500; }
-[data-ui].paper.t-minimal th { border-bottom-color: #e5e7eb; color: #94a3b8; }
-[data-ui].paper.t-minimal .p-totals .grand { border-top-color: #e5e7eb; }
+/* The three templates, as the PDFs draw them (app/pdf_generator.py), at reading size */
+[data-ui].paper .p-panel { display: none; }
+[data-ui].paper.t-modern .p-panel { display: grid; grid-template-columns: 46% 1fr 1fr; align-items: end; margin: -6px 0 26px; padding: 16px 18px 15px; border-radius: 6px; background: #0b0c0e; color: #fff; }
+[data-ui].paper .p-panel span { display: block; font-size: 12px; color: rgba(255, 255, 255, .62); margin-bottom: 4px; }
+[data-ui].paper .p-panel b { font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+[data-ui].paper .p-panel .big b { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+[data-ui].paper.t-modern .p-meta div:not(:first-child) { display: none; }
+[data-ui].paper.t-modern thead tr { background: #f1f2f4; }
+[data-ui].paper.t-modern th { border-bottom: 0; }
+[data-ui].paper.t-modern th:first-child { border-radius: 4px 0 0 0; }
+[data-ui].paper.t-modern th:last-child { border-radius: 0 4px 0 0; }
+[data-ui].paper.t-classic .p-title { font-family: "Source Serif 4", Georgia, serif; font-weight: 400; font-size: 34px; letter-spacing: 0; }
+[data-ui].paper.t-classic .p-head { position: relative; padding-bottom: 18px; border-bottom: 2px solid #0f172a; }
+[data-ui].paper.t-classic .p-head::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; border-top: 1px solid #0f172a; }
+[data-ui].paper.t-classic .p-name, [data-ui].paper.t-classic .p-totals .grand b { font-family: "Source Serif 4", Georgia, serif; font-weight: 600; }
+[data-ui].paper.t-classic .p-label, [data-ui].paper.t-minimal .p-label { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+[data-ui].paper.t-classic th, [data-ui].paper.t-minimal th { border-top: 1px solid #0f172a; }
+[data-ui].paper.t-minimal .p-title { font-weight: 400; }
+[data-ui].paper.t-minimal .p-head { position: relative; padding-top: 16px; }
+[data-ui].paper.t-minimal .p-head::before { content: ""; position: absolute; left: 0; top: 0; width: 24px; height: 2px; background: #0f172a; }
+[data-ui].paper.t-minimal .p-name { font-weight: 500; }
+[data-ui].paper.t-minimal .p-totals .grand { font-weight: 400; }
+[data-ui].paper.t-minimal .p-totals .grand b { font-weight: 400; font-size: 1.15em; }
 
 /* e-invoice view: the same invoice as PEPPOL XML */
 [data-ui] .xml {
@@ -407,8 +400,6 @@ img { display: block; max-width: 100%; }
 .pay .pay-mono { filter: grayscale(1); opacity: .75; }
 .pay .footer-logo-text { font-size: 13px; color: var(--faint); }
 .pay .footer-sep { width: 1px; height: 18px; background: var(--rule); }
-:root[data-theme="dark"] .pay .pay-mono { filter: grayscale(1) invert(1); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pay .pay-mono { filter: grayscale(1) invert(1); } }
 
 /* ------------------------------------------------------------ motion */
 .js [data-rise] { opacity: 0; transform: translateY(24px); transition: opacity .8s var(--ease), transform .8s var(--ease); transition-delay: calc(var(--i, 0) * 80ms); }
@@ -453,7 +444,7 @@ img { display: block; max-width: 100%; }
     .block h3 { font-size: var(--s3); }
     .paper-wrap { width: calc(100% - 24px); }
     [data-ui].paper { padding: 22px 20px; font-size: 12.5px; }
-    [data-ui].paper.t-modern .p-head { margin: -22px -20px 20px; padding: 18px 20px; }
+    [data-ui].paper .p-panel .big b { font-size: 21px; }
     [data-ui].paper .p-title { font-size: 22px; }
 
     .film { padding: var(--gap) 20px 0; }
@@ -647,3 +638,6 @@ details.more[open] > summary { margin-bottom: 14px; }
 .guide-list li a span { color: var(--muted); }
 .guide-list li a:hover b { text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 640px) { .article-body { font-size: 17px; } .article-body table { font-size: 14px; } .article-body th, .article-body td { padding: 8px; } }
+[data-ui].paper .p-totals .grand span { font-weight: 500; }
+[data-ui].paper.t-classic .p-totals .grand b { font-size: 1.2em; }
+[data-ui].paper.t-minimal .p-totals .grand span { font-weight: 400; }

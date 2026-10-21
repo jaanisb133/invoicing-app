@@ -48,20 +48,18 @@
     <meta name="twitter:description" content="PVN rēķins minūtē, rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini.">
     <meta name="twitter:image" content="{{ site_url }}/static/og-image.png">
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#0c0d0f" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f2f4f7">
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/site.css?v={{ css_version }}">
     <script>
     (function () {
         var d = document.documentElement;
         d.classList.add('js');
-        try { var t = localStorage.getItem('vrekini-theme'); if (t === 'light' || t === 'dark') d.setAttribute('data-theme', t); } catch (e) {}
     })();
     </script>
     <script type="application/ld+json">
@@ -128,7 +126,7 @@
             <div class="card-body">
                 <a href="/" class="wordmark" data-rise style="--i:0">{{ mark }}<span>V-Rēķini</span></a>
                 <h1 id="h-hero" class="hero-h1" data-rise style="--i:1">Rēķinu programma Latvijas uzņēmējiem</h1>
-                <p class="lede" data-rise style="--i:2">Izrakstiet PVN rēķinu minūtē. Rekvizītus atrod Uzņēmumu reģistrā, summas un PVN aprēķina pati, un klients saņem PDF vai e-rēķinu uzreiz.</p>
+                <p class="lede" data-rise style="--i:2">Izrakstiet PVN rēķinu minūtē. Rekvizīti no Uzņēmumu reģistra, automātisks PVN aprēķins, un klients saņem PDF vai e-rēķinu uzreiz.</p>
                 <div class="hero-actions" data-rise style="--i:3">
                     <a href="/register" class="btn">Sākt bez maksas</a>
                     <span class="hero-note">14 dienas visas Pamata iespējas, pēc tam {{ t_free.max_documents }} rēķini mēnesī bez maksas. Bez kartes.</span>
@@ -159,7 +157,7 @@
 
             <div class="block" data-focus="lines">
                 <h3 data-rise>Rindas kā tabulā</h3>
-                <p data-rise style="--i:1">Enter pārvieto uz nākamo lauku, un jauna rinda rodas pati. Produkta mērvienība un pēdējā cena ienāk no iepriekšējā rēķina. Skaitļus raksta kā ierasts: <strong>8,50</strong>, nevis 8.50.</p>
+                <p data-rise style="--i:1">Spiežot Enter, pāriet uz nākamo lauku, un jauna rinda pievienojas pati. Produkta mērvienība un pēdējā cena ienāk no iepriekšējā rēķina. Skaitļus raksta kā ierasts: <strong>8,50</strong>, nevis 8.50.</p>
                 <div class="pair" data-rise style="--i:2">
                     <div><label for="qtyIn">Daudzums, gab.</label><input id="qtyIn" class="input num" type="text" inputmode="decimal" value="120"></div>
                     <div><label for="priceIn">Cena, €</label><input id="priceIn" class="input num" type="text" inputmode="decimal" value="8,50"></div>
@@ -167,7 +165,7 @@
             </div>
 
             <div class="block" data-focus="totals">
-                <h3 data-rise>PVN aprēķina pati</h3>
+                <h3 data-rise>Automātisks PVN aprēķins</h3>
                 <p data-rise style="--i:1">Pamata likme 21 %, samazinātā 12 % vai nodokļa apgrieztā maksāšana ar pareizo norādi rēķinā. Ja neesat PVN maksātājs, PVN rindu nav vispār.</p>
                 <div class="seg" role="group" aria-label="PVN likme" data-rise style="--i:2" id="vatSeg">
                     <button type="button" data-vat="21" aria-pressed="true">21 %</button>
@@ -181,7 +179,7 @@
                 <h3 data-rise>Izskatās pēc Jūsu uzņēmuma</h3>
                 <p data-rise style="--i:1">Trīs veidnes, Jūsu logotips un krāsa. Numerācija turpinās no iepriekšējās sistēmas ar Jūsu priedēkli, bez pārrāvuma.</p>
                 <div class="seg" role="group" aria-label="Rēķina veidne" data-rise style="--i:2" id="tplSeg">
-                    <button type="button" data-tpl="modern" aria-pressed="true">Moderna</button>
+                    <button type="button" data-tpl="modern" aria-pressed="true">Modernā</button>
                     <button type="button" data-tpl="classic" aria-pressed="false">Klasiskā</button>
                     <button type="button" data-tpl="minimal" aria-pressed="false">Minimālā</button>
                 </div>
@@ -209,6 +207,11 @@
                         <div>Apmaksāt līdz <b>{{ due.strftime('%d.%m.%Y') }}</b></div>
                     </div>
                 </div>
+                <div class="p-panel" aria-hidden="true">
+                    <div class="big"><span>Apmaksai</span><b id="pAmount">1&nbsp;488,30&nbsp;€</b></div>
+                    <div><span>Apmaksāt līdz</span><b>{{ due.strftime('%d.%m.%Y') }}</b></div>
+                    <div><span>Datums</span><b>{{ today.strftime('%d.%m.%Y') }}</b></div>
+                </div>
                 <div class="p-parties" data-region="parties">
                     <div>
                         <div class="p-label">Piegādātājs</div>
@@ -225,7 +228,7 @@
                     </div>
                 </div>
                 <table data-region="lines">
-                    <thead><tr><th>Nosaukums</th><th class="r">Daudz.</th><th>Mērv.</th><th class="r">Cena</th><th class="r">Summa</th></tr></thead>
+                    <thead><tr><th>Apraksts</th><th class="r">Daudz.</th><th>Mērv.</th><th class="r">Cena</th><th class="r">Summa</th></tr></thead>
                     <tbody>
                         <tr><td>Produktu fotografēšana</td><td class="r" id="l1q">120</td><td>gab.</td><td class="r" id="l1p">8,50</td><td class="r" id="l1s">1&nbsp;020,00</td></tr>
                         <tr><td>Attēlu apstrāde</td><td class="r">6</td><td>st.</td><td class="r">35,00</td><td class="r">210,00</td></tr>
@@ -234,9 +237,9 @@
                 <div class="p-totals" data-region="totals">
                     <div id="rowNet"><span>Summa bez PVN</span><b id="tNet">1&nbsp;230,00</b></div>
                     <div id="rowVat"><span id="tVatLabel">PVN 21 %</span><b id="tVat">258,30</b></div>
-                    <div class="grand"><span>Kopā apmaksai</span><b id="tTotal">1&nbsp;488,30&nbsp;€</b></div>
+                    <div class="grand"><span>Apmaksai</span><b id="tTotal">1&nbsp;488,30&nbsp;€</b></div>
                 </div>
-                <div class="p-foot"><span>Rēķins sagatavots elektroniski un derīgs bez paraksta.</span></div>
+                <div class="p-foot"><span>Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</span></div>
                 <div class="xml" aria-hidden="true" id="xmlView"><code id="xmlCode"></code></div>
             </div>
         </div>
@@ -466,6 +469,7 @@
         setText($('tVatLabel'), state.vat === '0' ? 'Nodokļa apgrieztā maksāšana' : 'PVN ' + state.vat + ' %', flash);
         setText($('tVat'), state.vat === '0' ? '—' : fmt(t.vat), flash);
         setText($('tTotal'), fmt(t.total) + NBSP + '€', flash);
+        setText($('pAmount'), fmt(t.total) + NBSP + '€', flash);
 
         paper.className = 'paper t-' + state.tpl + (state.view === 'xml' ? ' as-xml' : '');
         $('xmlCode').innerHTML = xml(t, name);
