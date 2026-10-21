@@ -124,14 +124,14 @@
         <section class="card" aria-labelledby="h-hero">
             <div class="tear" aria-hidden="true"></div>
             <div class="card-body">
-                <div class="hero-top" data-rise style="--i:0">
-                    <a href="/" class="wordmark">{{ mark }}<span>V-Rēķini</span></a>
-                    <a href="/login" class="login-btn hero-login">Ienākt</a>
-                </div>
+                <a href="/" class="wordmark" data-rise style="--i:0">{{ mark }}<span>V-Rēķini</span></a>
                 <h1 id="h-hero" class="hero-h1" data-rise style="--i:1">Rēķinu programma Latvijas uzņēmējiem</h1>
                 <p class="lede" data-rise style="--i:2">Izrakstiet PVN rēķinu minūtē. Rekvizīti no Uzņēmumu reģistra, automātisks PVN aprēķins, un klients saņem PDF vai e-rēķinu uzreiz.</p>
                 <div class="hero-actions" data-rise style="--i:3">
-                    <a href="/register" class="btn">Sākt bez maksas</a>
+                    <div class="hero-buttons">
+                        <a href="/register" class="btn">Sākt bez maksas</a>
+                        <a href="/login" class="login-btn hero-login">Ienākt</a>
+                    </div>
                     <span class="hero-note">14 dienas visas Pamata iespējas, pēc tam {{ t_free.max_documents }} rēķini mēnesī bez maksas. Bez kartes.</span>
                 </div>
             </div>
@@ -199,7 +199,6 @@
     </div>
 
     <aside class="pin" aria-label="Rēķina priekšskatījums">
-        <a href="/login" class="login-btn pin-login">Ienākt</a>
         <div class="paper-wrap" id="paperWrap">
             <div class="paper t-modern" id="paper" data-ui>
                 <div class="p-head" data-region="head">

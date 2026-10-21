@@ -134,11 +134,10 @@ img { display: block; max-width: 100%; }
 .wordmark svg .v { stroke: var(--surface); }
 .hero-h1 { font-size: var(--s4); max-width: 19ch; }
 .lede { font-size: var(--s2); color: var(--muted); max-width: 40ch; }
-.hero-actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.hero-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
 .hero-note { font-size: var(--s1); color: var(--faint); }
-/* Ienākt: returning customers come here every day, so it is a real button
-   in the top-right corner (the pinned invoice's corner on desktop, beside the
-   wordmark on a phone, where the invoice strip owns the top edge) */
+/* Ienākt: returning customers come here every day, so it is a real button,
+   the quiet partner of the one black call to action */
 .login-btn {
     display: inline-flex; align-items: center; justify-content: center;
     height: 40px; padding: 0 18px; border-radius: 8px;
@@ -148,9 +147,8 @@ img { display: block; max-width: 100%; }
 }
 .login-btn:hover { border-color: var(--text); }
 .login-btn:active { transform: scale(.97); }
-.pin-login { position: absolute; top: 20px; right: 20px; z-index: 2; }
-.hero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.hero-login { display: none; }
+.hero-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+.hero-login { min-height: 48px; height: auto; padding: 0 22px; border-radius: var(--r); font-size: var(--s2); letter-spacing: -0.01em; }
 .card-links {
     display: flex; gap: 28px; flex-wrap: wrap;
     padding: 0 clamp(28px, 5vw, 72px) 28px;
@@ -449,8 +447,6 @@ img { display: block; max-width: 100%; }
         padding-top: 12px;
     }
     .card { min-height: 0; }
-    .pin-login { display: none; }
-    .hero-login { display: inline-flex; height: 44px; }
     .tear { height: 40px; }
     .card-body { padding: 32px 22px 28px; gap: 20px; }
     .hero-h1 { font-size: var(--s4); }
