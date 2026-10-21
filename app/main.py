@@ -54,12 +54,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# Cache-busting version for style.css. Bump this on every CSS change.
+# Cache-busting version for app.css and site.css. Bump this on every CSS change.
 # Exposed as a Jinja global so the standalone templates (landing, login,
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "48"
+CSS_VERSION = "50"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -1376,12 +1376,13 @@ async def set_password_page(request: Request, error: str = ""):
 @app.post("/set-password")
 async def set_password(request: Request,
                        new_password: str = Form(...),
-                       confirm_password: str = Form(...)):
+                       confirm_password: str = Form("")):
     user = _get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    if new_password != confirm_password:
+    # The form has one field with show/hide; a confirm field is checked if one is sent
+    if confirm_password and new_password != confirm_password:
         return templates.TemplateResponse("set_password.html", {
             "request": request,
             "display_name": user["display_name"] or user["username"],
@@ -3412,6 +3413,8 @@ async def delete_document(request: Request, doc_id: int):
     doc, _ = db.get_document(doc_id)
     is_offer = bool(doc) and doc.get("user_id") == user["account_id"] and doc.get("doc_type") == "offer"
     db.delete_document(user["account_id"], doc_id)
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"ok": True})  # a swipe on a phone list, which offers undo
     return RedirectResponse("/offers" if is_offer else "/documents", status_code=303)
 
 
@@ -3516,6 +3519,8 @@ async def trash_page(request: Request):
 async def restore_document(request: Request, doc_id: int):
     user = request.state.user
     db.restore_document(user["account_id"], doc_id)
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"ok": True})
     return RedirectResponse("/trash", status_code=303)
 
 

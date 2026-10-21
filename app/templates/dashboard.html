@@ -313,18 +313,18 @@
                                         {% if einvoice_enabled %}
                                         <a href="/documents/{{ doc.id }}/einvoice" class="dash-menu-item" target="_blank">E-rēķins (XML)</a>
                                         {% else %}
-                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">E-rēķins (XML) · PRO</a>
+                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">E-rēķins (XML) · {{ plans.mini.label }}</a>
                                         {% endif %}
                                         <div class="dash-menu-divider"></div>
                                         {% if email_enabled %}
                                         <button type="button" class="dash-menu-item" data-dash-action="send" data-doc-id="{{ doc.id }}" data-client-id="{{ doc.client_id }}">Nosūtīt klientam</button>
                                         {% else %}
-                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">Nosūtīt klientam · PRO</a>
+                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">Nosūtīt klientam · {{ plans.mini.label }}</a>
                                         {% endif %}
                                         {% if recurring_enabled %}
                                         <button type="button" class="dash-menu-item" data-dash-action="recurring" data-doc-id="{{ doc.id }}">Padarīt periodisku</button>
                                         {% else %}
-                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">Padarīt periodisku · PRO</a>
+                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">Padarīt periodisku · {{ plans.starter.label }}</a>
                                         {% endif %}
                                         {% if tracking %}
                                         <button type="button" class="dash-menu-item" data-dash-action="status" data-doc-id="{{ doc.id }}">{% if doc.status == 'paid' %}Atzīmēt kā neapmaksātu{% else %}Atzīmēt kā apmaksātu{% endif %}</button>
@@ -396,7 +396,7 @@
                 <label for="dashSendFormat">Pielikums</label>
                 <select name="attachment_format" id="dashSendFormat" class="form-control" onchange="updateDashAttachmentName()">
                     <option value="pdf" selected>PDF</option>
-                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · PRO{% endif %}</option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · {{ plans.mini.label }}{% endif %}</option>
                 </select>
             </div>
             <p class="field-hint" style="margin:-4px 0 16px">

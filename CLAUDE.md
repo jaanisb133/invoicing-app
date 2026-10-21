@@ -10,10 +10,10 @@ genuinely modern UX patterns, not generic "AI dashboard" defaults.
 - **Templates:** Jinja2, located in `app/templates/`
 - **Frontend:** Vanilla JS, Chart.js 4.4.4, flatpickr for date pickers
 - **Styling:** `app/static/css/app.css` for every signed-in screen (loaded by `base.html`);
-  `app/static/css/site.css` for public pages: landing, pricing, login, register, setup,
-  guides, 404 (same tokens, public composition; `auth_base.html` + `_site_*.html` partials);
-  `app/static/css/style.css` now only serves contacts/terms/license in the old look.
-  All versioned through `CSS_VERSION` (see Gotchas)
+  `app/static/css/site.css` for every public page: landing, pricing, login, register, setup,
+  guides, contacts, terms, license, set-password, 404 (same tokens, public composition;
+  `auth_base.html` for forms, `_site_*.html` partials for the rest). The old `style.css`
+  is gone. All versioned through `CSS_VERSION` (see Gotchas)
 - **Number format:** `app/fmt.py` — `eur` / `num` / `qty` Jinja filters and JS `fmtEur` /
   `fmtNum` / `fmtQty` / `parseNum` / `fmtDate` in `base.html`
 - **Fonts:** Geist (app UI) + DM Sans (paper previews, public pages) from Google Fonts, with system fallbacks
@@ -171,6 +171,11 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 - `TIER_LIMITS` is the single source: free = 5 invoices/month, 25 clients, unlimited products,
   5 e-mails, all templates; Mini 50/50; nothing caps products. Pricing pages, the landing
   page and gates render from it (`plans` Jinja global). `LIFETIME_CAP` = 10.
+- Prices (2026-10-21): Mini 1,99 €, Pamata 4,99 €, Bizness 9,99 €; yearly = ten months
+  ("2 mēn. bez maksas"); lifetime 199 €. Set against Numbero (free 1 doc, 2 € / 6 docs,
+  6 € / 100, 10 € unlimited): each step costs less and holds more. Renewals read the
+  current price, so a change applies to existing subscribers at their next charge.
+- A locked feature names the plan that unlocks it (`plans.<tier>.label`), never "PRO".
 - **Trial:** every new account gets 14 days of Pamata (`trial_until` user setting on the
   account). `_apply_trial()` in `_with_account` sets `user["tier"]` (effective, what gates
   read) and keeps `user["plan_tier"]` (what was paid for; billing/pricing screens compare
@@ -203,12 +208,10 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   strip any left over.
 
 ### Still open
-1. **Contacts / terms / license** still on `style.css`.
-2. **List actions on mobile** — swipe for mark-paid/delete
-3. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
+1. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
    the preview mirrors the server exactly, but a printed line can differ by a cent from
    its rounded parts. Pre-existing accounting behaviour; change only deliberately
-4. **Self-host the last payment logos** — card marks are committed; EveryPay, SEB, Citadele
+2. **Self-host the last payment logos** — card marks are committed; EveryPay, SEB, Citadele
    and LHV are still hotlinked from `vnmedia.lv` (startup logs a warning). Run
    `scripts/fetch_payment_logos.py` once from a machine that can reach that host.
 
@@ -255,6 +258,10 @@ can't kill the main form logic.
   skips it — keyboard tests must branch on that.
 - **`[hidden]` is `display:none !important`** in `app.css`; component display rules
   used to override the attribute.
+- **Phone lists act by swipe** (`static/js/swipe.js`): the ⋯ menu is hidden ≤ 768px, so rows
+  carry `data-swipe` and the page passes their actions to `vrSwipe.attach`. Delete and
+  restore answer JSON when asked (`Accept: application/json`) so the swipe can offer undo.
+  Rows need `touch-action: pan-y`, or the browser takes the horizontal drag.
 
 ## Critical files to know
 - `app/main.py` — `_base_context()`, `_parse_doc_items()`, `_doc_list_rows()`,

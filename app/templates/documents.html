@@ -157,7 +157,7 @@
                 <label for="listSendFormat">Pielikums</label>
                 <select name="attachment_format" id="listSendFormat" class="form-control" onchange="updateListAttachmentName()">
                     <option value="pdf" selected>PDF</option>
-                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · PRO{% endif %}</option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · {{ plans.mini.label }}{% endif %}</option>
                 </select>
             </div>
             <p class="field-hint" style="margin:-4px 0 16px">
@@ -214,6 +214,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/swipe.js?v={{ css_version }}"></script>
 <script>
 const statusTracking = {{ 'true' if tracking else 'false' }};
 const einvoiceEnabled = {{ 'true' if einvoice_enabled else 'false' }};
@@ -249,7 +250,7 @@ function rowHtml(d) {
             due = '<td class="c-due num' + (late ? ' due-late' : '') + '">' + fmtDate(d.payment_due_date) + '</td>';
         }
     }
-    return '<tr class="clickable-row" data-href="/documents/' + d.id + '">'
+    return '<tr class="clickable-row" data-swipe data-id="' + d.id + '" data-href="/documents/' + d.id + '">'
         + '<td class="c-num"><a href="/documents/' + d.id + '" class="row-link">' + esc(d.doc_number) + '</a>' + excl + '</td>'
         + '<td class="c-client"><a href="/documents/' + d.id + '" class="plain">' + esc(d.client_name) + '</a>' + typeTag + '</td>'
         + '<td class="c-meta">' + esc(d.doc_number) + ' · ' + date + '</td>'
@@ -289,14 +290,14 @@ function menuHtml(d) {
         + '<a href="/documents/' + d.id + '/pdf" class="row-menu-item" target="_blank">Lejupielādēt PDF</a>'
         + (einvoiceEnabled
             ? '<a href="/documents/' + d.id + '/einvoice" class="row-menu-item" target="_blank">E-rēķins (XML)</a>'
-            : '<a href="/pricing" class="row-menu-item row-menu-disabled">E-rēķins (XML) · PRO</a>')
+            : '<a href="/pricing" class="row-menu-item row-menu-disabled">E-rēķins (XML) · {{ plans.mini.label }}</a>')
         + '<div class="row-menu-divider"></div>'
         + (emailEnabled
             ? '<button type="button" class="row-menu-item" data-action="send" data-doc-id="' + d.id + '" data-client-id="' + (d.client_id || '') + '">Nosūtīt klientam</button>'
-            : '<a href="/pricing" class="row-menu-item row-menu-disabled">Nosūtīt klientam · PRO</a>')
+            : '<a href="/pricing" class="row-menu-item row-menu-disabled">Nosūtīt klientam · {{ plans.mini.label }}</a>')
         + (recurringEnabled
             ? '<button type="button" class="row-menu-item" data-action="recurring" data-doc-id="' + d.id + '">Padarīt periodisku</button>'
-            : '<a href="/pricing" class="row-menu-item row-menu-disabled">Padarīt periodisku · PRO</a>')
+            : '<a href="/pricing" class="row-menu-item row-menu-disabled">Padarīt periodisku · {{ plans.starter.label }}</a>')
         + '<div class="row-menu-divider"></div>'
         + '<form method="post" action="/documents/' + d.id + '/delete"><button type="submit" class="row-menu-item row-menu-danger">Pārvietot uz papīrgrozu</button></form>';
     return '<div class="row-menu-wrapper"><button type="button" class="row-menu-trigger" aria-label="Darbības ar ' + esc(d.doc_number) + '">'
@@ -325,6 +326,32 @@ async function toggleStatus(el) {
     }
     el.style.opacity = '1';
 }
+
+/* ------------------------------------------------------------ swipe (phones) */
+async function swipeDelete(d) {
+    const res = await fetch('/documents/' + d.id + '/delete', { method: 'POST', headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+    if (!res.ok) { alert('Neizdevās dzēst'); return; }
+    const at = docsData.indexOf(d);
+    renderDocs(docsData.filter(x => x !== d));
+    vrSwipe.snack(d.doc_number + ' pārvietots uz papīrgrozu', async () => {
+        const r = await fetch('/trash/' + d.id + '/restore', { method: 'POST', headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+        if (!r.ok) { alert('Neizdevās atjaunot'); return; }
+        const docs = docsData.slice();
+        docs.splice(Math.max(0, Math.min(at, docs.length)), 0, d);
+        renderDocs(docs);
+    });
+}
+if (window.vrSwipe) vrSwipe.attach(document.getElementById('docsBody'), function (tr) {
+    const d = docsData.find(x => String(x.id) === tr.dataset.id);
+    if (!d) return [];
+    const acts = [];
+    if (statusTracking) acts.push({
+        label: d.status === 'paid' ? 'Neapmaksāts' : 'Apmaksāts', tone: d.status === 'paid' ? '' : 'pos',
+        run: row => { const b = row.querySelector('.status-btn'); if (b) toggleStatus(b); }
+    });
+    acts.push({ label: 'Dzēst', tone: 'neg', run: () => swipeDelete(d) });
+    return acts;
+});
 
 /* ------------------------------------------------------------ filters */
 const fClientSearch = document.getElementById('fClientSearch');

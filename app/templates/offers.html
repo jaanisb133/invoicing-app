@@ -90,7 +90,7 @@
             </thead>
             <tbody id="docsTbody">
                 {% for doc in documents %}
-                <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
+                <tr data-href="/documents/{{ doc.id }}" class="clickable-row" data-swipe data-id="{{ doc.id }}">
                     <td class="c-num"><a href="/documents/{{ doc.id }}" class="row-link">{{ doc.doc_number }}</a></td>
                     <td class="c-client"><a href="/documents/{{ doc.id }}" class="plain">{{ doc.client_name }}</a></td>
                     <td class="c-meta">{{ doc.doc_number }} · {{ doc.doc_date[8:10] }}.{{ doc.doc_date[5:7] }}.{{ doc.doc_date[:4] }}</td>
@@ -113,7 +113,7 @@
                                 {% if email_enabled %}
                                 <button type="button" class="row-menu-item" data-action="send" data-doc-id="{{ doc.id }}" data-client-id="{{ doc.client_id }}">Nosūtīt klientam</button>
                                 {% else %}
-                                <a href="/pricing" class="row-menu-item row-menu-disabled">Nosūtīt klientam · PRO</a>
+                                <a href="/pricing" class="row-menu-item row-menu-disabled">Nosūtīt klientam · {{ plans.mini.label }}</a>
                                 {% endif %}
                                 <div class="row-menu-divider"></div>
                                 <form method="post" action="/documents/{{ doc.id }}/delete">
@@ -185,6 +185,27 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/swipe.js?v={{ css_version }}"></script>
+<script>
+// Phones: swipe an offer left for "Rēķins" (prefilled invoice) or "Dzēst" (with undo)
+async function offerDelete(row) {
+    const id = row.dataset.id, parent = row.parentNode, next = row.nextSibling;
+    const res = await fetch('/documents/' + id + '/delete', { method: 'POST', headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+    if (!res.ok) { alert('Neizdevās dzēst'); return; }
+    row.remove();
+    vrSwipe.snack(row.querySelector('.c-num').textContent.trim() + ' pārvietots uz papīrgrozu', async () => {
+        const r = await fetch('/trash/' + id + '/restore', { method: 'POST', headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+        if (!r.ok) { alert('Neizdevās atjaunot'); return; }
+        parent.insertBefore(row, next && next.parentNode === parent ? next : null);
+    });
+}
+if (window.vrSwipe) vrSwipe.attach(document.getElementById('docsTbody'), function (tr) {
+    return [
+        { label: 'Rēķins', href: '/documents/new?from_offer=' + tr.dataset.id },
+        { label: 'Dzēst', tone: 'neg', run: offerDelete },
+    ];
+});
+</script>
 <script>
 const clientEmailMap = {
     {% for c in clients %}{{ c.id }}: {{ (c.email or '') | tojson }},{% endfor %}

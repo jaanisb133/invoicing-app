@@ -92,7 +92,7 @@
                                 {% if edit_mode and recurring.template == key %}selected
                                 {% elif not edit_mode and key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
                             {% else %}
-                            <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
+                            <option value="{{ key }}" disabled>{{ label }} ({{ plans.mini.label }})</option>
                             {% endif %}
                             {% endfor %}
                         </select>

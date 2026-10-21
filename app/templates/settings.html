@@ -217,7 +217,7 @@
                             {% if tier_limits.all_templates or key == 'classic' %}
                             <option value="{{ key }}" {% if settings.get('default_template', 'classic') == key %}selected{% endif %}>{{ label }}</option>
                             {% else %}
-                            <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
+                            <option value="{{ key }}" disabled>{{ label }} ({{ plans.mini.label }})</option>
                             {% endif %}
                             {% endfor %}
                         </select>
@@ -459,7 +459,7 @@
                     <div class="settings-toggle-text">
                         <div class="settings-toggle-name">
                             Noliktavas pārvaldība
-                            {% if not tier_limits.stock %}<span class="pill pill-neutral">PRO</span>{% endif %}
+                            {% if not tier_limits.stock %}<span class="pill pill-neutral">{{ plans.business.label }}</span>{% endif %}
                         </div>
                         <div class="settings-toggle-desc">
                             Uzskaita preču atlikumus no pirkuma un pārdošanas dokumentiem.

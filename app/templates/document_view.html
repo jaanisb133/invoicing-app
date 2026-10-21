@@ -78,18 +78,18 @@
                 {% if is_offer and email_enabled %}
                 <button type="button" class="view-menu-item" onclick="closeAllMenus();showSendModal()">Nosūtīt klientam</button>
                 {% elif not email_enabled %}
-                <a href="/pricing" class="view-menu-item view-menu-disabled">Nosūtīt klientam · PRO</a>
+                <a href="/pricing" class="view-menu-item view-menu-disabled">Nosūtīt klientam · {{ plans.mini.label }}</a>
                 {% endif %}
                 {% if not is_offer %}
                     {% if einvoice_enabled %}
                     <a href="/documents/{{ doc.id }}/einvoice" class="view-menu-item" target="_blank">E-rēķins (XML)</a>
                     {% else %}
-                    <a href="/pricing" class="view-menu-item view-menu-disabled">E-rēķins (XML) · PRO</a>
+                    <a href="/pricing" class="view-menu-item view-menu-disabled">E-rēķins (XML) · {{ plans.mini.label }}</a>
                     {% endif %}
                     {% if recurring_enabled %}
                     <button type="button" class="view-menu-item" onclick="closeAllMenus();showRecurringModal()">Padarīt periodisku</button>
                     {% else %}
-                    <a href="/pricing" class="view-menu-item view-menu-disabled">Padarīt periodisku · PRO</a>
+                    <a href="/pricing" class="view-menu-item view-menu-disabled">Padarīt periodisku · {{ plans.starter.label }}</a>
                     {% endif %}
                     <div class="view-menu-divider"></div>
                     <form method="post" action="/documents/{{ doc.id }}/toggle-stats" style="margin:0">
@@ -127,7 +127,7 @@
                 <div class="segmented tpl-switch" role="group" aria-label="PDF veidne">
                     {% for key, label in templates.items() %}
                     <button type="button" class="template-tab {% if key == selected_template %}on{% endif %}" data-tpl="{{ key }}"
-                            onclick="selectTemplate('{{ key }}', this)">{{ label }}{% if key != 'classic' and not all_templates %}<span class="pro">PRO</span>{% endif %}</button>
+                            onclick="selectTemplate('{{ key }}', this)">{{ label }}{% if key != 'classic' and not all_templates %}<span class="pro">{{ plans.mini.label }}</span>{% endif %}</button>
                     {% endfor %}
                 </div>
                 {% endif %}
@@ -235,7 +235,7 @@
                 <label for="sendFormat">Pielikums</label>
                 <select name="attachment_format" id="sendFormat" class="form-control" onchange="updateSendAttachmentHint()">
                     <option value="pdf" selected>PDF</option>
-                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · PRO{% endif %}</option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · {{ plans.mini.label }}{% endif %}</option>
                 </select>
             </div>
             {% endif %}
@@ -482,7 +482,7 @@ function selectTemplate(key, btn) {
     if (key !== 'classic' && !allTemplatesEnabled) {
         dl.href = '/pricing';
         dl.removeAttribute('target');
-        dl.textContent = 'Veidne pieejama PRO';
+        dl.textContent = 'Veidne pieejama {{ plans.mini.label }} plānā';
     } else {
         dl.href = '/documents/' + docId + '/pdf?template=' + key;
         dl.setAttribute('target', '_blank');

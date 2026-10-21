@@ -606,6 +606,28 @@ details.more[open] > summary { margin-bottom: 14px; }
 .article-body th { text-align: left; font-weight: 500; color: var(--muted); padding: 10px 12px; background: var(--ground-2); }
 .article-body td { padding: 10px 12px; border-top: 1px solid var(--rule); vertical-align: top; }
 .article-body td.num, .article-body th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Contacts and terms (article layout) */
+.contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0 44px; }
+.contact-card { background: var(--surface); border-radius: var(--r); padding: 24px; }
+.contact-card h2 { font-size: var(--s1); font-weight: 500; color: var(--muted); letter-spacing: 0; margin: 0 0 10px; }
+.contact-big { display: block; font-size: clamp(21px, 2.2vw, 26px); font-weight: 600; letter-spacing: -0.02em; color: var(--text); text-decoration: none; margin-bottom: 8px; overflow-wrap: anywhere; }
+.contact-big:hover { text-decoration: underline; text-underline-offset: 4px; }
+.contact-card p { margin: 0; color: var(--muted); }
+.facts-title { font-size: 20px; letter-spacing: -0.01em; margin: 0 0 12px; }
+.facts { margin: 0; background: var(--surface); border-radius: var(--r); }
+.facts > div { display: grid; grid-template-columns: 190px 1fr; gap: 16px; padding: 14px 20px; border-top: 1px solid var(--rule); }
+.facts > div:first-child { border-top: 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+.pay-logos { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 18px; }
+.pay-logos .logo-box { display: inline-flex; align-items: center; justify-content: center; height: 46px; padding: 6px 12px; background: #fff; border: 1px solid var(--rule); border-radius: 6px; }
+.pay-logos img { max-height: 32px; width: auto; }
+.pay-logos .logo-box-text { font-size: 14px; color: #3a3d42; }
+.license-key { font-variant-numeric: tabular-nums; letter-spacing: .06em; text-transform: uppercase; text-align: center; }
+@media (max-width: 640px) {
+    .contact-grid { grid-template-columns: 1fr; }
+    .facts > div { grid-template-columns: 1fr; gap: 2px; padding: 12px 16px; }
+}
 .article-sources { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--rule); }
 .article-sources h2 { font-size: 16px; margin-bottom: 10px; }
 .article-sources ul { margin: 0; padding-left: 18px; font-size: var(--s1); color: var(--muted); }

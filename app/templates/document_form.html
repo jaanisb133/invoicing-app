@@ -428,7 +428,7 @@
                                 {% if tier_limits.all_templates or key == 'classic' %}
                                 <option value="{{ key }}" {% if key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
                                 {% else %}
-                                <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
+                                <option value="{{ key }}" disabled>{{ label }} ({{ plans.mini.label }})</option>
                                 {% endif %}
                                 {% endfor %}
                             </select>
