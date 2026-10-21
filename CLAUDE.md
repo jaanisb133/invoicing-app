@@ -220,6 +220,9 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
    `app/static/img/payments/` (see SOURCES.txt). EveryPay is still missing and prints as
    text; Mastercard's supplied PNG is tiny (74×52) and soft on the terms page — swap in an
    SVG when the owner has one. Logo presence is read at startup: restart after adding files.
+3. **E-invoices and VID filing** — researched 2026-10-21, see `E-INVOICING.md` (law, VID
+   behaviour, every correction/cancellation case, what's wrong in `app/einvoice.py` today,
+   build order, open questions). Read it before touching e-invoices, numbering or delete.
 
 ### Invoice PDFs (redesigned 2026-10-21)
 - `app/pdf_generator.py`: three templates built from shared parts (`_head_*`, `_parties`,
