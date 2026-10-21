@@ -108,8 +108,8 @@ templates.env.globals["payment_logos"] = payment_logos.footer_logos()
 _missing_logos = payment_logos.missing_logos()
 if _missing_logos:
     logger.warning(
-        "Payment logos still hotlinked from a third-party host: %s. "
-        "Run scripts/fetch_payment_logos.py and restart to self-host them.",
+        "Payment logos missing, shown as text: %s. Copy the official files into "
+        "app/static/img/payments/ (see the README there) and restart.",
         ", ".join(_missing_logos),
     )
 
@@ -1830,23 +1830,26 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
         admin_id = admin["id"]
         today = datetime.date.today().isoformat()
 
-        # Ensure a subscription product exists for the admin
-        admin_products = db.get_all_products(admin_id)
-        sub_product = next(
-            (p for p in admin_products if p["name"] == "V-Rēķini abonements"), None
-        )
-        if not sub_product:
-            sub_product_id = db.add_product(admin_id, "V-Rēķini abonements", "gab")
-        else:
-            sub_product_id = sub_product["id"]
+        # Renewals pass a raw users row, which has no account_id; only owners pay
+        account_id = paying_user.get("account_id") or paying_user["id"]
 
-        # Ensure paying user exists as a client in admin's account
-        paying_settings = db.get_all_user_settings(paying_user["account_id"])
+        # The paying account as a client of the admin account, with its details as
+        # they are today: a company gets its name, reg. and VAT numbers and address,
+        # a person their name (and personal code, if they entered one)
+        paying_settings = db.get_all_user_settings(account_id)
         client_name = (paying_settings.get("company_name", "")
                        or paying_user.get("display_name", "")
                        or paying_user["username"])
         client_reg = paying_settings.get("reg_number", "")
-        client_vat = paying_settings.get("vat_number", "")
+        client_vat = paying_settings.get("vat_number", "") if paying_settings.get("is_vat_payer", "0") == "1" else ""
+        client_fields = {
+            "reg_number": client_reg,
+            "vat_number": client_vat,
+            "vat_payer": 1 if client_vat else 0,
+            "legal_address": paying_settings.get("legal_address", ""),
+            "email": paying_user.get("email", ""),
+            "client_type": "individual" if paying_settings.get("entity_type") == "individual" else "business",
+        }
 
         existing_client = None
         if client_reg:
@@ -1859,25 +1862,34 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
 
         if existing_client:
             client_id = existing_client["id"]
+            db.update_client(admin_id, client_id, name=client_name, **client_fields)
         else:
-            client_id = db.add_client(
-                admin_id, client_name,
-                reg_number=client_reg,
-                vat_number=client_vat,
-                vat_payer=1 if client_vat else 0,
-                legal_address=paying_settings.get("legal_address", ""),
-                bank_name=paying_settings.get("bank_name", ""),
-                bank_account=paying_settings.get("bank_account", ""),
-                email=paying_user.get("email", ""),
-            )
+            client_id = db.add_client(admin_id, client_name, **client_fields)
 
         tier_labels = {"mini": "Mini", "starter": "Pamata", "business": "Bizness", "lifetime": "Mūža licence"}
         cycle_labels = {"monthly": "mēnesī", "yearly": "gadā", "lifetime": "vienreizējs"}
         plan_desc = f"V-Rēķini — {tier_labels.get(tier, tier)} ({cycle_labels.get(cycle, cycle)})"
 
+        # The line says what was bought and for which period
+        if cycle == "lifetime":
+            line_desc, unit = "V-Rēķini mūža licence", "gab."
+        else:
+            line_desc = f"V-Rēķini {tier_labels.get(tier, tier)} plāns"
+            unit = "gads" if cycle == "yearly" else "mēn."
+            fresh = db.get_user(account_id) or {}
+            try:
+                end = datetime.date.fromisoformat(fresh.get("subscription_end") or "")
+                start = end - datetime.timedelta(days=365 if cycle == "yearly" else 30)
+                line_desc += f", {start:%d.%m.%Y}–{end - datetime.timedelta(days=1):%d.%m.%Y}"
+            except ValueError:
+                pass
+
         admin_settings = db.get_all_user_settings(admin_id)
         vat_rate = float(admin_settings.get("default_vat_rate", "21"))
-        net_price = round(amount / (1 + vat_rate / 100), 2)
+        # Prices include VAT. A two-decimal net can't always reach them (1,64 € + 21 %
+        # is 1,98 €, 1,65 € is 2,00 €, never 1,99 €), so the net keeps four decimals
+        # and the invoice total is exactly what the card was charged.
+        net_price = round(amount / (1 + vat_rate / 100), 4)
 
         notes = (
             f"Maksājuma ref.: {payment_reference}\n"
@@ -1885,9 +1897,10 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
         )
 
         items = [{
-            "product_id": sub_product_id,
+            "product_id": None,
+            "description": line_desc,
             "quantity": 1,
-            "unit": "gab",
+            "unit": unit,
             "price_per_unit": net_price,
         }]
 
