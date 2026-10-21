@@ -1,11 +1,3 @@
-# The card marks (visa/mastercard/applepay/googlepay) are committed — CC0-1.0,
-# see SOURCES.txt. Fetching them at deploy time was the original plan and it
-# failed the first time it ran: every source URL 404'd.
-#
-# The provider marks are not ours to redistribute, so they stay ignored and are
-# copied onto the server by hand.
-everypay.*
-seb.*
-citadele.*
-lhv.*
+# Every mark here is committed: official artwork from the merchant, see SOURCES.txt.
+# Only the fetch script's half-written downloads stay out.
 *.part

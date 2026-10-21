@@ -396,8 +396,7 @@ img { display: block; max-width: 100%; }
 .foot-line nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .foot-line .right { text-align: right; }
 .pay { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px 22px; padding: 12px var(--m) 28px; }
-.pay img { height: 20px; width: auto; }
-.pay .pay-mono { filter: grayscale(1); opacity: .75; }
+.pay img { width: auto; }  /* height comes from each mark's attribute */
 .pay .footer-logo-text { font-size: 13px; color: var(--faint); }
 .pay .footer-sep { width: 1px; height: 18px; background: var(--rule); }
 
