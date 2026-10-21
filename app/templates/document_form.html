@@ -313,7 +313,7 @@
                                 <label class="check" style="margin-top:10px">
                                     <input type="checkbox" name="reverse_charge" id="reverseCharge" value="1"
                                            {% if prefill and doc.reverse_charge %}checked{% endif %} onchange="toggleReverseCharge()">
-                                    Nodokļa apgrieztā maksāšana (PVN 0 %)
+                                    Nodokļa apgrieztā maksāšana (PVN maksā saņēmējs)
                                 </label>
                             </div>
                             {% else %}
@@ -977,8 +977,8 @@ function recalculate() {
     const total = subtotal + vat;
 
     document.getElementById('subtotalDisplay').textContent = fmtEur(subtotal);
-    document.getElementById('vatDisplay').textContent = fmtEur(vat);
-    document.getElementById('vatLabel').textContent = reverse ? 'PVN 0 % (apgrieztā maksāšana)' : 'PVN ' + fmtQty(rate) + ' %';
+    document.getElementById('vatDisplay').textContent = reverse ? '—' : fmtEur(vat);
+    document.getElementById('vatLabel').textContent = reverse ? 'Nodokļa apgrieztā maksāšana' : 'PVN ' + fmtQty(rate) + ' %';
     document.getElementById('totalDisplay').textContent = fmtEur(total);
     document.getElementById('railTotal').textContent = fmtEur(total);
     document.getElementById('barTotal').textContent = fmtEur(total);
@@ -1142,9 +1142,9 @@ function itemsTableHtml(items, style) {
 function vatLines(d, muted) {
     if (!d.isVatPayer) return '';
     const c = muted ? '#9ca3af' : '#6b7280';
-    const label = d.reverseCharge ? 'PVN 0% (nodokļa apgrieztā maksāšana)' : 'PVN (' + fmtQty(d.vatRate) + '%)';
+    const label = d.reverseCharge ? 'Nodokļa apgrieztā maksāšana' : 'PVN (' + fmtQty(d.vatRate) + '%)';
     return `<div style="color:${c}">Summa bez PVN: <strong style="color:#111827">${fmtEur(d.subtotal)}</strong></div>
-            <div style="color:${c}">${label}: <strong style="color:#111827">${fmtEur(d.vatAmount)}</strong></div>`;
+            <div style="color:${c}">${label}: <strong style="color:#111827">${d.reverseCharge ? '—' : fmtEur(d.vatAmount)}</strong></div>`;
 }
 
 // Free-plan invoices carry one small line at the foot, as the PDF does
