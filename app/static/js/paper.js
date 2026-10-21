@@ -6,7 +6,7 @@
      template: 'classic' | 'modern' | 'minimal', kind: 'sell' | 'credit' | 'buy' | 'offer',
      title, number, date, due,                       (dates already dd.mm.yyyy)
      ref,                                            ("Kredītrēķins rēķinam Nr. … no …" or '')
-     supplier, buyer: { name, reg, vat, addr, bank, account, person },
+     supplier, buyer: { name, reg, vat, addr, bank, account, person, ref },
      items: [{ name, unit, qty, price, included, amount }],   (amount: the stored line total, if known)
      subtotal, vatRate, vat, rounding, total, vatPayer, reverseCharge,
      notes, electronic, accent, logo (url or ''), logoWidth (%), contacts: [], free }
@@ -104,6 +104,7 @@
         if (p.reg) lines.push((p.person ? 'P. k. ' : 'Reģ. Nr. ') + p.reg);
         if (p.vat && d.vatPayer) lines.push('PVN Nr. ' + p.vat);
         if (p.addr) lines.push(p.addr);
+        if (p.ref) lines.push('Atsauce: ' + p.ref);  // the buyer's reference (BT-10)
         return '<div class="pp-party">' + label(title) + '<div class="pp-name">' + eq(p.name || '—') + '</div>' +
             (lines.length ? '<div class="pp-muted">' + lines.map(eq).join('<br>') + '</div>' : '') + '</div>';
     }

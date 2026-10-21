@@ -173,9 +173,10 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 - `TIER_LIMITS` is the single source: free = 5 invoices/month, 25 clients, unlimited products,
   5 e-mails, all templates; Mini 50/50; nothing caps products. Pricing pages, the landing
   page and gates render from it (`plans` Jinja global). `LIFETIME_CAP` = 10.
-- Prices (2026-10-21): Mini 1,99 €, Pamata 4,99 €, Bizness 9,99 €; yearly = ten months
+- Prices (2026-10-21): Mini 2,00 € (was 1,99 €, which 21 % VAT can't split into cents), Pamata 4,99 €,
+  Bizness 9,99 €; yearly = ten months
   ("2 mēn. bez maksas"); lifetime 199 €. Set against Numbero (free 1 doc, 2 € / 6 docs,
-  6 € / 100, 10 € unlimited): each step costs less and holds more. Renewals read the
+  6 € / 100, 10 € unlimited): Mini matches their 2 € with 50 invoices; the rest cost less. Renewals read the
   current price, so a change applies to existing subscribers at their next charge.
 - A locked feature names the plan that unlocks it (`plans.<tier>.label`), never "PRO".
 - **Trial:** every new account gets 14 days of Pamata (`trial_until` user setting on the
@@ -189,6 +190,10 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   and in a trial's last 5 days.
 
 ### Sign-up and first run (2026-10-21)
+- Every sign-up e-mails the owner (`NEW_ACCOUNT_NOTIFY_EMAIL`, default janis@vnmedia.lv;
+  empty turns it off) after the response, so a slow mail server never holds up sign-up.
+- "Ienākt" is a real button top-right: in the pinned invoice's corner on the landing
+  (beside the wordmark on phones), and in `_site_bar.html` / the pricing header.
 - Register: company via registry search (or name for a person), e-mail, one password with
   show/hide. Picked plan (`?plan=mini|starter|business|lifetime`) carries through setup to
   checkout. Setup is one screen; payment term defaults to 14 days.
@@ -199,7 +204,9 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 
 ### Guides (`/celvedis`, drafts 2026-10-21)
 - `app/guides.py` (`GUIDES` list) + body files `app/templates/guides/<slug>.html`, rendered by
-  `guide.html`. `published: False` → reachable by URL, `noindex`, not in sitemap/index.
+  `guide.html`. `published: False` → reachable by URL, `noindex`, not in the sitemap or menus.
+  `/celvedis` lists the drafts (tagged "Melnraksts", `noindex`) while none is published;
+  after that guests see published guides and the admin also sees drafts.
   Publishing = set True and bump `updated`; sitemap and `/celvedis` pick it up.
 - `/static/guides/rekina-paraugs.pdf` is a real app PDF of the article's sample invoice
   (`scripts/footage/sample_pdf.py` on the footage account; change article and PDF together).
@@ -229,9 +236,16 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   every create/update; `document_items.total` is the rounded line. Documents saved before
   this were backfilled with the totals they always printed (old arithmetic), so nothing
   issued moved by a cent. Readers use the stored values (`pdf_generator.document_amounts`).
-- `rounding` (BT-114) exists only for subscription invoices: 1,99 € at 21 % has no
+- `rounding` (BT-114) exists only for subscription invoices whose price can't be split: 1,99 € at 21 % has no
   two-decimal net, so `money.net_for_gross` gives 1,64 + 0,34 + 0,01 rounding.
 - Unit prices print with their real decimals (`fmt.price` / `fmtPrice`): 0,0145, not 0,01.
+- **Buyer reference** (EN 16931 BT-10, `documents.buyer_reference`): the code the buyer
+  routes on (a council's school "09.283", an order number). Optional field under the client
+  in the editor, prefilled from `clients.buyer_reference`; printed "Atsauce: …" in the buyer
+  block; sent as `BuyerReference` (else the buyer's reg. no.). Recurring invoices take the
+  client's; credit notes and corrections copy the original's.
+- An invoice with no due date gets the payment term "Apmaksas termiņš nav noteikts" in the
+  XML: an amount due needs a due date or terms (BR-CO-25).
 - **Sent = locked** (`documents.sent_at`, `db.is_locked`): set when a sales invoice or
   credit note is e-mailed from the app, marked paid, or the user presses "Atzīmēt kā
   nosūtītu". Not on download. Locked documents can't be edited, deleted, trashed or purged

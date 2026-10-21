@@ -34,6 +34,8 @@
 <style>
 /* ---- invoice editor ---------------------------------------------------- */
 .editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
+.buyer-ref-open { margin: 12px 0 0 -10px; }
+.buyer-ref { margin: 16px 0 0; }
 .editor-main { min-width: 0; }
 .editor-rail { position: sticky; top: 24px; display: flex; flex-direction: column; gap: var(--gap); }
 
@@ -293,6 +295,17 @@
                             {% if not ref_doc %}<button type="button" class="btn btn-outline btn-sm" onclick="clearClient()">Mainīt</button>{% endif %}
                         </div>
                         <div class="field-error" id="clientError" hidden>Izvēlieties klientu, kam izrakstīt dokumentu.</div>
+                        {% if doc_type in ('sell', 'credit') %}
+                        {% set ref_val = (doc.buyer_reference or '') if (prefill and doc) else '' %}
+                        <button type="button" class="btn btn-ghost btn-sm buyer-ref-open" id="buyerRefOpen" {% if ref_val %}hidden{% endif %}
+                                onclick="openBuyerRef()">+ Pircēja atsauce</button>
+                        <div class="form-group buyer-ref" id="buyerRefGroup" {% if not ref_val %}hidden{% endif %}>
+                            <label for="buyerRef">Pircēja atsauce</label>
+                            <input type="text" name="buyer_reference" id="buyerRef" class="form-control" maxlength="100"
+                                   value="{{ ref_val }}" placeholder="Piemēram, 09.283" autocomplete="off">
+                            <div class="field-hint">Kods vai numurs, ko klients prasa rēķinā: iestāde, struktūrvienība, pasūtījums. Pašvaldībām bieži obligāts. Redzams rēķinā un e-rēķinā.</div>
+                        </div>
+                        {% endif %}
                     </div>
                 </section>
 
@@ -705,7 +718,27 @@ function selectFormClient(id, name) {
     document.getElementById('clientChosen').hidden = false;
     document.getElementById('clientError').hidden = true;
     clientInput.classList.remove('invalid');
+    fillBuyerRef(c);
     updatePreview();
+}
+// The client's usual reference fills in, unless the user typed one for this invoice
+const buyerRef = document.getElementById('buyerRef');
+if (buyerRef) {
+    buyerRef.dataset.auto = (editMode || buyerRef.value) ? '0' : '1';
+    buyerRef.addEventListener('input', () => { buyerRef.dataset.auto = '0'; updatePreview(); });
+}
+function openBuyerRef() {
+    document.getElementById('buyerRefOpen').hidden = true;
+    document.getElementById('buyerRefGroup').hidden = false;
+    buyerRef.focus();
+}
+function fillBuyerRef(c) {
+    if (!buyerRef || buyerRef.dataset.auto !== '1') return;
+    buyerRef.value = c.buyer_reference || '';
+    if (buyerRef.value) {
+        document.getElementById('buyerRefOpen').hidden = true;
+        document.getElementById('buyerRefGroup').hidden = false;
+    }
 }
 function clearClient() {
     document.getElementById('clientSelect').value = '';
@@ -1105,10 +1138,12 @@ function getPreviewData() {
         addr: companySettings.legal_address || '', bank: companySettings.bank_name || '',
         account: companySettings.bank_account || '', person: entityType === 'individual',
     };
+    const refEl = document.getElementById('buyerRef');
     const client = clientInfo ? {
         name: clientInfo.name, reg: clientInfo.reg_number || '', vat: clientInfo.vat_number || '',
         addr: clientInfo.legal_address || '', bank: clientInfo.bank_name || '',
         account: clientInfo.bank_account || '', person: clientInfo.client_type === 'individual',
+        ref: refEl ? refEl.value.trim() : '',
     } : { name: '—', reg: '', vat: '', addr: '', bank: '', account: '', person: false };
 
     const items = [], amounts = [];

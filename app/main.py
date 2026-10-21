@@ -28,6 +28,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Match
+from starlette.background import BackgroundTask
 from itsdangerous import URLSafeTimedSerializer
 
 logger = logging.getLogger("vrekini")
@@ -59,7 +60,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "57"
+CSS_VERSION = "58"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -217,6 +218,8 @@ SMTP_SSL = os.getenv("SMTP_SSL", "true").lower() in ("true", "1", "yes")
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "rekini@v-rekini.lv")
 BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "V-Rēķini")
+# Who hears about every new sign-up. Empty turns the notice off.
+NEW_ACCOUNT_NOTIFY_EMAIL = os.getenv("NEW_ACCOUNT_NOTIFY_EMAIL", "janis@vnmedia.lv").strip()
 
 # --- EveryPay / SEB E-commerce ---
 from app import everypay
@@ -842,6 +845,7 @@ async def _process_recurring_invoices():
                         rec["user_id"], rec["doc_type"], rec["client_id"],
                         today, items, rec["vat_rate"], rec["notes"],
                         payment_due_date=due_date or "",
+                        buyer_reference=(db.get_client(rec["client_id"]) or {}).get("buyer_reference") or "",
                     )
 
                     # Log document_created event (recurring source)
@@ -1287,7 +1291,46 @@ async def register(request: Request,
 
     # Always redirect to dashboard → onboarding gate will send to /setup
     response = RedirectResponse("/", status_code=303)
+    # Tell the owner, after the response so a slow mail server never holds up sign-up
+    response.background = BackgroundTask(_notify_new_account, user_id, {
+        "display_name": display_name, "email": email, "phone": phone,
+        "entity_type": entity_type, "reg_number": reg_number if is_business else "",
+        "is_vat_payer": is_business and is_vat_payer == "1", "plan": plan, "cycle": cycle,
+    })
     return _set_session_cookie(response, user_id)
+
+
+def _notify_new_account(user_id, info):
+    """E-mail NEW_ACCOUNT_NOTIFY_EMAIL that someone signed up. Never raises."""
+    if not NEW_ACCOUNT_NOTIFY_EMAIL or OFFLINE_MODE or not (SMTP_PASS or BREVO_API_KEY):
+        return
+    try:
+        plan_names = {"mini": "Mini", "starter": "Pamata", "business": "Bizness", "lifetime": "Mūža licence"}
+        trial_until = db.get_user_setting(user_id, "trial_until", "")
+        lines = [
+            f"Izveidots jauns V-Rēķini konts ({datetime.datetime.now():%d.%m.%Y %H:%M}).",
+            "",
+            f"Nosaukums: {info['display_name'] or '—'}",
+            f"E-pasts: {info['email']}",
+            f"Tālrunis: {info['phone'] or '—'}",
+            f"Veids: {'uzņēmums' if info['entity_type'] == 'business' else 'privātpersona'}"
+            + (f", reģ. nr. {info['reg_number']}" if info["reg_number"] else "")
+            + (", PVN maksātājs" if info["is_vat_payer"] else ""),
+            f"Izvēlētais plāns: {plan_names.get(info['plan'], 'nav (bezmaksas)')}"
+            + (" gada" if info["plan"] in ("mini", "starter", "business") and info["cycle"] == "yearly" else ""),
+        ]
+        if trial_until:
+            lines.append(f"Izmēģinājums: Pamata līdz {trial_until[8:10]}.{trial_until[5:7]}.{trial_until[:4]}")
+        lines += ["", f"Lietotāji: {SITE_URL}/users"]
+        _send_email(
+            to_email=NEW_ACCOUNT_NOTIFY_EMAIL,
+            subject=f"Jauns konts: {info['display_name'] or info['email']}",
+            body="\n".join(lines),
+            reply_to=info["email"],
+            sender_name="V-Rēķini",
+        )
+    except Exception:
+        logger.exception("new account notice failed for user %s", user_id)
 
 
 # ---------- Password reset ----------
@@ -1674,12 +1717,19 @@ async def sitemap_xml():
 
 @app.get("/celvedis", response_class=HTMLResponse)
 async def guides_index(request: Request):
+    """The guide index. Until a guide is published it lists the drafts (marked as
+    such, noindex, not in the sitemap or menus) so they can be read in place;
+    after that visitors see published guides and the admin also sees drafts."""
     published = _guides(published_only=True)
-    if not published:
+    viewer = _get_current_user(request)
+    show_drafts = not published or bool(viewer and viewer.get("is_admin"))
+    guides = _guides() if show_drafts else published
+    if not guides:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse("guides_index.html", {
         "request": request, "current_user": None, "page": "guides",
-        "guides": published, "site_url": SITE_URL,
+        "guides": guides, "site_url": SITE_URL,
+        "indexable": bool(published) and not (show_drafts and len(guides) > len(published)),
     })
 
 
@@ -1882,10 +1932,11 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
 
         admin_settings = db.get_all_user_settings(admin_id)
         vat_rate = float(admin_settings.get("default_vat_rate", "21"))
-        # Prices include VAT. A two-decimal net can't always reach them (1,64 € + 21 %
-        # is 1,98 €, 1,65 € is 2,00 €, never 1,99 €), and an e-invoice line can only
-        # carry cents, so the missing cent goes on a rounding line: the invoice
-        # total is exactly what the card was charged.
+        # Prices include VAT. A two-decimal net can't always reach them (at 21 %,
+        # 1,64 € gives 1,98 € and 1,65 € gives 2,00 €: 1,99 € is unreachable), and an
+        # e-invoice line can only carry cents, so any missing cent goes on a rounding
+        # line and the invoice total is exactly what the card was charged. Today's
+        # prices are all reachable; this guards a future price that isn't.
         net, rounding = money.net_for_gross(amount, vat_rate)
         net_price = float(net)
 
@@ -2832,6 +2883,7 @@ async def add_client(
     phone: str = Form(""),
     email: str = Form(""),
     client_type: str = Form("business"),
+    buyer_reference: str = Form(""),
 ):
     user = request.state.user
     if reg_number:
@@ -2842,7 +2894,8 @@ async def add_client(
     if not allowed:
         return RedirectResponse(f"/clients?error=limit", status_code=303)
     db.add_client(user["account_id"], name, reg_number, vat_number, int(vat_payer), legal_address,
-                  bank_name, bank_account, contact_person, phone, email, client_type=client_type)
+                  bank_name, bank_account, contact_person, phone, email, client_type=client_type,
+                  buyer_reference=buyer_reference)
     return RedirectResponse("/clients", status_code=303)
 
 
@@ -2861,13 +2914,14 @@ async def edit_client(
     phone: str = Form(""),
     email: str = Form(""),
     client_type: str = Form("business"),
+    buyer_reference: str = Form(""),
 ):
     user = request.state.user
     db.update_client(user["account_id"], client_id, name=name, reg_number=reg_number,
                      vat_number=vat_number, vat_payer=int(vat_payer), legal_address=legal_address,
                      bank_name=bank_name, bank_account=bank_account,
                      contact_person=contact_person, phone=phone, email=email,
-                     client_type=client_type)
+                     client_type=client_type, buyer_reference=buyer_reference.strip()[:100])
     return RedirectResponse("/clients", status_code=303)
 
 
@@ -3166,6 +3220,7 @@ async def create_document(request: Request):
             created_by_user_id=user["id"],
             offer_meta=offer_meta,
             ref_doc_id=ref_doc["id"] if ref_doc else None,
+            buyer_reference=form.get("buyer_reference", "") if doc_type in ("sell", "credit") else "",
         )
     except ValueError as e:
         logger.warning("Document creation error: %s", e)
@@ -3280,7 +3335,8 @@ async def update_document(request: Request, doc_id: int):
     try:
         db.update_document(user["account_id"], doc_id, client_id, doc_date, items, vat_rate, notes,
                            payment_due_date=payment_due_date, reverse_charge=reverse_charge,
-                           offer_meta=offer_meta)
+                           offer_meta=offer_meta,
+                           buyer_reference=form.get("buyer_reference") if "buyer_reference" in form else None)
     except ValueError as e:
         logger.warning("Document update error: %s", e)
         if str(e) == db.SENT_LOCK_MESSAGE:
@@ -3582,6 +3638,7 @@ async def cancel_document(request: Request, doc_id: int):
         reverse_charge=bool(original.get("reverse_charge")),
         created_by_user_id=user["id"], ref_doc_id=doc_id,
         rounding=original.get("rounding") or 0,
+        buyer_reference=original.get("buyer_reference") or "",
     )
     db.refresh_original_status(uid, doc_id)
     try:

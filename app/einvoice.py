@@ -285,8 +285,10 @@ def generate_einvoice_xml(doc_id):
     _text(root, "DocumentCurrencyCode", CURRENCY)
     # BuyerReference (or an order reference) is required; the buyer's own
     # registration number is what Latvian recipients route on
-    buyer_reg = "" if d["buyer"]["person"] else d["buyer"]["reg"]  # never a personal code
-    _text(root, "BuyerReference", buyer_reg or doc["doc_number"])
+    # The buyer's own reference (a council routes on its school's code), else
+    # their registration number; never a personal code
+    buyer_reg = "" if d["buyer"]["person"] else d["buyer"]["reg"]
+    _text(root, "BuyerReference", (doc.get("buyer_reference") or "").strip() or buyer_reg or doc["doc_number"])
 
     if d["original"]:
         ref = SubElement(root, f"{{{NS_CAC}}}BillingReference")
@@ -306,10 +308,15 @@ def generate_einvoice_xml(doc_id):
         _text(fa, "ID", account)
         if d["supplier"]["name"]:
             _text(fa, "Name", d["supplier"]["name"])
-    if not credit and doc.get("payment_due_date"):
+    if not credit:
+        # An amount due needs a due date or payment terms (BR-CO-25), so an
+        # invoice saved without a due date says so in words
         pt = SubElement(root, f"{{{NS_CAC}}}PaymentTerms")
-        y, m, dd = doc["payment_due_date"].split("-")
-        _text(pt, "Note", f"Apmaksāt līdz {dd}.{m}.{y}")
+        if doc.get("payment_due_date"):
+            y, m, dd = doc["payment_due_date"].split("-")
+            _text(pt, "Note", f"Apmaksāt līdz {dd}.{m}.{y}")
+        else:
+            _text(pt, "Note", "Apmaksas termiņš nav noteikts")
 
     tax = SubElement(root, f"{{{NS_CAC}}}TaxTotal")
     _amount(tax, "TaxAmount", totals["vat"])

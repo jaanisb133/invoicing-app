@@ -26,6 +26,7 @@
     --ink-btn: #f4f5f7;
     --ink-btn-ink: #0a0a0a;
     --rule: #e3e6ea;
+    --rule-strong: #c9ccd1;
     --float-shadow: 0 18px 48px rgba(15, 20, 30, .16), 0 2px 6px rgba(15, 20, 30, .06);
 
     --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -135,6 +136,21 @@ img { display: block; max-width: 100%; }
 .lede { font-size: var(--s2); color: var(--muted); max-width: 40ch; }
 .hero-actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .hero-note { font-size: var(--s1); color: var(--faint); }
+/* Ienākt: returning customers come here every day, so it is a real button
+   in the top-right corner (the pinned invoice's corner on desktop, beside the
+   wordmark on a phone, where the invoice strip owns the top edge) */
+.login-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 40px; padding: 0 18px; border-radius: 8px;
+    background: var(--surface); color: var(--text); border: 1px solid var(--rule-strong);
+    font-size: 15px; font-weight: 500; text-decoration: none; white-space: nowrap;
+    transition: border-color .2s var(--ease), background .2s var(--ease);
+}
+.login-btn:hover { border-color: var(--text); }
+.login-btn:active { transform: scale(.97); }
+.pin-login { position: absolute; top: 20px; right: 20px; z-index: 2; }
+.hero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.hero-login { display: none; }
 .card-links {
     display: flex; gap: 28px; flex-wrap: wrap;
     padding: 0 clamp(28px, 5vw, 72px) 28px;
@@ -433,6 +449,8 @@ img { display: block; max-width: 100%; }
         padding-top: 12px;
     }
     .card { min-height: 0; }
+    .pin-login { display: none; }
+    .hero-login { display: inline-flex; height: 44px; }
     .tear { height: 40px; }
     .card-body { padding: 32px 22px 28px; gap: 20px; }
     .hero-h1 { font-size: var(--s4); }
@@ -570,8 +588,16 @@ details.more[open] > summary { margin-bottom: 14px; }
 .site-nav { display: flex; align-items: center; gap: 20px; font-size: 15px; }
 .site-nav a { color: var(--muted); text-decoration: none; }
 .site-nav a:hover { color: var(--text); }
+.site-nav .login-btn { color: var(--text); height: 38px; }
 .site-nav .site-nav-cta { min-height: 40px; padding: 0 16px; font-size: 15px; color: var(--on-primary); }
-@media (max-width: 520px) { .site-nav a:not(.site-nav-cta) { display: none; } }
+@media (max-width: 520px) {
+    .site-nav { gap: 8px; }
+    .site-nav a:not(.site-nav-cta):not(.login-btn) { display: none; }
+    .site-nav .login-btn, .site-nav .site-nav-cta { height: 38px; min-height: 38px; padding: 0 12px; font-size: 14px; white-space: nowrap; }
+    .auth-bar { padding: 16px; }
+    .auth-bar .wordmark { white-space: nowrap; }
+}
+@media (max-width: 380px) { .auth-bar:has(.site-nav-cta) .wordmark span { display: none; } }  /* the mark alone, so both buttons fit */
 
 .article-main { width: 100%; padding: 16px 16px 0; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 40px; }
 .check-note { display: block; margin: 10px 0 14px; padding: 8px 12px; border-left: 3px solid var(--negative); border-radius: 4px; background: var(--pill-neg-bg); color: var(--pill-neg-ink); font-size: var(--s1); line-height: 1.45; }
@@ -634,6 +660,7 @@ details.more[open] > summary { margin-bottom: 14px; }
 .article-related li a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .guide-list li a { display: flex; flex-direction: column; gap: 4px; padding: 18px 0; border-top: 1px solid var(--rule); color: var(--text); text-decoration: none; }
 .guide-list li a b { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.guide-list .draft-tag { margin-left: 8px; padding: 2px 8px; border: 1px solid var(--rule); border-radius: 999px; font-size: 12px; font-style: normal; font-weight: 500; color: var(--muted); vertical-align: 3px; }
 .guide-list li a span { color: var(--muted); }
 .guide-list li a:hover b { text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 640px) { .article-body { font-size: 17px; } .article-body table { font-size: 14px; } .article-body th, .article-body td { padding: 8px; } }
