@@ -161,7 +161,7 @@
                 <h3 data-rise>Rindas kā tabulā</h3>
                 <p data-rise style="--i:1">Enter pārvieto uz nākamo lauku, un jauna rinda rodas pati. Produkta mērvienība un pēdējā cena ienāk no iepriekšējā rēķina. Skaitļus raksta kā ierasts: <strong>8,50</strong>, nevis 8.50.</p>
                 <div class="pair" data-rise style="--i:2">
-                    <div><label for="qtyIn">Daudzums, m²</label><input id="qtyIn" class="input num" type="text" inputmode="decimal" value="120"></div>
+                    <div><label for="qtyIn">Daudzums, gab.</label><input id="qtyIn" class="input num" type="text" inputmode="decimal" value="120"></div>
                     <div><label for="priceIn">Cena, €</label><input id="priceIn" class="input num" type="text" inputmode="decimal" value="8,50"></div>
                 </div>
             </div>
@@ -227,8 +227,8 @@
                 <table data-region="lines">
                     <thead><tr><th>Nosaukums</th><th class="r">Daudz.</th><th>Mērv.</th><th class="r">Cena</th><th class="r">Summa</th></tr></thead>
                     <tbody>
-                        <tr><td>Fasādes krāsošana</td><td class="r" id="l1q">120</td><td>m²</td><td class="r" id="l1p">8,50</td><td class="r" id="l1s">1&nbsp;020,00</td></tr>
-                        <tr><td>Sastatņu noma</td><td class="r">6</td><td>diena</td><td class="r">35,00</td><td class="r">210,00</td></tr>
+                        <tr><td>Produktu fotografēšana</td><td class="r" id="l1q">120</td><td>gab.</td><td class="r" id="l1p">8,50</td><td class="r" id="l1s">1&nbsp;020,00</td></tr>
+                        <tr><td>Attēlu apstrāde</td><td class="r">6</td><td>st.</td><td class="r">35,00</td><td class="r">210,00</td></tr>
                     </tbody>
                 </table>
                 <div class="p-totals" data-region="totals">
@@ -463,8 +463,8 @@
         var noVat = state.vat === 'none';
         $('rowNet').hidden = noVat;
         $('rowVat').hidden = noVat;
-        setText($('tVatLabel'), state.vat === '0' ? 'PVN 0 % (nodokļa apgrieztā maksāšana)' : 'PVN ' + state.vat + ' %', flash);
-        setText($('tVat'), fmt(t.vat), flash);
+        setText($('tVatLabel'), state.vat === '0' ? 'Nodokļa apgrieztā maksāšana' : 'PVN ' + state.vat + ' %', flash);
+        setText($('tVat'), state.vat === '0' ? '—' : fmt(t.vat), flash);
         setText($('tTotal'), fmt(t.total) + NBSP + '€', flash);
 
         paper.className = 'paper t-' + state.tpl + (state.view === 'xml' ? ' as-xml' : '');

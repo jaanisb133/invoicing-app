@@ -5,10 +5,12 @@ poster frame. The landing page claims the clip is not sped up, so keep it that w
 
     VREKINI_DB_PATH=/tmp/footage.db python scripts/footage/seed.py
     VREKINI_DB_PATH=/tmp/footage.db uvicorn app.main:app --port 8766 &
-    python scripts/footage/record.py [--phone] [--base http://localhost:8766] [--chromium /path/to/chrome]
+    python scripts/footage/record.py [--phone] [--base http://localhost:8766] [--chromium /path/to/chrome] [--vendor DIR]
 
 Needs Playwright (Python) and ffmpeg with libx264. Frames come from Chrome's own
-screencast, so Playwright's bundled ffmpeg is not needed.
+screencast, so Playwright's bundled ffmpeg is not needed. Where cdn.jsdelivr.net is blocked
+(cloud sessions), pass --vendor with a folder holding chart.umd.min.js, flatpickr.min.js and
+flatpickr.min.css; without flatpickr the date fields fall back to the browser's own format.
 """
 import argparse
 import base64
@@ -25,11 +27,23 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--phone", action="store_true")
 ap.add_argument("--base", default="http://localhost:8766")
 ap.add_argument("--chromium", default=None, help="Chrome/Chromium executable, if Playwright's own is not installed")
+ap.add_argument("--vendor", default=None, help="serve the CDN scripts from this folder")
 args = ap.parse_args()
 
 phone = args.phone
 viewport = {"width": 390, "height": 844} if phone else {"width": 1440, "height": 900}
 name = "editor-phone" if phone else "editor"
+
+
+def vendor(ctx):
+    if not args.vendor:
+        return
+    def serve(route):
+        url = route.request.url
+        f = "chart.umd.min.js" if "chart" in url else "flatpickr.min.css" if url.endswith(".css") else "flatpickr.min.js"
+        route.fulfill(path=os.path.join(args.vendor, f))
+    ctx.route("https://cdn.jsdelivr.net/**", serve)
+
 
 with sync_playwright() as p:
     launch = {"args": ["--no-sandbox"]}
@@ -38,6 +52,7 @@ with sync_playwright() as p:
     browser = p.chromium.launch(**launch)
 
     ctx = browser.new_context(viewport=viewport)
+    vendor(ctx)
     page = ctx.new_page()
     page.goto(args.base + "/login")
     page.fill("input[name=username]", "paraugs")
@@ -49,6 +64,7 @@ with sync_playwright() as p:
 
     ctx = browser.new_context(viewport=viewport, color_scheme="light", storage_state=state,
                               device_scale_factor=2 if phone else 1, is_mobile=phone, has_touch=phone)
+    vendor(ctx)
     page = ctx.new_page()
     page.goto(args.base + "/documents/new?doc_type=sell")
     page.wait_for_load_state("networkidle")
@@ -74,10 +90,10 @@ with sync_playwright() as p:
     page.wait_for_timeout(700)
     page.locator("#product-name-0").scroll_into_view_if_needed()
     page.locator("#product-name-0").click()
-    page.wait_for_timeout(300); k.type("fasād", delay=110); page.wait_for_timeout(400); k.press("Enter")
+    page.wait_for_timeout(300); k.type("produkt", delay=110); page.wait_for_timeout(400); k.press("Enter")
     page.wait_for_timeout(500); k.press("Control+A"); k.type("120", delay=140); page.wait_for_timeout(300)
     k.press("Enter"); page.wait_for_timeout(250); k.press("Enter"); page.wait_for_timeout(250); k.press("Enter")
-    page.wait_for_timeout(500); k.type("sastat", delay=110); page.wait_for_timeout(400); k.press("Enter")
+    page.wait_for_timeout(500); k.type("attēl", delay=110); page.wait_for_timeout(400); k.press("Enter")
     page.wait_for_timeout(500); k.press("Control+A"); k.type("6", delay=140); page.wait_for_timeout(1800)
     total = page.locator("#railTotal").inner_text()
     k.press("Control+Enter")

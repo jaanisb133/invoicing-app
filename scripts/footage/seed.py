@@ -1,4 +1,4 @@
-"""Fictional account for the landing-page footage: SIA "Ziemeļu Apdare" billing SIA "Bērzu Darbnīca".
+"""Fictional account for the landing-page footage: SIA "Ziemeļu Kadrs" (a photo studio) billing SIA "Bērzu Darbnīca".
 Run with VREKINI_DB_PATH pointing at a scratch file. User paraugs / paraugs12345."""
 import datetime as dt, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -7,11 +7,11 @@ db.init_db()
 if db.get_user_by_username("paraugs"):
     print("already seeded"); sys.exit(0)
 uid = db.create_user("paraugs", "paraugs12345", display_name="Anna", tier="business")
-for k, v in {"company_name": 'SIA "Ziemeļu Apdare"', "reg_number": "40203999902", "vat_number": "LV40203999902",
+for k, v in {"company_name": 'SIA "Ziemeļu Kadrs"', "reg_number": "40203999902", "vat_number": "LV40203999902",
              "legal_address": "Valmiera, Rīgas iela 99, LV-4201", "bank_name": 'AS "SEB banka"',
              "bank_account": "LV00UNLA0000000000000", "is_vat_payer": "1", "default_vat_rate": "21",
              "payment_due_days": "14", "default_template": "modern", "email": "rekini@example.lv",
-             "status_tracking": "1"}.items():
+             "status_tracking": "1", "tours_seen": "dashboard,editor"}.items():
     db.set_user_setting(uid, k, v)
 cl = [('SIA "Bērzu Darbnīca"', "40203999901", "LV40203999901", "Rīga, Ganību dambis 99, LV-1005"),
       ('SIA "Lejas Nami"', "40203999904", "LV40203999904", "Jelgava, Lielā iela 99, LV-3001"),
@@ -20,7 +20,9 @@ cids = []
 for name, reg, vat, addr in cl:
     c = db.add_client(uid, name, reg_number=reg, vat_number=vat, vat_payer=1 if vat else 0, legal_address=addr)
     cids.append(c if isinstance(c, int) else c["id"])
-prods = [("Fasādes krāsošana", "m²", 8.50), ("Sastatņu noma", "diena", 35.00), ("Mājaslapas uzturēšana", "mēn.", 49.00)]
+# Services under the general VAT rules: a construction service between two VAT payers
+# would be reverse charge, and the sample shows 21 %
+prods = [("Produktu fotografēšana", "gab.", 8.50), ("Attēlu apstrāde", "st.", 35.00), ("Fotosesija", "st.", 60.00)]
 pids = []
 for name, unit, _ in prods:
     p = db.add_product(uid, name, unit); pids.append(p if isinstance(p, int) else p["id"])

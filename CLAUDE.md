@@ -148,7 +148,11 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   &legal_address=&entity_type=` — `register_page()` accepts these as prefill.
 - **Footage:** `app/static/media/editor{,-phone}.mp4` are real, not-sped-up recordings of
   the editor ("Bez paātrinājuma" claims it). Regenerate after editor UI changes with
-  `scripts/footage/seed.py` + `scripts/footage/record.py` (fictional SIA "Ziemeļu Apdare").
+  `scripts/footage/seed.py` + `scripts/footage/record.py` (fictional photo studio SIA "Ziemeļu
+  Kadrs"; pass `--vendor` with local flatpickr/Chart.js where jsdelivr is blocked, or the
+  date fields record in the browser's US format). The sample lines (product photos, image
+  editing) are deliberately not construction: facade painting between two VAT payers is
+  reverse charge, so a 21 % sample would teach the wrong thing.
 - **Sample content** (client "Bērzu Darbnīca", due list, export rows) is fictional; dates are
   relative to today via the `day(n)` helper so "kavēts 4 d." stays true. Prices come from
   `TIER_LIMITS`; FAQ items are one Jinja list rendered as text and as FAQPage JSON-LD.
@@ -190,20 +194,21 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 - `app/guides.py` (`GUIDES` list) + body files `app/templates/guides/<slug>.html`, rendered by
   `guide.html`. `published: False` → reachable by URL, `noindex`, not in sitemap/index.
   Publishing = set True and bump `updated`; sitemap and `/celvedis` pick it up.
-- `/static/guides/rekina-paraugs.pdf` is a real app PDF of the article's sample invoice.
+- `/static/guides/rekina-paraugs.pdf` is a real app PDF of the article's sample invoice
+  (`scripts/footage/sample_pdf.py` on the footage account; change article and PDF together).
+- Drafts carry `<!-- PĀRBAUDĪT: … -->` comments: claims researched only through search
+  snippets, because likumi.lv / vid.gov.lv are blocked from cloud sessions. Each must be
+  checked against the source text, then the comment removed, before `published: True`.
 
 ### Still open
-1. **Password reset** — there is none; "Aizmirsāt paroli?" points to contacts. Needs an
-   e-mailed one-time link (Brevo/SMTP already wired for invoices).
-2. **Contacts / terms / license** still on `style.css`.
-3. **List actions on mobile** — swipe for mark-paid/delete
-4. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
+1. **Contacts / terms / license** still on `style.css`.
+2. **List actions on mobile** — swipe for mark-paid/delete
+3. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
    the preview mirrors the server exactly, but a printed line can differ by a cent from
    its rounded parts. Pre-existing accounting behaviour; change only deliberately
-5. **Self-host the footer payment logos** — `_public_footer.html` hotlinks all Visa /
-   Mastercard / Google Pay / Apple Pay / EveryPay / bank logos from
-   `vnmedia.lv/wp-content/uploads/2026/03/...`. A WordPress media reshuffle silently
-   breaks the card logos SEB compliance requires, on every public page.
+4. **Self-host the last payment logos** — card marks are committed; EveryPay, SEB, Citadele
+   and LHV are still hotlinked from `vnmedia.lv` (startup logs a warning). Run
+   `scripts/fetch_payment_logos.py` once from a machine that can reach that host.
 
 ### Branded tāmes (custom offer PDF design, per-account)
 Built for the TT Konstrukcijas client: a premium dark/gold offer PDF
@@ -265,7 +270,9 @@ can't kill the main form logic.
 - **Test before reporting done:** Use `from app.main import app; from fastapi.testclient import TestClient` to smoke-test pages
 - **Login flow for testing:** Fresh DB creates admin with printed password; first login requires `/set-password` then `/setup`
 - **Latvian language only** — all user-facing strings are in Latvian. Don't add English.
-  Reverse charge prints as "nodokļa apgrieztā maksāšana" (PVN likums wording), not "Reverse Charge".
+  Reverse charge prints as "nodokļa apgrieztā maksāšana" (PVN likums wording), not "Reverse Charge",
+  and in place of the VAT rate and amount (shown as "—"): never "PVN 0 %", which is a different
+  rate. The e-invoice keeps category AE with 0 % because PEPPOL requires it.
 - **Premium = restraint:** When in doubt, remove decoration. The user explicitly rejected colorful "AI default" looks. Chrome stays achromatic; `--data` blue is for data only.
 - **Mobile-first:** User's primary feedback is mobile UX. Always test mobile viewport (≤768px).
 - **No new deps without asking** — keep the dependency footprint small.
