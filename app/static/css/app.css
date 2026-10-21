@@ -21,7 +21,7 @@
     --control: #d6d9de;
     --text: #0a0a0a;
     --muted: #616468;
-    --faint: #6f7276;
+    --faint: #66696d;
     --primary: #141414;
     --on-primary: #ffffff;
     --secondary: #e7e9ec;
@@ -555,6 +555,7 @@ input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
 .form-row-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 16px; }
+.form-row.form-row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .check {
     display: inline-flex;
     align-items: center;
@@ -603,8 +604,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .segmented .on, .segmented label:has(input:checked), .segmented .active {
     background: var(--surface);
     color: var(--text);
-    box-shadow: 0 0 0 1px var(--border);
+    outline: 1px solid var(--border);
+    outline-offset: -1px;
 }
+.segmented > :focus-visible, .segmented label:has(input:focus-visible), .offer-status-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
 .segmented.block { display: flex; }
 .segmented.block > * { flex: 1; }
 
@@ -1038,7 +1041,8 @@ span.flatpickr-weekday { color: var(--muted) !important; font-weight: 400 !impor
     .page-header .btn-group { width: 100%; }
     .page-header .btn-group .btn { flex: 1; }
     .page-body { padding: 0 var(--pad) 24px; }
-    .form-row, .form-row-3, .split { grid-template-columns: minmax(0, 1fr); }
+    .form-row, .form-row-3, .form-row.form-row-4, .split { grid-template-columns: minmax(0, 1fr); }
+    .admin-total { border-left: 0; border-top: 1px solid var(--border); }
     .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .kpi:nth-child(2n+1) { border-left: 0; }
     .kpi:nth-child(n+3) { border-top: 1px solid var(--border); }
@@ -1147,8 +1151,28 @@ span.flatpickr-weekday { color: var(--muted) !important; font-weight: 400 !impor
 
     /* Tables become two-line rows: identity and the key number on line 1,
        the other fields in grey on line 2. */
-    .table-wrapper { overflow-x: visible; }
+    /* Wide tables scroll inside their card; the page itself never scrolls sideways */
+    .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-wrapper:has(> .mobile-cards) { overflow-x: visible; }
     .mobile-cards thead { display: none; }
+
+    /* Recurring-invoice lines: one block per line */
+    .doc-items-table thead { display: none; }
+    .doc-items-table, .doc-items-table tbody, .doc-items-table tfoot { display: block; width: 100%; }
+    .doc-items-table tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 40px;
+        gap: 8px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--rule);
+    }
+    .doc-items-table tbody td { display: block; height: auto; padding: 0 !important; border: 0; min-width: 0; }
+    .doc-items-table tbody td:first-child { grid-column: 1 / -1; }
+    .doc-items-table tbody td.item-total { grid-column: 1 / 4; text-align: right; font-weight: 600; align-self: center; }
+    .doc-items-table tbody td:last-child { grid-column: 4; grid-row: 3; }
+    .doc-items-table tfoot tr { display: flex; justify-content: flex-end; gap: 12px; padding: 4px 0; }
+    .doc-items-table tfoot td { display: block; height: auto; padding: 0 !important; border: 0; }
+    .doc-items-table tfoot td:empty { display: none; }
     .mobile-cards, .mobile-cards tbody { display: block; width: 100%; }
     .mobile-cards tbody tr {
         display: flex;
@@ -1263,9 +1287,9 @@ span.flatpickr-weekday { color: var(--muted) !important; font-weight: 400 !impor
 .offer-status-switch { display: inline-flex; padding: 3px; gap: 2px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-control); }
 .offer-status-btn { height: 28px; padding: 0 12px; border: 0; background: none; font-size: 13px; font-weight: 500; color: var(--muted); border-radius: 4px; cursor: pointer; white-space: nowrap; }
 .offer-status-btn:hover { color: var(--text); }
-.offer-status-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
-.offer-status-btn.active.is-accepted { background: var(--pill-positive-bg); color: var(--pill-positive-ink); box-shadow: none; }
-.offer-status-btn.active.is-rejected { background: var(--pill-negative-bg); color: var(--pill-negative-ink); box-shadow: none; }
+.offer-status-btn.active { background: var(--surface); color: var(--text); outline: 1px solid var(--border); outline-offset: -1px; }
+.offer-status-btn.active.is-accepted { background: var(--pill-positive-bg); color: var(--pill-positive-ink); outline: none; }
+.offer-status-btn.active.is-rejected { background: var(--pill-negative-bg); color: var(--pill-negative-ink); outline: none; }
 
 /* Team & admin */
 .team-credentials { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; padding: 12px 14px; background: var(--raised); border-radius: var(--radius-control); }
@@ -1274,7 +1298,7 @@ span.flatpickr-weekday { color: var(--muted) !important; font-weight: 400 !impor
 .team-table .mobile-card-title { display: block; font-weight: 500; }
 .team-table .mobile-card-meta { display: block; font-size: 12px; color: var(--muted); }
 .admin-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); margin-bottom: var(--gap); }
-.admin-total { padding: 14px 16px; border-left: 1px solid var(--border); }
+.admin-total { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-left: 1px solid var(--border); }
 .admin-total:first-child { border-left: 0; }
 .admin-total-label { font-size: 12px; color: var(--muted); }
 .admin-total-value { font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }

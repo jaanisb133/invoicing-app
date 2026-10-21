@@ -11,6 +11,8 @@ import secrets
 
 import bcrypt
 
+from app import fmt
+
 DB_NAME = "veggie_invoices.db"
 
 _db_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1003,7 +1005,7 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
                     product_name = product["name"] if product else f"ID:{pid}"
                     raise ValueError(
                         f"Nepietiekams daudzums: {product_name}. "
-                        f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
+                        f"Pieejams: {fmt.qty(available)}, pieprasīts: {fmt.qty(item['quantity'])}"
                     )
 
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
@@ -1074,7 +1076,7 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
                     product_name = product["name"] if product else f"ID:{pid}"
                     raise ValueError(
                         f"Nepietiekams daudzums: {product_name}. "
-                        f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
+                        f"Pieejams: {fmt.qty(available)}, pieprasīts: {fmt.qty(item['quantity'])}"
                     )
 
         # Update document fields. offer_meta is replaced only when the edit

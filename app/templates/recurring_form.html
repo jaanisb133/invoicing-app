@@ -117,18 +117,18 @@
                             {% if settings.get('is_vat_payer', '1') == '1' %}
                             <tr>
                                 <td colspan="4" class="text-right" style="font-weight:600">Summa bez PVN:</td>
-                                <td id="subtotalDisplay" style="font-weight:600">0.00</td>
+                                <td id="subtotalDisplay" style="font-weight:600">0,00 €</td>
                                 <td></td>
                             </tr>
                             <tr>
                                 <td colspan="4" class="text-right">PVN:</td>
-                                <td id="vatDisplay">0.00</td>
+                                <td id="vatDisplay">0,00 €</td>
                                 <td></td>
                             </tr>
                             {% endif %}
                             <tr>
                                 <td colspan="4" class="text-right" style="font-weight:700;font-size:16px">Kopā:</td>
-                                <td id="totalDisplay" style="font-weight:700;font-size:16px">0.00</td>
+                                <td id="totalDisplay" style="font-weight:700;font-size:16px">0,00 €</td>
                                 <td></td>
                             </tr>
                         </tfoot>
@@ -397,7 +397,7 @@ function addItemRow(preset) {
         <td><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control">${unitOptions}</select></td>
         <td><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" oninput="recalculate()" required></td>
         <td><input type="number" name="items[${idx}][price_per_unit]" class="form-control" step="0.01" min="0" value="${price}" oninput="recalculate()" required></td>
-        <td class="item-total text-right" id="total-${idx}">0.00</td>
+        <td class="item-total text-right" id="total-${idx}">0,00 €</td>
         <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
     `;
     document.getElementById('itemsBody').appendChild(tr);
@@ -429,7 +429,7 @@ function recalculate() {
         const lineTotal = qty * price;
         subtotal += lineTotal;
         const idx = row.id.split('-')[1];
-        document.getElementById('total-' + idx).textContent = lineTotal.toFixed(2);
+        document.getElementById('total-' + idx).textContent = fmtNum(lineTotal);
     });
 
     const vatRateInput = document.querySelector('input[name="vat_rate"]');
@@ -438,10 +438,10 @@ function recalculate() {
     const total = subtotal + vat;
 
     const sd = document.getElementById('subtotalDisplay');
-    if (sd) sd.textContent = subtotal.toFixed(2);
+    if (sd) sd.textContent = fmtEur(subtotal);
     const vd = document.getElementById('vatDisplay');
-    if (vd) vd.textContent = vat.toFixed(2);
-    document.getElementById('totalDisplay').textContent = total.toFixed(2);
+    if (vd) vd.textContent = fmtEur(vat);
+    document.getElementById('totalDisplay').textContent = fmtEur(total);
 }
 
 function toggleEmailSection() {

@@ -140,7 +140,7 @@
     max-height: 62vh;
     overflow: hidden;
     border-radius: 4px;
-    box-shadow: 0 0 0 1px var(--border);
+    border: 1px solid var(--border);
     pointer-events: none;
 }
 .paper-frame::after { content: "Atvērt lielāku"; position: absolute; right: 8px; bottom: 8px; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.72); color: #fff; opacity: 0; transition: opacity var(--transition); }
@@ -312,7 +312,7 @@
                                 <label class="check" style="margin-top:10px">
                                     <input type="checkbox" name="reverse_charge" id="reverseCharge" value="1"
                                            {% if prefill and doc.reverse_charge %}checked{% endif %} onchange="toggleReverseCharge()">
-                                    Reverse charge (PVN 0 %)
+                                    Apgrieztā PVN maksāšana (0 %)
                                 </label>
                             </div>
                             {% else %}
@@ -435,7 +435,7 @@
                     </div>
                     <div class="card-body" style="padding-top:0">
                         <button type="button" class="paper-frame" onclick="openPreview()" aria-label="Atvērt priekšskatījumu lielāku">
-                            <div class="invoice-preview-wrapper" id="invoicePreview"></div>
+                            <div class="invoice-preview-wrapper" id="invoicePreview" data-ui></div>
                         </button>
                         <span class="sr-only" id="previewTemplateLabel"></span>
                         {% if doc_type == 'offer' and branded_offers %}
@@ -478,7 +478,7 @@
             <h3 id="previewModalTitle">Priekšskatījums</h3>
             <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('previewModal').classList.remove('active')">Aizvērt</button>
         </div>
-        <div class="scroll"><div class="invoice-preview-wrapper" id="invoicePreviewBig"></div></div>
+        <div class="scroll"><div class="invoice-preview-wrapper" id="invoicePreviewBig" data-ui></div></div>
     </div>
 </div>
 
@@ -610,9 +610,10 @@ function makeCombo(input, dropdown, render, onPick, opts) {
         dropdown.innerHTML = render(input.value);
         dropdown.hidden = !dropdown.innerHTML.trim();
         input.setAttribute('aria-expanded', dropdown.hidden ? 'false' : 'true');
-        // Pre-select the first real match; a "create" row is only ever chosen on purpose.
+        // Pre-select the first real match once something is typed; a stray Enter on an
+        // empty field never picks for you, and a "create" row is only chosen on purpose.
         const first = items()[0];
-        hl = first && !first.classList.contains('create') ? 0 : -1;
+        hl = first && input.value.trim() && !first.classList.contains('create') ? 0 : -1;
         paint();
     }
     function close() { dropdown.hidden = true; input.setAttribute('aria-expanded', 'false'); hl = -1; }
@@ -1035,6 +1036,13 @@ form.addEventListener('submit', e => {
         clientInput.focus();
         return;
     }
+    // Ctrl/⌘+Enter goes through requestSubmit(), which ignores the disabled buttons.
+    const stockError = document.getElementById('stockError');
+    if (stockError && stockError.style.display === 'block') {
+        e.preventDefault();
+        stockError.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+    }
     const hasLine = Array.from(document.querySelectorAll('.item-row')).some(r => lineValues(r).name);
     if (!hasLine) {
         e.preventDefault();
@@ -1114,7 +1122,7 @@ function partyLines(info, showVat) {
 }
 
 function itemsTableHtml(items, style) {
-    if (!items.length) return '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:12px">Nav pievienotu rindu</td></tr>';
+    if (!items.length) return '<tr><td colspan="6" style="text-align:center;color:#6b7280;padding:12px">Nav pievienotu rindu</td></tr>';
     return items.map((item, i) => {
         const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
         const priceCell = item.included ? 'Iekļauts cenā' : fmtNum(item.price);

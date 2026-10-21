@@ -136,7 +136,7 @@
             <iframe src="/documents/{{ doc.id }}/pdf?inline=1#toolbar=0&navpanes=0" class="branded-pdf-frame" title="Tāmes priekšskatījums"></iframe>
             <div class="branded-pdf-fallback">Ja priekšskatījums nav redzams, <a href="/documents/{{ doc.id }}/pdf" target="_blank">atveriet PDF</a>.</div>
             {% else %}
-            <div class="doc-view-preview" id="docPreview"></div>
+            <div class="doc-view-preview" id="docPreview" data-ui></div>
             {% endif %}
         </section>
 

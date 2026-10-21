@@ -56,7 +56,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "39"
+CSS_VERSION = "40"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -3195,12 +3195,9 @@ async def team_remove(request: Request, member_id: int):
 async def trash_page(request: Request):
     user = request.state.user
     deleted_docs = db.get_deleted_documents(user["account_id"])
-    return templates.TemplateResponse("trash.html", {
-        "request": request, "current_user": user, "page": "trash",
-        "documents": deleted_docs,
-        "tier": user.get("tier", "free"),
-        "tier_limits": db.get_tier_limits(user.get("tier", "free")),
-    })
+    ctx = _base_context(request)
+    ctx.update({"page": "trash", "documents": deleted_docs})
+    return templates.TemplateResponse("trash.html", ctx)
 
 
 @app.post("/trash/{doc_id}/restore")
@@ -3410,6 +3407,9 @@ def _sync_client_email(user_id: int, client_id: int, email: str):
         db.update_client(user_id, client_id, email=email)
 
 
+_RECURRING_ITEM_KEY = re.compile(r"^items\[(\d+)\]\[product_id\]$")
+
+
 def _parse_recurring_form(form):
     """Parse and validate the recurring form. Returns dict or raises ValueError."""
     try:
@@ -3455,23 +3455,24 @@ def _parse_recurring_form(form):
         raise ValueError("Lai automātiski sūtītu rēķinu, norādiet klienta e-pastu")
 
     items = []
-    i = 0
-    while f"items[{i}][product_id]" in form:
+    # Row indices as present in the form: a deleted middle row leaves a gap
+    # and must not end the loop (it used to drop every row after it).
+    row_ids = sorted(int(m.group(1)) for k in form.keys()
+                     if (m := _RECURRING_ITEM_KEY.match(k)))
+    for i in row_ids:
         try:
             pid = int(form[f"items[{i}][product_id]"])
-            qty = float(form[f"items[{i}][quantity]"])
-            price = float(form[f"items[{i}][price_per_unit]"])
-        except (ValueError, TypeError):
-            i += 1
+            qty = fmt.parse_decimal(form[f"items[{i}][quantity]"])
+            price = fmt.parse_decimal(form[f"items[{i}][price_per_unit]"])
+        except (ValueError, TypeError, KeyError):
             continue
         if pid > 0 and qty > 0:
             items.append({
                 "product_id": pid,
                 "quantity": qty,
-                "unit": form[f"items[{i}][unit]"],
+                "unit": form.get(f"items[{i}][unit]", ""),
                 "price_per_unit": price,
             })
-        i += 1
 
     if not items:
         raise ValueError("Jāpievieno vismaz viena pozīcija")
