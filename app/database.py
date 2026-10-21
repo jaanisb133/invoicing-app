@@ -11,6 +11,8 @@ import secrets
 
 import bcrypt
 
+from app import fmt
+
 DB_NAME = "veggie_invoices.db"
 
 _db_dir = os.path.dirname(os.path.abspath(__file__))
@@ -566,6 +568,66 @@ def get_all_products(user_id, active_only=True):
     return [dict(r) for r in rows]
 
 
+def get_unpaid_invoices(user_id):
+    """Every issued, unpaid sales invoice with its total, oldest due date first.
+
+    Same scope as the unpaid figure in get_dashboard_stats_range(), so the
+    rows always add up to the "Neapmaksāti" total shown beside them.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT d.id, d.doc_number, d.doc_date, d.payment_due_date, d.client_id,
+                  COALESCE(c.name, '') AS client_name,
+                  SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) AS total
+           FROM documents d
+           JOIN document_items di ON di.document_id = d.id
+           LEFT JOIN clients c ON c.id = d.client_id
+           WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0
+             AND d.doc_type = 'sell' AND d.status = 'issued'
+           GROUP BY d.id
+           ORDER BY (d.payment_due_date IS NULL OR d.payment_due_date = ''),
+                    d.payment_due_date, d.doc_date""",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_client_last_billed(user_id):
+    """{client_id: date of the latest non-deleted document}, newest use first."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT client_id, MAX(doc_date) AS last_date FROM documents
+           WHERE user_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL
+           GROUP BY client_id""",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return {r["client_id"]: r["last_date"] for r in rows}
+
+
+def get_product_last_prices(user_id, doc_type="sell"):
+    """{product_id: the price it was last billed at}, for prefilling a new line.
+
+    Sales and offers share prices; purchases keep their own, since what a
+    product is bought for is not what it is sold for. Deleted documents and
+    "included in price" lines are ignored.
+    """
+    types = ("buy",) if doc_type == "buy" else ("sell", "offer")
+    conn = get_connection()
+    rows = conn.execute(
+        f"""SELECT di.product_id, di.price_per_unit
+            FROM document_items di JOIN documents d ON d.id = di.document_id
+            WHERE d.user_id = ? AND d.deleted_at IS NULL
+              AND di.product_id IS NOT NULL AND di.included_in_price = 0
+              AND d.doc_type IN ({",".join("?" * len(types))})
+            ORDER BY d.doc_date, d.id, di.id""",
+        (user_id, *types),
+    ).fetchall()
+    conn.close()
+    return {r["product_id"]: r["price_per_unit"] for r in rows}
+
+
 def get_product(product_id):
     conn = get_connection()
     row = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
@@ -943,7 +1005,7 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
                     product_name = product["name"] if product else f"ID:{pid}"
                     raise ValueError(
                         f"Nepietiekams daudzums: {product_name}. "
-                        f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
+                        f"Pieejams: {fmt.qty(available)}, pieprasīts: {fmt.qty(item['quantity'])}"
                     )
 
         doc_number, seq_num = get_next_doc_number(user_id, doc_type, doc_date, conn)
@@ -1014,7 +1076,7 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
                     product_name = product["name"] if product else f"ID:{pid}"
                     raise ValueError(
                         f"Nepietiekams daudzums: {product_name}. "
-                        f"Pieejams: {available:.2f}, pieprasīts: {item['quantity']:.2f}"
+                        f"Pieejams: {fmt.qty(available)}, pieprasīts: {fmt.qty(item['quantity'])}"
                     )
 
         # Update document fields. offer_meta is replaced only when the edit
@@ -2136,9 +2198,9 @@ def get_plan_price(tier, cycle):
 
 
 def format_price(cents):
-    """Cents -> display string: 1299 -> '12.99', 12900 -> '129'."""
+    """Cents -> display string, Latvian style: 1299 -> '12,99', 12900 -> '129'."""
     whole, rem = divmod(int(cents or 0), 100)
-    return str(whole) if rem == 0 else f"{whole}.{rem:02d}"
+    return str(whole) if rem == 0 else f"{whole},{rem:02d}"
 
 
 def _column_limit(value):

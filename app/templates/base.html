@@ -2,171 +2,222 @@
 <html lang="lv">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="robots" content="noindex,nofollow">
     <title>{% block title %}V-Rēķini{% endblock %}</title>
+    <script>
+    // Theme before first paint: the stored choice, else the system's.
+    (function () {
+        var t = null;
+        try { t = localStorage.getItem('vrekini-theme'); } catch (e) {}
+        if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+    })();
+    </script>
     {% if offline_mode %}
-    <link rel="stylesheet" href="/static/css/style.css?v={{ css_version }}">
+    <link rel="stylesheet" href="/static/css/app.css?v={{ css_version }}">
     <link rel="stylesheet" href="/static/vendor/flatpickr.min.css">
     <script src="/static/vendor/chart.umd.min.js"></script>
     <script src="/static/vendor/flatpickr.min.js"></script>
     {% else %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&subset=latin-ext&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v={{ css_version }}">
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="/static/css/app.css?v={{ css_version }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
     {% endif %}
-    <!-- PWA -->
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#07080B" media="(prefers-color-scheme: dark)">
-    <meta name="theme-color" content="#3B82F6" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)">
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="V-Rēķini">
     <meta name="mobile-web-app-capable" content="yes">
-    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})()</script>
+    <script>
+    // Latvian number format, shared by every page script: 1955.84 -> "1 955,84 €".
+    (function () {
+        var NBSP = ' ';
+        function fmtNum(n, d) {
+            d = (d == null) ? 2 : d;
+            n = Number(n) || 0;
+            var fixed = Math.abs(n).toFixed(d);
+            var parts = fixed.split('.');
+            var whole = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
+            var neg = n < 0 && Number(fixed) !== 0;
+            return (neg ? '-' : '') + whole + (d ? ',' + parts[1] : '');
+        }
+        window.fmtNum = fmtNum;
+        window.fmtEur = function (n) { return fmtNum(n, 2) + NBSP + '€'; };
+        window.fmtQty = function (n) {
+            var s = fmtNum(n, 2);
+            return s.indexOf(',') >= 0 ? s.replace(/0+$/, '').replace(/,$/, '') : s;
+        };
+        // Reads "1 234,50", "1234.50" or "8,5"
+        window.parseNum = function (raw) {
+            var s = String(raw == null ? '' : raw).replace(/[\s €]/g, '');
+            if (!s) return NaN;
+            if (s.indexOf(',') >= 0 && s.indexOf('.') >= 0) {
+                s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+            } else {
+                s = s.replace(',', '.');
+            }
+            return parseFloat(s);
+        };
+        // dd.mm.yyyy for display
+        window.fmtDate = function (iso) {
+            if (!iso) return '';
+            var p = String(iso).slice(0, 10).split('-');
+            return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : iso;
+        };
+    })();
+    </script>
 </head>
 <body class="has-bottom-nav">
-    <header class="mobile-header">
-        <a href="/" class="mobile-header-logo">
-            <div class="mobile-header-logo-icon">VR</div>
+{% set brand_mark %}<svg viewBox="0 0 28 28" aria-hidden="true"><path d="M6 3.5h16a1 1 0 0 1 1 1V24l-2.5-1.8L18 24l-2.5-1.8L13 24l-2.5-1.8L8 24l-2.5-1.8L5 22.6V4.5a1 1 0 0 1 1-1z" fill="currentColor"/><path d="M10 9.5l4 7.5 4-7.5" fill="none" stroke="var(--ground)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endset %}
+{% set company = company_name if company_name is defined else '' %}
+
+    <header class="mobile-header" id="mobileHeader">
+        <a href="/" class="mobile-header-logo" aria-label="V-Rēķini — pārskats">
+            <span class="brand-mark">{{ brand_mark }}</span>
             <span>V-Rēķini</span>
         </a>
         {% if current_user %}
         <div class="mobile-header-actions">
-            <a href="/account" class="mobile-header-btn" aria-label="Mans konts" title="Mans konts">
-                <span class="brand-avatar sm bg-{{ (current_user.id or 0) % 10 }}" style="width:32px;height:32px;font-size:11px">{{ (current_user.display_name or current_user.username)[:2] | upper }}</span>
+            <a href="/account" class="mobile-header-btn" aria-label="Mans konts">
+                <span class="account-avatar">{{ (current_user.display_name or current_user.username)[:1] | upper }}</span>
             </a>
         </div>
         {% endif %}
     </header>
 
-    <aside class="sidebar">
-        <div class="sidebar-header">
-            <div class="sidebar-logo">VR</div>
-            <h1>V-Rēķini</h1>
-        </div>
+    <aside class="sidebar" aria-label="Navigācija">
+        <a href="/" class="sidebar-brand">
+            <span class="brand-mark">{{ brand_mark }}</span>
+            <span class="sidebar-brand-text">
+                <span class="sidebar-brand-name">V-Rēķini</span>
+                {% if company %}<span class="sidebar-brand-scope" style="display:block">{{ company }}</span>{% endif %}
+            </span>
+        </a>
+
+        <a href="/documents/new?doc_type=sell" class="sidebar-new" title="Jauns rēķins (N)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Jauns rēķins
+            <kbd>N</kbd>
+        </a>
+
         <nav class="sidebar-nav">
             <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg>
                 Pārskats
             </a>
-            <a href="/documents/new?doc_type=sell" class="{% if page == 'new_document' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                Jauns dokuments
+            <a href="/documents" class="{% if page in ['documents', 'document', 'new_document'] %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+                {{ 'Dokumenti' if stock_enabled else 'Rēķini' }}
             </a>
-            <a href="/documents" class="{% if page == 'documents' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Dokumenti
-            </a>
-            <a href="/offers" class="{% if page == 'offers' or page == 'new_offer' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+            <a href="/offers" class="{% if page in ['offers', 'new_offer'] %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 15l2 2 4-4"/></svg>
                 Piedāvājumi
             </a>
             {% if branded_offers %}
             <a href="/tames" class="{% if page == 'tames' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9h17M9 20.5V9"/></svg>
                 Tāmju veidnes
             </a>
             {% endif %}
-            <a href="/clients" class="{% if page == 'clients' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                Klienti
-            </a>
-            <a href="/products" class="{% if page == 'products' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                Produkti / Pakalpojumi
-            </a>
             {% if not offline_mode %}
             <a href="/recurring" class="{% if page == 'recurring' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg>
                 Periodiskie rēķini
                 {% if not tier_limits.recurring %}<span class="sidebar-lock">PRO</span>{% endif %}
             </a>
             {% endif %}
+
+            <div class="sidebar-group">Saraksti</div>
+            <a href="/clients" class="{% if page == 'clients' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"/><circle cx="10" cy="8" r="3.5"/><path d="M20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35M15.5 4.6a3.5 3.5 0 0 1 0 6.8"/></svg>
+                Klienti
+            </a>
+            <a href="/products" class="{% if page == 'products' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 16V8a1.5 1.5 0 0 0-.75-1.3l-7-4a1.5 1.5 0 0 0-1.5 0l-7 4A1.5 1.5 0 0 0 3.5 8v8a1.5 1.5 0 0 0 .75 1.3l7 4a1.5 1.5 0 0 0 1.5 0l7-4a1.5 1.5 0 0 0 .75-1.3z"/><path d="M3.8 7.2L12 12l8.2-4.8M12 21.5V12"/></svg>
+                Produkti un pakalpojumi
+            </a>
             {% if stock_enabled %}
             <a href="/stock" class="{% if page == 'stock' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6"/></svg>
                 Noliktava
             </a>
             {% endif %}
 
-            <a href="/trash" class="{% if page == 'trash' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Papīrgrozs
-            </a>
-
-            <div class="sidebar-divider"></div>
-
+            <div class="sidebar-group">Konts</div>
             <a href="/export" class="{% if page == 'export' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
                 Eksports
                 {% if not offline_mode and not tier_limits.einvoice %}<span class="sidebar-lock">PRO</span>{% endif %}
             </a>
-
             {% if not offline_mode and is_owner %}
             <a href="/komanda" class="{% if page == 'team' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a4.5 4.5 0 0 1 4.5-4.5h4a4.5 4.5 0 0 1 4.5 4.5v1"/><path d="M17 11.5a3 3 0 1 0 0-6M21.5 20v-1a4 4 0 0 0-3-3.9"/></svg>
                 Komanda
                 {% if tier_limits.max_users == 1 %}<span class="sidebar-lock">PRO</span>{% endif %}
             </a>
-            {% endif %}
-            {% if not offline_mode and is_owner %}
             <a href="/pricing" class="{% if page == 'pricing' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                Mans abonements
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19M6.5 15h4"/></svg>
+                Abonements
             </a>
             {% endif %}
-
             {% if is_owner %}
             <a href="/settings" class="{% if page == 'settings' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 Iestatījumi
             </a>
             {% endif %}
+            <a href="/trash" class="{% if page == 'trash' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6h17M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6M18.5 6l-.8 13.1a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 6"/></svg>
+                Papīrgrozs
+            </a>
             {% if current_user and current_user.is_admin and not offline_mode %}
             <a href="/users" class="{% if page == 'users' %}active{% endif %}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Lietotāji (Admin)
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s8-4 8-10v-7l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Lietotāji (admin)
             </a>
             {% endif %}
-
-            <button class="theme-toggle" onclick="toggleTheme()">
-                <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                <span id="themeLabel">Tumšais režīms</span>
-            </button>
         </nav>
 
         {% if offline_mode %}
         <div class="sidebar-account" style="cursor:default">
-            <div class="account-avatar">{{ (current_user.display_name or current_user.username)[:1] | upper }}</div>
-            <div class="account-info">
-                <div class="account-name">{{ current_user.display_name or current_user.username }}</div>
-                <div class="account-tier">Offline</div>
-            </div>
+            <span class="account-avatar">{{ (current_user.display_name or current_user.username)[:1] | upper }}</span>
+            <span class="account-info">
+                <span class="account-name" style="display:block">{{ current_user.display_name or current_user.username }}</span>
+                <span class="account-tier" style="display:block">Bezsaistes versija</span>
+            </span>
         </div>
         {% else %}
-        <div class="sidebar-account" onclick="toggleAccountMenu(event)">
-            <div class="account-avatar">{{ (current_user.display_name or current_user.username)[:1] | upper }}</div>
-            <div class="account-info">
-                <div class="account-name">{{ current_user.display_name or current_user.username }}</div>
-                <div class="account-tier">{{ tier_label }}</div>
-            </div>
-            <svg class="account-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-
+        <div class="sidebar-account" onclick="toggleAccountMenu(event)" role="button" tabindex="0" aria-haspopup="true">
+            <span class="account-avatar">{{ (current_user.display_name or current_user.username)[:1] | upper }}</span>
+            <span class="account-info">
+                <span class="account-name" style="display:block">{{ current_user.display_name or current_user.username }}</span>
+                <span class="account-tier" style="display:block">{{ tier_label }}</span>
+            </span>
+            <svg class="account-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 15l5-5 5 5"/></svg>
             <div class="account-dropdown" id="accountDropdown">
                 <a href="/account">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    Konts
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
+                    Mans konts
                 </a>
+                <button type="button" onclick="toggleTheme()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+                    <span class="theme-label">Tumšais režīms</span>
+                </button>
+                <hr>
                 <a href="/logout" class="logout-link">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
                     Iziet
                 </a>
             </div>
@@ -182,130 +233,120 @@
     <div class="setup-overlay">
         <div class="setup-card">
             <h2>Iestatiet savu uzņēmumu</h2>
-            <p>Lai sāktu lietot V-Rēķini, lūdzu aizpildiet uzņēmuma informāciju.</p>
-            <a href="/setup" class="btn btn-primary" style="padding:10px 28px;font-size:14px">Aizpildīt iestatījumus</a>
+            <p>Rēķinos būs jūsu nosaukums, reģistrācijas numurs un bankas konts. Tas aizņem divas minūtes.</p>
+            <a href="/setup" class="btn btn-primary btn-block">Aizpildīt uzņēmuma datus</a>
         </div>
     </div>
     {% endif %}
 
-    <!-- Mobile bottom navigation -->
     <nav class="bottom-nav" aria-label="Galvenā navigācija">
         <div class="bottom-nav-inner">
             <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-7h4v7h4a1 1 0 0 0 1-1V10"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg>
                 <span>Pārskats</span>
             </a>
-            <a href="/documents" class="{% if page == 'documents' or page == 'new_document' or page == 'document' %}active{% endif %}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-                <span>Rēķini</span>
+            <a href="/documents" class="{% if page in ['documents', 'document'] %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+                <span>{{ 'Dokumenti' if stock_enabled else 'Rēķini' }}</span>
             </a>
-            <a href="/documents/new?doc_type=sell" class="fab" aria-label="Jauns rēķins">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <a href="/documents/new?doc_type=sell" class="fab{% if page == 'new_document' %} active{% endif %}" aria-label="Jauns rēķins">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </a>
             <a href="/clients" class="{% if page == 'clients' %}active{% endif %}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"/><circle cx="10" cy="8" r="3.5"/><path d="M20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35M15.5 4.6a3.5 3.5 0 0 1 0 6.8"/></svg>
                 <span>Klienti</span>
             </a>
-            <a href="#" onclick="event.preventDefault();document.getElementById('moreSheet').classList.add('open');" class="{% if page in ['products','recurring','stock','trash','export','pricing','settings','users','account','tames'] %}active{% endif %}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+            <a href="#" onclick="event.preventDefault();openMoreSheet()" class="{% if page in ['offers','new_offer','products','recurring','stock','trash','export','pricing','settings','users','account','tames','team'] %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
                 <span>Vairāk</span>
             </a>
         </div>
     </nav>
 
-    <!-- More sheet (mobile menu for secondary nav) -->
-    <div class="more-sheet" id="moreSheet" onclick="if(event.target===this)this.classList.remove('open')">
-        <div class="more-sheet-panel">
+    <div class="more-sheet" id="moreSheet" onclick="if(event.target===this)closeMoreSheet()">
+        <div class="more-sheet-panel" role="dialog" aria-label="Izvēlne">
             <div class="more-sheet-handle"></div>
-            <div class="more-sheet-title">Izvēlne</div>
-            <a href="/offers" class="{% if page == 'offers' or page == 'new_offer' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+            <a href="/offers" class="{% if page in ['offers','new_offer'] %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 15l2 2 4-4"/></svg>
                 Piedāvājumi
             </a>
             {% if branded_offers %}
             <a href="/tames" class="{% if page == 'tames' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9h17M9 20.5V9"/></svg>
                 Tāmju veidnes
             </a>
             {% endif %}
             <a href="/products" class="{% if page == 'products' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                Produkti / Pakalpojumi
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 16V8a1.5 1.5 0 0 0-.75-1.3l-7-4a1.5 1.5 0 0 0-1.5 0l-7 4A1.5 1.5 0 0 0 3.5 8v8a1.5 1.5 0 0 0 .75 1.3l7 4a1.5 1.5 0 0 0 1.5 0l7-4a1.5 1.5 0 0 0 .75-1.3z"/></svg>
+                Produkti un pakalpojumi
             </a>
             {% if not offline_mode %}
             <a href="/recurring" class="{% if page == 'recurring' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg>
                 Periodiskie rēķini
             </a>
             {% endif %}
             {% if stock_enabled %}
             <a href="/stock" class="{% if page == 'stock' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6"/></svg>
                 Noliktava
             </a>
             {% endif %}
-            <a href="/trash" class="{% if page == 'trash' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Papīrgrozs
-            </a>
             <div class="more-sheet-title">Konts</div>
             <a href="/export" class="{% if page == 'export' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
                 Eksports
             </a>
             {% if not offline_mode and is_owner %}
             <a href="/komanda" class="{% if page == 'team' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a4.5 4.5 0 0 1 4.5-4.5h4a4.5 4.5 0 0 1 4.5 4.5v1"/></svg>
                 Komanda
             </a>
-            {% endif %}
-            {% if not offline_mode and is_owner %}
             <a href="/pricing" class="{% if page == 'pricing' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                Mans abonements
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19"/></svg>
+                Abonements
             </a>
             {% endif %}
             {% if is_owner %}
             <a href="/settings" class="{% if page == 'settings' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
                 Iestatījumi
             </a>
             {% endif %}
+            <a href="/trash" class="{% if page == 'trash' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6h17M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6M18.5 6l-.8 13.1a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 6"/></svg>
+                Papīrgrozs
+            </a>
             {% if current_user and current_user.is_admin and not offline_mode %}
             <a href="/users" class="{% if page == 'users' %}active{% endif %}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Lietotāji (Admin)
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s8-4 8-10v-7l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Lietotāji (admin)
             </a>
             {% endif %}
-            <a href="/account">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <a href="/account" class="{% if page == 'account' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
                 Mans konts
             </a>
-            <button onclick="toggleTheme();document.getElementById('moreSheet').classList.remove('open')">
-                <svg id="themeIconMobile" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                <span id="themeLabelMobile">Tumšais / Gaišais režīms</span>
+            <button type="button" onclick="toggleTheme();closeMoreSheet()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+                <span class="theme-label">Tumšais režīms</span>
             </button>
             <a href="/logout" class="more-sheet-logout">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
                 Iziet
             </a>
         </div>
     </div>
 
-    <!-- Email-sent toast popup (auto-shown when URL contains ?sent=1) -->
-    <div class="modal-overlay" id="emailSentToast" onclick="if(event.target===this)document.getElementById('emailSentToast').classList.remove('active')">
-        <div class="modal" style="max-width:380px;text-align:center;padding:32px 28px">
-            <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:50%;background:var(--success-soft);color:var(--success);margin-bottom:16px">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                </svg>
-            </div>
-            <div style="font-size:18px;font-weight:700;margin-bottom:20px;letter-spacing:-0.3px">E-pasts nosūtīts klientam!</div>
-            <button type="button" class="btn btn-primary" style="width:100%" onclick="document.getElementById('emailSentToast').classList.remove('active')">Labi</button>
+    <div class="modal-overlay" id="emailSentToast" onclick="if(event.target===this)this.classList.remove('active')">
+        <div class="modal" style="max-width:380px">
+            <div class="modal-title" style="margin-bottom:6px">E-pasts nosūtīts</div>
+            <p class="text-muted" style="margin-bottom:20px">Rēķins ar PDF pielikumu ir ceļā pie klienta.</p>
+            <button type="button" class="btn btn-primary btn-block" onclick="document.getElementById('emailSentToast').classList.remove('active')">Labi</button>
         </div>
     </div>
     <script>
-    (function() {
+    (function () {
         var params = new URLSearchParams(window.location.search);
         if (params.get('sent') === '1') {
             document.getElementById('emailSentToast').classList.add('active');
@@ -319,59 +360,61 @@
 
     {% block scripts %}{% endblock %}
     <script>
-        // Theme management — dark is default, only 'light' stores attribute
-        function applyTheme(theme) {
-            if (theme === 'light') {
-                document.documentElement.setAttribute('data-theme', 'light');
-            } else {
-                document.documentElement.removeAttribute('data-theme');
-            }
-            const sunIcon = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-            const moonIcon = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-            const label = document.getElementById('themeLabel');
-            const icon = document.getElementById('themeIcon');
-            const labelM = document.getElementById('themeLabelMobile');
-            const iconM = document.getElementById('themeIconMobile');
-            if (theme === 'dark') {
-                if (label) label.textContent = 'Gaišais režīms';
-                if (icon) icon.innerHTML = sunIcon;
-                if (labelM) labelM.textContent = 'Gaišais režīms';
-                if (iconM) iconM.innerHTML = sunIcon;
-            } else {
-                if (label) label.textContent = 'Tumšais režīms';
-                if (icon) icon.innerHTML = moonIcon;
-                if (labelM) labelM.textContent = 'Tumšais režīms';
-                if (iconM) iconM.innerHTML = moonIcon;
-            }
-        }
-        function toggleTheme() {
-            const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-            const next = current === 'dark' ? 'light' : 'dark';
-            localStorage.setItem('vrekini-theme', next);
-            applyTheme(next);
-        }
-        (function() {
-            const saved = localStorage.getItem('vrekini-theme') || 'dark';
-            applyTheme(saved);
-        })();
+    function currentTheme() {
+        return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    }
+    function paintThemeLabels() {
+        var label = currentTheme() === 'dark' ? 'Gaišais režīms' : 'Tumšais režīms';
+        document.querySelectorAll('.theme-label').forEach(function (el) { el.textContent = label; });
+    }
+    function toggleTheme() {
+        var next = currentTheme() === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('vrekini-theme', next); } catch (e) {}
+        paintThemeLabels();
+        document.dispatchEvent(new CustomEvent('themechange', { detail: next }));
+    }
+    paintThemeLabels();
 
-        function toggleAccountMenu(e) {
-            e.stopPropagation();
-            document.getElementById('accountDropdown').classList.toggle('show');
+    function toggleAccountMenu(e) {
+        e.stopPropagation();
+        document.getElementById('accountDropdown').classList.toggle('show');
+    }
+    document.addEventListener('click', function (e) {
+        var dd = document.getElementById('accountDropdown');
+        if (dd && !dd.parentElement.contains(e.target)) dd.classList.remove('show');
+    });
+    function openMoreSheet() { document.getElementById('moreSheet').classList.add('open'); }
+    function closeMoreSheet() { document.getElementById('moreSheet').classList.remove('open'); }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            closeMoreSheet();
+            var dd = document.getElementById('accountDropdown');
+            if (dd) dd.classList.remove('show');
+            document.querySelectorAll('.modal-overlay.active').forEach(function (m) { m.classList.remove('active'); });
         }
-        document.addEventListener('click', function(e) {
-            const dropdown = document.getElementById('accountDropdown');
-            if (dropdown && !dropdown.parentElement.contains(e.target)) {
-                dropdown.classList.remove('show');
-            }
-        });
+        // N opens a new invoice from anywhere, unless the user is typing.
+        var t = e.target;
+        var typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+        if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'n' || e.key === 'N')
+                && !document.querySelector('.modal-overlay.active')
+                && !/^\/documents\/new|\/edit$|^\/recurring\/(new|\d+)/.test(location.pathname)) {
+            window.location.href = '/documents/new?doc_type=sell';
+        }
+    });
+    // A rule under the phone's top bar once content scrolls beneath it
+    (function () {
+        var bar = document.getElementById('mobileHeader');
+        if (!bar) return;
+        var onScroll = function () { bar.classList.toggle('scrolled', window.scrollY > 4); };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+    })();
     </script>
     <script>
-    // Flatpickr: convert all date inputs to dd/mm/yy format
+    // Date fields: ISO under the hood, dd.mm.yyyy on screen, weeks from Monday.
     function initDatePicker(el, extraOpts) {
         if (el._flatpickr) return el._flatpickr;
-        // Vendored, but served from a CDN in online mode — if it didn't load,
-        // leave the native date input alone instead of throwing.
         if (typeof flatpickr === 'undefined') return null;
         var existingVal = el.value;
         el.type = 'text';
@@ -379,26 +422,29 @@
         var opts = {
             dateFormat: 'Y-m-d',
             altInput: true,
-            altFormat: 'd/m/y',
+            altFormat: 'd.m.Y',
             allowInput: true,
+            disableMobile: false,
             defaultDate: existingVal || null,
-            onChange: function() {
-                el.dispatchEvent(new Event('change', {bubbles: true}));
-            }
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: { shorthand: ['Sv', 'Pr', 'Ot', 'Tr', 'Ce', 'Pk', 'Se'], longhand: ['Svētdiena', 'Pirmdiena', 'Otrdiena', 'Trešdiena', 'Ceturtdiena', 'Piektdiena', 'Sestdiena'] },
+                months: { shorthand: ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jūn', 'Jūl', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec'], longhand: ['Janvāris', 'Februāris', 'Marts', 'Aprīlis', 'Maijs', 'Jūnijs', 'Jūlijs', 'Augusts', 'Septembris', 'Oktobris', 'Novembris', 'Decembris'] }
+            },
+            onChange: function () { el.dispatchEvent(new Event('change', { bubbles: true })); }
         };
         if (extraOpts) Object.assign(opts, extraOpts);
         var fp = flatpickr(el, opts);
-        // Patch value setter so programmatic .value = 'YYYY-MM-DD' updates the alt input
+        if (fp && fp.calendarContainer) fp.calendarContainer.setAttribute('role', 'dialog');
         var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
         var setting = false;
         Object.defineProperty(el, 'value', {
-            get: function() { return desc.get.call(el); },
-            set: function(v) {
+            get: function () { return desc.get.call(el); },
+            set: function (v) {
                 desc.set.call(el, v);
                 if (!setting && fp) {
                     setting = true;
-                    if (v) fp.setDate(v, false);
-                    else fp.clear();
+                    if (v) fp.setDate(v, false); else fp.clear();
                     setting = false;
                 }
             },
@@ -406,17 +452,14 @@
         });
         return fp;
     }
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('input[type="date"]').forEach(function(el) {
-            initDatePicker(el);
-        });
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('input[type="date"]').forEach(function (el) { initDatePicker(el); });
     });
     </script>
     <script>
-    // Register service worker for PWA support
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
-        window.addEventListener('load', function() {
-            navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).catch(function() {});
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).catch(function () {});
         });
     }
     </script>

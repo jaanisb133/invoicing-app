@@ -9,8 +9,12 @@ genuinely modern UX patterns, not generic "AI dashboard" defaults.
 - **Backend:** FastAPI (`app/main.py`), SQLite (`app/database.py`), ReportLab for PDFs (`app/pdf_generator.py`)
 - **Templates:** Jinja2, located in `app/templates/`
 - **Frontend:** Vanilla JS, Chart.js 4.4.4, flatpickr for date pickers
-- **Styling:** Single `app/static/css/style.css` file (versioned via `?v=N` query string in `base.html`)
-- **Fonts:** DM Sans + Inter from Google Fonts (with offline fallback)
+- **Styling:** `app/static/css/app.css` for every signed-in screen (loaded by `base.html`);
+  `app/static/css/style.css` only for the public pages (landing, pricing, login, legal).
+  Both versioned through `CSS_VERSION` (see Gotchas)
+- **Number format:** `app/fmt.py` — `eur` / `num` / `qty` Jinja filters and JS `fmtEur` /
+  `fmtNum` / `fmtQty` / `parseNum` / `fmtDate` in `base.html`
+- **Fonts:** Geist (app UI) + DM Sans (paper previews, public pages) from Google Fonts, with system fallbacks
 
 ## Architecture notes
 - Multi-tenant SaaS — all business data isolated per `user_id`
@@ -19,33 +23,37 @@ genuinely modern UX patterns, not generic "AI dashboard" defaults.
 - Dashboard stats API: `/api/dashboard-stats?date_from=&date_to=` returns JSON used for AJAX refresh on date-range changes
 - Document table query (`db.get_documents()`) returns `total_with_vat` computed via SQL subquery
 
-## Current design system (post-redesign)
+## Design system — "achromatic ledger" (redesign approved 2026-10-21)
 
-### Color palette — strict near-monochrome
-- `--primary: #09090b` (near-black)
-- `--bg: #fafaf9` (off-white)
-- `--bg-card: #ffffff`
-- `--text: #09090b`
-- `--text-light: #71717a`
-- `--text-lighter: #a1a1aa`
-- `--border: #e4e4e7`
-- Dark theme inverts to `--bg: #09090b`, `--bg-card: #18181b`
-- Accent default for PDFs/invoices: `#09090b` (changeable in settings)
-- **No bright accent colors anywhere structural** — colored only used for status (success green, danger red, warning yellow) and they are muted/desaturated
+Dealt by design-taste-frontend `--app` (sheet A, seed 1740845365) and built in
+`app.css`. The old near-monochrome-on-white and the later blue (`--brand #3B82F6`)
+are both gone. **Colour lives on data, never on chrome.**
 
-### Typography
-- Sidebar/nav: 13px medium weight, no uppercase
-- Page H2 headings: 22px, weight 600, letter-spacing -0.5px
-- Dashboard greeting H1: 28px (mobile 24px), weight 700, -0.8px
-- Table headers: lowercase, weight 500, no uppercase
-- Badges: lowercase, 4px radius, border-based not pill
+### Tokens (`:root` in `app.css`; dark under `:root[data-theme="dark"]`)
+- Ground `--ground #f2f4f7` (blue-grey), panels `--surface #fff`, ink `--text #0a0a0a`,
+  secondary `--muted #616468`, labels `--faint #66696d` (≥ 4.5:1 on the ground — don't lighten)
+- `--primary #141414` — the one near-black primary button per screen
+- `--data #1d5fbf` — the only hue: chart bars, the due-strip "today" marker
+- Status: `--positive #2e7d32`, `--negative #c4242a`, plus `--pill-*-bg/-ink` pairs
+- Old names (`--brand`, `--text-light`, `--bg-card`, …) are aliased to the new tokens so
+  untouched templates keep working; use the new names in new code
+- Font Geist (UI) + DM Sans (paper previews); radii 8 / 6 / 4
 
-### Layout
-- Sidebar: 240px wide, dark `#09090b`, hair border `#18181b`
-- Cards: no shadow, hair `--border` only, 10px radius
-- Page header: transparent, no border/shadow, 28px top padding
-- Stat cards: left-aligned, label above value (label first, then value)
-- Buttons: near-black primary, hair-bordered outlines
+### Rules (taste-skill `references/app-screens.md`)
+- Flat: 1px borders, no resting shadows. Only real overlays (menus, dialogs, flatpickr,
+  comboboxes) may float with `--float-shadow`. Selected segments use a 1px inset outline
+- KPIs are type in one divided strip (`.kpi-strip`) — no sparklines, icon tiles or count-up
+- Noun titles in `<h1>` (`.page-header h1` + `.page-sub`), at most one primary button
+- Tables: right-aligned tabular figures. Phones: two-line rows (identity + amount, then
+  grey meta + status). Mind desktop `width: N%` on cells leaking into the mobile grid
+- Every screen states its one finding (dashboard: "3 rēķini kavēti par …")
+- No entrance motion. Paper previews (`#invoicePreview`, `#docPreview`) are white in
+  both themes and carry `data-ui`: they mirror the PDF at scale, so their 7–10px text is
+  deliberate
+- Latvian formats everywhere: `1 955,84 €` (NBSP thousands, comma decimals), `dd.mm.yyyy`
+- Verify with `node .claude/skills/design-taste-frontend/scripts/inspect.mjs --app` on a
+  rendered snapshot; defensible remaining findings: paper-preview tiny text, short lists
+  leaving empty ground, flatpickr calendars when its CDN is blocked
 
 ## What's been built
 
@@ -93,20 +101,16 @@ the app to feel **"alive" and "cool"**, not just minimal-but-empty.
 
 ### Done since that list was written
 - ✅ **Comparison period logic** — calendar shift + elapsed-window clamp (see above)
-- ✅ **Sparklines on stat cards** — `renderSpark()` in `dashboard.html` draws inline
-  SVG (no library) for Apgrozījums / Dokumenti / Vid. rēķins from the
-  `spark_revenue` / `spark_docs` / `spark_avg` arrays. Series are gap-free and
-  bucketed to ≤ ~60 points for long ranges. Line draws in on first paint.
-  "Neapmaksāti" deliberately has none — it's a point-in-time snapshot, not a trend.
+- ⛔ **Sparklines, stat count-up, chart entrance animation** — built, then removed in the
+  2026-10-21 redesign (taste-skill app rules: KPIs as type, no entrance motion). The API
+  still returns `spark_*` arrays; nothing reads them.
 - ✅ **Empty states with personality** — `_empty_state.html` macro (mark + title +
   one line + CTA), used on dashboard, documents, clients, products, offers, stock.
   `/documents` distinguishes "no documents yet" from "no match for these filters"
   (the latter offers "Notīrīt filtrus").
-- ✅ **Loading states** — shimmer skeletons on the stat values/badges and a dimmed
-  chart while the date-range fetch is in flight.
-- ✅ **Micro-interactions** — press feedback on controls, stat count-up, sparkline
-  draw-in, chart entrance animation, keyboard focus rings. All of it is gated on
-  `prefers-reduced-motion`.
+- ✅ **Loading states** — flat skeletons on the KPI values and a dimmed chart while the
+  date-range fetch is in flight.
+- ✅ **Focus and press** — keyboard focus rings, press feedback on controls.
 - ✅ **Bottom nav on mobile** and **PWA manifest** — already shipped earlier.
 
 - ✅ **Chart granularity** — Dienas / Nedēļas / Mēneši toggle on the revenue chart.
@@ -114,6 +118,16 @@ the app to feel **"alive" and "cool"**, not just minimal-but-empty.
   gap-free day/week/month series (weeks start Monday, buckets clip to the range so
   totals are identical at every granularity). `_chartGrain` is 'auto' until the user
   picks one: day ≤ 62 days, week ≤ 366, month beyond. Choice persists in localStorage.
+- ✅ **Redesign (2026-10-21)** — new shell (labelled sidebar on the ground, account menu
+  with theme toggle, mobile bottom nav with a + button, `N` shortcut for a new invoice).
+  Invoice editor: client combobox (recent first, inline create), payment-term chips,
+  spreadsheet lines (Enter walks name → qty → unit → price → new row, Ctrl/⌘+Enter
+  submits), product picker that fills unit and last price, live paper preview. Dashboard:
+  KPI strip with "pret dd.mm.–dd.mm." deltas, Termiņi due strip, activity. Lists:
+  status tabs, search, last-invoice / last-price columns. Server `_parse_doc_items()`
+  reads the line indices actually posted (deleting a middle line used to drop the rest)
+  and accepts `1 234,50`.
+- ✅ **Offer accepted/rejected state** — offers have gaida atbildi / pieņemts / noraidīts.
 - ✅ **Offer → invoice** — "Izveidot rēķinu" on an offer opens a prefilled invoice
   form (client, items, VAT, notes, `included_in_price` flags). Nothing is saved until
   submit, and the offer is never modified. `documents.converted_from_offer_id` records
@@ -122,13 +136,13 @@ the app to feel **"alive" and "cool"**, not just minimal-but-empty.
   A forged `from_offer` pointing at another user's document is ignored.
 
 ### Still open
-1. **Offer accepted/rejected state** — offers have no lifecycle. "Has an invoice" is
-   the only signal of a won deal; there is no way to mark one rejected or expired,
-   so the list can't be triaged. Biggest remaining gap in the offers feature.
-2. **Hero stat treatment** — make the primary revenue card more visually dominant on mobile
-3. **List redesign on mobile** — swipe actions for mark-paid/delete; sticky filter bar (FAB already exists)
-4. **Dashboard "alive" feel** — upcoming due dates highlighted, "X days since last invoice" prompts
-5. **Self-host the footer payment logos** — `_public_footer.html` hotlinks all Visa /
+1. **Public pages redesign** — landing / pricing still on `style.css` and the old look.
+   Next up: design-taste-frontend page run + high-end-visual-design, then claude-seo.
+2. **List actions on mobile** — swipe for mark-paid/delete
+3. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
+   the preview mirrors the server exactly, but a printed line can differ by a cent from
+   its rounded parts. Pre-existing accounting behaviour; change only deliberately
+4. **Self-host the footer payment logos** — `_public_footer.html` hotlinks all Visa /
    Mastercard / Google Pay / Apple Pay / EveryPay / bank logos from
    `vnmedia.lv/wp-content/uploads/2026/03/...`. A WordPress media reshuffle silently
    breaks the card logos SEB compliance requires, on every public page.
@@ -168,29 +182,50 @@ can't kill the main form logic.
   `css_version` Jinja global. Bump it on every CSS change. Do not hardcode `?v=N` in a
   template — nine standalone templates used to and had drifted to v18 while base.html
   was on v21, so landing/login/register/pricing served visitors a stale stylesheet.
-- **Cards that aren't range-scoped must say so.** "Neapmaksāti (kopā)" is all-time
-  outstanding by design, sitting in a row of range-scoped stats.
-11. **Document view page** — likely needs mobile work; PDF preview probably overflows
-12. **Settings page** — large form, mobile UX likely needs grouping/accordion
-13. **Invoice templates preview** — the live preview on document_form.html is desktop-only (`@media max-width: 1100px` stacks it)
+- **Cards that aren't range-scoped must say so.** "Neapmaksāti, visi" is all-time
+  outstanding by design, sitting in a strip of range-scoped stats.
+- **`requestSubmit()` ignores disabled buttons.** Ctrl/⌘+Enter on the invoice form goes
+  through it, so the submit handler re-checks the stock error itself.
+- **Stock mode makes the unit cell read-only** (it comes from the product), so Enter
+  skips it — keyboard tests must branch on that.
+- **`[hidden]` is `display:none !important`** in `app.css`; component display rules
+  used to override the attribute.
 
 ## Critical files to know
-- `app/main.py:1408` — `dashboard()` route, sets up `range_stats` and `range_stats_json`
-- `app/main.py:1447` — `/api/dashboard-stats` AJAX endpoint
-- `app/main.py:280` — `_base_context()` — common template vars
-- `app/database.py:1118` — `get_dashboard_stats_range()` with comparison period
-- `app/templates/base.html` — sidebar, mobile header, theme toggle JS, flatpickr init
-- `app/templates/dashboard.html` — main dashboard, greeting, stats, chart, recent docs
-- `app/static/css/style.css` — single CSS file, versioned `?v=14`
-- `app/static/css/style.css:1487` — dashboard greeting/comparison stat styles
-- `app/static/css/style.css:1556` — mobile card improvements (`.mobile-cards tbody tr` card layout)
-- `app/static/css/style.css:1581` — `.dash-recent-mobile` compact list
+- `app/main.py` — `_base_context()`, `_parse_doc_items()`, `_doc_list_rows()`,
+  `dashboard()`, `/api/dashboard-stats` (grep the names; line numbers drift)
+- `app/database.py` — `get_dashboard_stats_range()` (comparison period),
+  `get_product_last_prices()`, `get_client_last_billed()`, `get_unpaid_invoices()`
+- `app/fmt.py` — Latvian number formatting and parsing
+- `app/templates/base.html` — shell, theme init, JS format helpers, flatpickr init
+- `app/templates/document_form.html` — invoice/offer editor (combobox, rows, preview)
+- `app/templates/dashboard.html` + `_dash_activity.html` — dashboard
+- `app/static/css/app.css` — the app stylesheet; tokens at the top
 
 ## Working notes
 - **Git branch:** Work on `claude/<session-id>` branches (system blocks pushes to non-`claude/*` branches with 403). User pushes to main manually.
 - **Test before reporting done:** Use `from app.main import app; from fastapi.testclient import TestClient` to smoke-test pages
 - **Login flow for testing:** Fresh DB creates admin with printed password; first login requires `/set-password` then `/setup`
 - **Latvian language only** — all user-facing strings are in Latvian. Don't add English.
-- **Premium = restraint:** When in doubt, remove decoration. The user explicitly rejected colorful "AI default" looks. Stick to near-monochrome.
+- **Premium = restraint:** When in doubt, remove decoration. The user explicitly rejected colorful "AI default" looks. Chrome stays achromatic; `--data` blue is for data only.
 - **Mobile-first:** User's primary feedback is mobile UX. Always test mobile viewport (≤768px).
 - **No new deps without asking** — keep the dependency footprint small.
+
+## Vendored skills (`.claude/skills/`, `.claude/agents/`)
+Committed to the repo because cloud sessions never install plugins; sources,
+versions and local patches are in `.claude/skills/VENDORED.md`.
+- **design-taste-frontend** (taste-skill v2) — the main design skill. The user
+  approved a full redesign driven by it (2026-10-21), colours included, so its
+  directions may replace tokens. The app now runs on its sheet (see Design system). App screens use its `--app` mode
+  (`references/app-screens.md`). In cloud sessions run its scripts with
+  `CHROME_PATH=/opt/pw-browsers/chromium`; working files go to `.taste-skill/` (gitignored).
+- **high-end-visual-design** — opt-in classic (marketing-site look: big whitespace,
+  scroll reveals, pill CTAs). Model invocation is disabled upstream, so read its
+  `SKILL.md` directly. Fits the public landing page; too slow and airy for work
+  screens like the invoice form, where design-taste-frontend's app rules win.
+- **claude-seo** (`seo`, `seo-*` + 19 agents) — for the public pages (landing,
+  pricing, legal). The app is server-rendered Jinja, so rendered-page (Chromium)
+  features aren't needed; its runtime runs fine without them. First use in a session
+  runs `.claude/skills/seo/scripts/claude-seo setup` (~3 min, venv is gitignored).
+  `seo-dataforseo`, `seo-image-gen`, `seo-google` and parts of `seo-maps` need API keys
+  or Google credentials we don't have — skip them unless the user provides them.

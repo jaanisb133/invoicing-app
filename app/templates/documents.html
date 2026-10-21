@@ -1,74 +1,71 @@
 {% extends "base.html" %}
 {% from "_empty_state.html" import empty_state %}
+{% set tracking = settings.get('status_tracking', '0') == '1' %}
+{% set list_name = 'Dokumenti' if stock_enabled else 'Rēķini' %}
+
+{% block title %}{{ list_name }} · V-Rēķini{% endblock %}
 
 {% block content %}
 <style>
-.row-menu-wrapper { position: relative; display: inline-block; }
-.row-menu-trigger {
-    background: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer;
-    padding: 6px; color: var(--text-light); display: flex; align-items: center; transition: all 0.15s;
-}
-.row-menu-trigger:hover { background: var(--bg-card-hover); color: var(--text); }
-.row-menu-dropdown {
-    display: none; position: fixed;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 12px; box-shadow: var(--shadow-lg); min-width: 220px;
-    z-index: 9999; padding: 6px; white-space: nowrap;
-}
-.row-menu-wrapper.open .row-menu-dropdown { display: block; }
-.row-menu-item {
-    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
-    font-size: 13.5px; color: var(--text); text-decoration: none;
-    cursor: pointer; transition: background 0.1s; border: none; background: none;
-    width: 100%; text-align: left; font-family: inherit; border-radius: 8px;
-}
-.row-menu-item:hover { background: var(--bg-card-hover); }
-.row-menu-item svg { flex-shrink: 0; color: var(--text-light); }
-.row-menu-danger { color: var(--danger) !important; }
-.row-menu-danger:hover { background: var(--danger-soft) !important; }
-.row-menu-danger svg { color: var(--danger) !important; }
-tr.clickable-row { cursor: pointer; }
-tr.clickable-row:hover td { background: var(--bg-card-hover); }
-.search-dropdown {
-    position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 10px; box-shadow: var(--shadow-md); max-height: 240px;
-    overflow-y: auto; margin-top: 4px;
-}
-.search-dropdown-item {
-    padding: 9px 12px; cursor: pointer; font-size: 14px;
-    color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.search-dropdown-item:hover, .search-dropdown-item.active { background: var(--bg-card-hover); }
-.row-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
-.row-menu-disabled { opacity: 0.55; }
-.badge-pro-menu {
-    display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 5px;
-    border-radius: 4px; background: var(--brand); color: #fff; vertical-align: middle; line-height: 1.3; letter-spacing: 0.4px;
-}
-.doc-client-cell {
-    display: inline-flex; align-items: center; gap: 10px;
-}
-.doc-filters-card { padding: 14px 16px; margin-bottom: 16px; }
-.doc-filters-card .filters-bar { margin-bottom: 0; align-items: end; }
-.doc-filters-card .form-group label { font-size: 11.5px; color: var(--text-light); font-weight: 500; }
-.usage-section .usage-bar { background: var(--bg-input); }
-.usage-section .usage-fill { background: var(--brand); }
+.list-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 14px var(--card-pad); border-bottom: 1px solid var(--rule); }
+.list-toolbar .search-field { flex: 1 1 220px; max-width: 320px; }
+.list-toolbar .dates { display: flex; align-items: center; gap: 6px; }
+.list-toolbar .dates .form-control { height: 34px; width: 118px; min-width: 0; font-size: 13px; padding: 0 10px; }
+.list-toolbar .dates .sep { color: var(--faint); }
+.list-toolbar .clear { margin-left: auto; }
+.list-tabs { padding: 0 var(--card-pad); margin: 0; border-bottom: 1px solid var(--rule); }
+.list-tabs a, .list-tabs button { padding: 14px 0 12px; }
+.docs th, .docs td { white-space: nowrap; }
+.docs td.c-client { white-space: normal; min-width: 180px; width: 38%; }
+.docs .c-client a { color: inherit; }
+.docs .c-num a { font-weight: 500; }
+.docs .due-late { color: var(--negative); }
+.docs .status-btn { border: 0; cursor: pointer; font: inherit; }
+.docs .status-btn:hover { filter: brightness(.96); }
+.list-foot { display: flex; justify-content: space-between; gap: 12px; padding: 12px var(--card-pad); border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.list-foot b { color: var(--text); font-weight: 600; }
+.quota { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.quota.near { color: var(--warning); }
 @media (max-width: 768px) {
-    .doc-filters-card { padding: 12px; }
-    .doc-filters-card .filters-bar { gap: 8px; }
+    .list-toolbar { padding: 12px var(--card-pad); }
+    .list-toolbar .search-field { flex: 1 1 100%; max-width: none; }
+    .list-toolbar .search-field .form-control { height: 44px; }
+    .list-toolbar .dates { flex: 1 1 100%; min-width: 0; }
+    .list-toolbar .dates .form-control { flex: 1 1 0; width: 0; height: 40px; }
+    .list-toolbar .segmented { flex: 1 1 100%; display: flex; }
+    .list-toolbar .segmented > * { flex: 1; }
+    .list-toolbar .clear { margin-left: 0; }
+    .docs thead { display: none; }
+    .docs, .docs tbody { display: block; }
+    .docs tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px var(--card-pad); border-bottom: 1px solid var(--rule); align-items: center; }
+    .docs tbody tr:last-child { border-bottom: 0; }
+    .docs td { display: block; padding: 0 !important; height: auto; border: 0; }
+    .docs td.c-client { grid-column: 1; grid-row: 1; width: auto; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .docs td.c-sum { grid-column: 2; grid-row: 1; font-weight: 600; }
+    .docs td.c-meta { grid-column: 1; grid-row: 2; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+    .docs td.c-status { grid-column: 2; grid-row: 2; text-align: right; }
+    .docs td.c-num, .docs td.c-date, .docs td.c-due, .docs td.c-menu { display: none; }
 }
+@media (min-width: 769px) { .docs td.c-meta { display: none; } }
 </style>
+
 <div class="page-header">
     <div>
-        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Dokumenti</h2>
-        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Visi izrakstītie un saņemtie rēķini.</p>
+        <h1>{{ list_name }}</h1>
+        <p class="page-sub">
+            {% set pct = usage_pct(usage.documents, limits.max_documents) if (not offline_mode and limits.max_documents) else 0 %}
+            {% if pct >= 50 %}
+            <span class="quota {% if pct >= 80 %}near{% endif %}">Šomēnes izrakstīti {{ usage.documents }} no {{ limits.max_documents }} dokumentiem{% if pct >= 80 %} · <a href="/pricing">palielināt limitu</a>{% endif %}</span>
+            {% else %}
+            Izrakstītie{% if stock_enabled %} un saņemtie{% endif %} rēķini, jaunākie augšā.
+            {% endif %}
+        </p>
     </div>
     <div class="btn-group">
         {% if stock_enabled %}
-        <a href="/documents/new?doc_type=buy" class="btn btn-outline"><span class="btn-label-full">+ Iegādes dokuments</span><span class="btn-label-short">+ Iegāde</span></a>
+        <a href="/documents/new?doc_type=buy" class="btn btn-outline">Iegādes dokuments</a>
         {% endif %}
-        <a href="/documents/new?doc_type=sell" class="btn btn-primary"><span class="btn-label-full">+ Jauns rēķins</span><span class="btn-label-short">+ Rēķins</span></a>
+        <a href="/documents/new?doc_type=sell" class="btn btn-primary hide-mobile">Jauns rēķins</a>
     </div>
 </div>
 
@@ -76,630 +73,440 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
     {% endif %}
-    {% if not offline_mode %}
-    <div class="usage-section" style="margin-bottom:16px">
-        <div class="usage-item">
-            <div class="usage-label">Dokumenti (šomēnes)</div>
-            <div class="usage-bar">
-                <div class="usage-fill" style="width: {{ usage_pct(usage.documents, limits.max_documents) }}%"></div>
-            </div>
-            <div class="usage-count">{{ usage.documents }} / {{ limits.max_documents | limit_text }}</div>
-        </div>
-    </div>
-    {% endif %}
-    <div class="card">
-        <div class="card-body">
-            <div class="filters-bar" id="filterForm" style="flex-wrap:nowrap;align-items:end;gap:8px">
-                {% if stock_enabled %}
-                <div class="form-group" style="margin-bottom:0;min-width:0;flex:0 0 auto">
-                    <label>Tips</label>
-                    <select id="fDocType" class="form-control" style="min-width:100px" onchange="loadDocs()">
-                        <option value="">Visi</option>
-                        <option value="buy" {% if filters.doc_type == 'buy' %}selected{% endif %}>Iegāde</option>
-                        <option value="sell" {% if filters.doc_type == 'sell' %}selected{% endif %}>Pārdošana</option>
-                    </select>
-                </div>
-                {% endif %}
-                <div class="form-group" style="margin-bottom:0;min-width:0;flex:1 1 120px;position:relative">
-                    <label>Klients</label>
-                    <input type="text" id="fClientSearch" class="form-control" placeholder="Meklēt..." autocomplete="off"
-                           style="min-width:0" onfocus="showClientDropdown()" oninput="filterClients()">
-                    <input type="hidden" id="fClientId" value="{{ filters.client_id }}">
-                    <div id="fClientDropdown" class="search-dropdown" style="display:none">
-                        <div class="search-dropdown-item" data-id="" onclick="selectFilterClient('','Visi')">Visi</div>
-                        {% for c in clients %}
-                        <div class="search-dropdown-item" data-id="{{ c.id }}" onclick="selectFilterClient('{{ c.id }}','{{ c.name | e }}')">{{ c.name }}</div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% if settings.get('status_tracking', '0') == '1' %}
-                <div class="form-group" style="margin-bottom:0;min-width:0;flex:0 0 auto">
-                    <label>Statuss</label>
-                    <select id="fStatus" class="form-control" style="min-width:100px" onchange="loadDocs()">
-                        <option value="">Visi</option>
-                        <option value="issued" {% if filters.status == 'issued' %}selected{% endif %}>Izrakstīts</option>
-                        <option value="paid" {% if filters.status == 'paid' %}selected{% endif %}>Apmaksāts</option>
-                    </select>
-                </div>
-                {% endif %}
-                <div class="form-group" style="margin-bottom:0;min-width:0;flex:0 0 auto">
-                    <label>No</label>
-                    <input type="date" id="dateFrom" class="form-control" style="min-width:0;width:120px" value="{{ filters.date_from }}">
-                </div>
-                <div class="form-group" style="margin-bottom:0;min-width:0;flex:0 0 auto">
-                    <label>Līdz</label>
-                    <input type="date" id="dateTo" class="form-control" style="min-width:0;width:120px" value="{{ filters.date_to }}">
-                </div>
-                <div class="form-group" style="margin-bottom:0;flex:0 0 auto">
-                    <label>&nbsp;</label>
-                    <div class="btn-group" style="gap:4px">
-                        <button type="button" class="btn btn-outline btn-sm" onclick="setThisMonth()">Šomēnes</button>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="setLastMonth()">Iepr. mēnesis</button>
-                    </div>
-                </div>
-            </div>
 
-            <div class="table-wrapper">
-                <table class="mobile-cards docs-table">
-                    <thead>
-                        <tr>
-                            <th>Nr.</th>
-                            <th>Tips</th>
-                            <th>Klients</th>
-                            <th>Datums</th>
-                            <th>Summa</th>
-                            {% if settings.get('status_tracking', '0') == '1' %}
-                            <th>Statuss</th>
-                            {% endif %}
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="docsBody">
-                    {% if documents %}
-                        {% for doc in documents %}
-                        <tr data-href="/documents/{{ doc.id }}" class="clickable-row">
-                            <td data-label="Nr." class="mobile-card-title" style="font-weight:600">{{ doc.doc_number }}{% if doc.excluded_from_stats %} <span class="pill pill-neutral" style="font-weight:600" title="Netiek iekļauts statistikā">∅</span>{% endif %}</td>
-                            <td data-label="Tips">
-                                {% if doc.doc_type == 'buy' %}
-                                <span class="pill pill-warning">Iegāde</span>
-                                {% else %}
-                                <span class="pill pill-brand">Pārdošana</span>
-                                {% endif %}
-                            </td>
-                            <td data-label="Klients" class="mobile-card-meta">
-                                <span class="doc-client-cell">
-                                    <span class="brand-avatar sm bg-{{ (doc.client_id or 0) % 10 }}">{{ (doc.client_name or '?')[:2] | upper }}</span>
-                                    <span>{{ doc.client_name }}</span>
-                                </span>
-                            </td>
-                            <td data-label="Datums" class="mobile-card-meta">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
-                            <td data-label="Summa" style="font-weight:700">{{ "%.2f" | format(doc.total_with_vat or 0) }} €</td>
-                            {% if settings.get('status_tracking', '0') == '1' %}
-                            <td class="doc-cell-status">
-                                <span class="pill pill-status {% if doc.status == 'paid' %}pill-success{% else %}pill-brand{% endif %}"
-                                      data-doc-id="{{ doc.id }}"
-                                      data-status="{{ doc.status or 'issued' }}"
-                                      onclick="toggleStatus(this)"
-                                      style="cursor:pointer"
-                                      title="Noklikšķiniet, lai mainītu statusu">
-                                    {% if doc.status == 'paid' %}Apmaksāts{% else %}Izrakstīts{% endif %}
-                                </span>
-                            </td>
-                            {% endif %}
-                            <td class="doc-cell-actions">
-                                <div class="row-menu-wrapper">
-                                    <button type="button" class="row-menu-trigger" aria-label="Darbības">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-                                    </button>
-                                    <div class="row-menu-dropdown">
-                                        <a href="/documents/{{ doc.id }}" class="row-menu-item">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                            Skatīt
-                                        </a>
-                                        <a href="/documents/{{ doc.id }}/edit" class="row-menu-item">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                            Rediģēt
-                                        </a>
-                                        <a href="/documents/{{ doc.id }}/pdf" class="row-menu-item" target="_blank">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                            Lejupielādēt PDF
-                                        </a>
-                                        {% if einvoice_enabled %}
-                                        <a href="/documents/{{ doc.id }}/einvoice" class="row-menu-item" target="_blank">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            Lejupielādēt E-rēķinu (XML)
-                                        </a>
-                                        {% else %}
-                                        <a href="/pricing" class="row-menu-item row-menu-disabled">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            E-rēķins (XML) <span class="badge-pro-menu">PRO</span>
-                                        </a>
-                                        {% endif %}
-                                        <div class="row-menu-divider"></div>
-                                        {% if email_enabled %}
-                                        <button type="button" class="row-menu-item" data-action="send" data-doc-id="{{ doc.id }}" data-client-id="{{ doc.client_id }}">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                                            Nosūtīt klientam
-                                        </button>
-                                        {% else %}
-                                        <a href="/pricing" class="row-menu-item row-menu-disabled">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                                            Nosūtīt klientam <span class="badge-pro-menu">PRO</span>
-                                        </a>
-                                        {% endif %}
-                                        {% if recurring_enabled %}
-                                        <button type="button" class="row-menu-item" data-action="recurring" data-doc-id="{{ doc.id }}">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                                            Periodiskais rēķins
-                                        </button>
-                                        {% else %}
-                                        <a href="/pricing" class="row-menu-item row-menu-disabled">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                                            Periodiskais rēķins <span class="badge-pro-menu">PRO</span>
-                                        </a>
-                                        {% endif %}
-                                        <div class="row-menu-divider"></div>
-                                        <form method="post" action="/documents/{{ doc.id }}/delete">
-                                            <button type="submit" class="row-menu-item row-menu-danger">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                                Pārvietot uz papīrgrozu
-                                            </button>
-                                        </form>
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        {% set has_filters = filters.doc_type or filters.client_id or filters.date_from or filters.date_to or filters.status %}
-                        <tr><td colspan="{{ 7 if settings.get('status_tracking', '0') == '1' else 6 }}" style="padding:0">
-                            {% if has_filters %}
-                            {{ empty_state(
-                                icon="search",
-                                title="Nav dokumentu ar šiem filtriem",
-                                text="Neviens dokuments neatbilst izvēlētajiem kritērijiem. Pamēģiniet paplašināt meklēšanu.",
-                                cta_href="/documents",
-                                cta_label="Notīrīt filtrus") }}
-                            {% else %}
-                            {{ empty_state(
-                                icon="document",
-                                title="Vēl nav neviena dokumenta",
-                                text="Izveidojiet pirmo rēķinu — tas aizņems mazāk par minūti.",
-                                cta_href="/documents/new",
-                                cta_label="Jauns dokuments") }}
-                            {% endif %}
-                        </td></tr>
-                    {% endif %}
-                    </tbody>
-                </table>
+    <section class="card">
+        {% if tracking %}
+        <nav class="tabs list-tabs" aria-label="Statuss">
+            <button type="button" data-status="" class="{% if not filters.status %}active{% endif %}">Visi</button>
+            <button type="button" data-status="issued" class="{% if filters.status == 'issued' %}active{% endif %}">Gaida apmaksu</button>
+            <button type="button" data-status="paid" class="{% if filters.status == 'paid' %}active{% endif %}">Apmaksāti</button>
+        </nav>
+        {% endif %}
+        <input type="hidden" id="fStatus" value="{{ filters.status }}">
+
+        <div class="list-toolbar">
+            <div class="search-field" style="position:relative">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input type="text" id="fClientSearch" class="form-control" placeholder="Klients" autocomplete="off" aria-label="Filtrēt pēc klienta">
+                <input type="hidden" id="fClientId" value="{{ filters.client_id }}">
+                <div id="fClientDropdown" class="search-dropdown" hidden></div>
             </div>
+            {% if stock_enabled %}
+            <div class="segmented" role="group" aria-label="Veids">
+                <button type="button" data-type="" class="{% if not filters.doc_type %}on{% endif %}">Visi</button>
+                <button type="button" data-type="sell" class="{% if filters.doc_type == 'sell' %}on{% endif %}">Pārdošana</button>
+                <button type="button" data-type="buy" class="{% if filters.doc_type == 'buy' %}on{% endif %}">Iegāde</button>
+            </div>
+            <input type="hidden" id="fDocType" value="{{ filters.doc_type }}">
+            {% endif %}
+            <div class="dates">
+                <input type="date" id="dateFrom" class="form-control" value="{{ filters.date_from }}" aria-label="No" placeholder="No">
+                <span class="sep">–</span>
+                <input type="date" id="dateTo" class="form-control" value="{{ filters.date_to }}" aria-label="Līdz" placeholder="Līdz">
+            </div>
+            <div class="chips">
+                <button type="button" class="chip" data-preset="this">Šomēnes</button>
+                <button type="button" class="chip" data-preset="last">Iepriekšējais</button>
+            </div>
+            <a href="/documents" class="btn btn-ghost btn-sm clear" id="clearFilters" hidden>Notīrīt</a>
         </div>
-    </div>
+
+        {% if documents or filters.doc_type or filters.client_id or filters.date_from or filters.date_to or filters.status %}
+        <table class="docs">
+            <thead>
+                <tr>
+                    <th class="c-num">Nr.</th>
+                    <th class="c-client">Klients</th>
+                    <th class="c-date">Datums</th>
+                    {% if tracking %}<th class="c-due">Termiņš</th>{% endif %}
+                    <th class="c-sum text-right">Summa</th>
+                    {% if tracking %}<th class="c-status">Statuss</th>{% endif %}
+                    <th class="c-menu"><span class="sr-only">Darbības</span></th>
+                </tr>
+            </thead>
+            <tbody id="docsBody"></tbody>
+        </table>
+        <div class="list-foot" id="listFoot"></div>
+        {% else %}
+        {{ empty_state(
+            icon="document",
+            title="Vēl nav neviena rēķina",
+            text="Izveidojiet pirmo — klients, rindas, un PDF ir gatavs.",
+            cta_href="/documents/new",
+            cta_label="Jauns rēķins") }}
+        {% endif %}
+    </section>
 </div>
-<!-- Send Email Modal (list page) -->
-<div class="modal-overlay" id="listSendModal">
+
+<!-- Send by e-mail -->
+<div class="modal-overlay" id="listSendModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal" style="max-width:560px">
-        <div class="modal-title">Nosūtīt dokumentu pa e-pastu</div>
+        <div class="modal-title">Nosūtīt pa e-pastu</div>
         <form method="post" id="listSendForm" action="">
             <input type="hidden" name="template" value="classic">
             <input type="hidden" name="return_to" id="listSendReturnTo" value="/documents">
             <div class="form-group">
-                <label>Saņēmēja e-pasts</label>
-                <input type="email" name="email" id="listSendEmail" class="form-control"
-                       required placeholder="klients@epasts.lv">
+                <label for="listSendEmail">Saņēmējs</label>
+                <input type="email" name="email" id="listSendEmail" class="form-control" required placeholder="klients@epasts.lv">
             </div>
             <div class="form-group">
-                <label>Tēma</label>
+                <label for="listSendSubject">Tēma</label>
                 <input type="text" name="email_subject" id="listSendSubject" class="form-control">
             </div>
             <div class="form-group">
-                <label>Pielikuma formāts</label>
+                <label for="listSendFormat">Pielikums</label>
                 <select name="attachment_format" id="listSendFormat" class="form-control" onchange="updateListAttachmentName()">
                     <option value="pdf" selected>PDF</option>
-                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>
-                        E-rēķins (PEPPOL XML){% if not einvoice_enabled %} — PRO{% endif %}
-                    </option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · PRO{% endif %}</option>
                 </select>
             </div>
-            <div style="background:var(--bg);border-radius:var(--radius);padding:10px 16px;font-size:12px;margin-bottom:16px;border:1px solid var(--border);color:var(--text-light)">
-                No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;
-                {% if request.state.user.email %} · Atbildēt uz: {{ request.state.user.email }}{% endif %}
-                 · Pielikums: <span id="listSendAttachment">dokuments.pdf</span>
-            </div>
-            <div class="form-group" style="margin-bottom:12px">
-                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                    <input type="checkbox" id="listCustomEmailToggle" onchange="listToggleCustomEmail()"
-                           style="width:18px;height:18px;cursor:pointer">
-                    Pielāgot e-pasta ziņojumu
-                </label>
+            <p class="field-hint" style="margin:-4px 0 16px">
+                No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;{% if request.state.user.email %} · atbildes uz {{ request.state.user.email }}{% endif %}
+                · <span id="listSendAttachment">dokuments.pdf</span>
+            </p>
+            <div class="form-group">
+                <label class="check"><input type="checkbox" id="listCustomEmailToggle" onchange="listToggleCustomEmail()"> Rakstīt savu ziņojumu</label>
             </div>
             <div id="listCustomEmailSection" style="display:none">
                 <div class="form-group">
-                    <label>E-pasta teksts</label>
-                    <textarea name="email_body" id="listSendBody" class="form-control" rows="6"
-                              style="font-size:13px;line-height:1.5;resize:vertical"></textarea>
+                    <label for="listSendBody">Ziņojums</label>
+                    <textarea name="email_body" id="listSendBody" class="form-control" rows="6"></textarea>
                 </div>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('listSendModal').classList.remove('active')">Atcelt</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('listSendModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Nosūtīt</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Schedule Recurring Modal (list page) -->
-<div class="modal-overlay" id="listRecurringModal">
+<!-- Recurring -->
+<div class="modal-overlay" id="listRecurringModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal">
-        <div class="modal-title">Izveidot periodisku rēķinu</div>
+        <div class="modal-title">Periodisks rēķins</div>
         <form method="post" id="listRecurringForm" action="">
             <input type="hidden" name="template" value="classic">
             <div class="form-group">
-                <label>Biežums</label>
-                <select name="frequency" class="form-control">
+                <label for="listRecFreq">Cik bieži</label>
+                <select name="frequency" id="listRecFreq" class="form-control">
                     <option value="monthly">Katru mēnesi</option>
-                    <option value="bimonthly">Katrus 2 mēnešus</option>
+                    <option value="bimonthly">Ik pēc 2 mēnešiem</option>
                     <option value="quarterly">Katru ceturksni</option>
-                    <option value="halfyearly">Katrus 6 mēnešus</option>
+                    <option value="halfyearly">Ik pēc 6 mēnešiem</option>
                     <option value="yearly">Katru gadu</option>
                 </select>
             </div>
             <div class="form-group">
-                <label>Pirmā izpilde</label>
-                <input type="date" name="next_run" class="form-control" value="">
+                <label for="listRecNext">Pirmais rēķins</label>
+                <input type="date" name="next_run" id="listRecNext" class="form-control" value="">
             </div>
-            <div class="form-group" style="display:flex;align-items:center;gap:8px">
-                <input type="checkbox" name="send_email" value="1" id="listRecSendEmail">
-                <label for="listRecSendEmail" style="margin:0;font-weight:400">Automātiski nosūtīt pa e-pastu</label>
+            <div class="form-group">
+                <label class="check"><input type="checkbox" name="send_email" value="1" id="listRecSendEmail"> Nosūtīt klientam automātiski</label>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('listRecurringModal').classList.remove('active')">Atcelt</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('listRecurringModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Izveidot</button>
             </div>
         </form>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
-const statusTracking = {{ 'true' if settings.get('status_tracking', '0') == '1' else 'false' }};
+const statusTracking = {{ 'true' if tracking else 'false' }};
 const einvoiceEnabled = {{ 'true' if einvoice_enabled else 'false' }};
 const recurringEnabled = {{ 'true' if recurring_enabled else 'false' }};
 const emailEnabled = {{ 'true' if email_enabled else 'false' }};
+const clients = {{ clients | tojson }};
+const TODAY = "{{ today }}";
+let docsData = {{ doc_rows | tojson }};
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+function daysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+
+function statusCell(d) {
+    if (!statusTracking) return '';
+    const paid = d.status === 'paid';
+    let label = 'gaida', cls = 'pill-neutral';
+    if (paid) { label = 'apmaksāts'; cls = 'pill-success'; }
+    else if (d.doc_type === 'sell' && d.payment_due_date && d.payment_due_date < TODAY) {
+        label = 'kavēts ' + daysBetween(d.payment_due_date, TODAY) + ' d.'; cls = 'pill-danger';
+    }
+    return '<td class="c-status"><button type="button" class="pill status-btn ' + cls + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" title="Mainīt statusu">' + label + '</button></td>';
+}
+
+function rowHtml(d) {
+    const date = fmtDate(d.doc_date);
+    const typeTag = d.doc_type === 'buy' ? ' <span class="pill pill-warning">iegāde</span>' : '';
+    const excl = d.excluded_from_stats ? ' <span class="pill pill-outline" title="Netiek ieskaitīts pārskatos">ārpus pārskata</span>' : '';
+    let due = '';
+    if (statusTracking) {
+        if (!d.payment_due_date || d.doc_type !== 'sell') due = '<td class="c-due num muted">—</td>';
+        else {
+            const late = d.status !== 'paid' && d.payment_due_date < TODAY;
+            due = '<td class="c-due num' + (late ? ' due-late' : '') + '">' + fmtDate(d.payment_due_date) + '</td>';
+        }
+    }
+    return '<tr class="clickable-row" data-href="/documents/' + d.id + '">'
+        + '<td class="c-num"><a href="/documents/' + d.id + '" class="row-link">' + esc(d.doc_number) + '</a>' + excl + '</td>'
+        + '<td class="c-client"><a href="/documents/' + d.id + '" class="plain">' + esc(d.client_name) + '</a>' + typeTag + '</td>'
+        + '<td class="c-meta">' + esc(d.doc_number) + ' · ' + date + '</td>'
+        + '<td class="c-date num">' + date + '</td>'
+        + due
+        + '<td class="c-sum num text-right">' + fmtEur(d.total_with_vat) + '</td>'
+        + statusCell(d)
+        + '<td class="c-menu text-right">' + menuHtml(d) + '</td>'
+        + '</tr>';
+}
+
+function renderDocs(docs) {
+    docsData = docs;
+    const tbody = document.getElementById('docsBody');
+    if (!tbody) return;
+    const foot = document.getElementById('listFoot');
+    if (!docs.length) {
+        const cols = statusTracking ? 7 : 5;
+        tbody.innerHTML = '<tr><td colspan="' + cols + '" style="padding:0">'
+            + '<div class="empty-state-rich"><div class="empty-state-title">Nekas neatbilst filtriem</div>'
+            + '<div class="empty-state-text">Pamēģiniet citu periodu vai klientu.</div>'
+            + '<div class="empty-state-actions"><a href="/documents" class="btn btn-outline btn-sm">Notīrīt filtrus</a></div></div></td></tr>';
+        foot.hidden = true;
+        return;
+    }
+    tbody.innerHTML = docs.map(rowHtml).join('');
+    // The footer is computed from the rows on screen, so it always agrees with them.
+    const total = docs.reduce((a, d) => a + Number(d.total_with_vat || 0), 0);
+    const n = docs.length;
+    foot.hidden = false;
+    foot.innerHTML = '<span>' + n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? 'dokuments' : 'dokumenti') + '</span><span>Kopā <b>' + fmtEur(total) + '</b></span>';
+}
+
+function menuHtml(d) {
+    let items = '<a href="/documents/' + d.id + '" class="row-menu-item">Atvērt</a>'
+        + '<a href="/documents/' + d.id + '/edit" class="row-menu-item">Rediģēt</a>'
+        + '<a href="/documents/' + d.id + '/pdf" class="row-menu-item" target="_blank">Lejupielādēt PDF</a>'
+        + (einvoiceEnabled
+            ? '<a href="/documents/' + d.id + '/einvoice" class="row-menu-item" target="_blank">E-rēķins (XML)</a>'
+            : '<a href="/pricing" class="row-menu-item row-menu-disabled">E-rēķins (XML) · PRO</a>')
+        + '<div class="row-menu-divider"></div>'
+        + (emailEnabled
+            ? '<button type="button" class="row-menu-item" data-action="send" data-doc-id="' + d.id + '" data-client-id="' + (d.client_id || '') + '">Nosūtīt klientam</button>'
+            : '<a href="/pricing" class="row-menu-item row-menu-disabled">Nosūtīt klientam · PRO</a>')
+        + (recurringEnabled
+            ? '<button type="button" class="row-menu-item" data-action="recurring" data-doc-id="' + d.id + '">Padarīt periodisku</button>'
+            : '<a href="/pricing" class="row-menu-item row-menu-disabled">Padarīt periodisku · PRO</a>')
+        + '<div class="row-menu-divider"></div>'
+        + '<form method="post" action="/documents/' + d.id + '/delete"><button type="submit" class="row-menu-item row-menu-danger">Pārvietot uz papīrgrozu</button></form>';
+    return '<div class="row-menu-wrapper"><button type="button" class="row-menu-trigger" aria-label="Darbības ar ' + esc(d.doc_number) + '">'
+        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>'
+        + '</button><div class="row-menu-dropdown">' + items + '</div></div>';
+}
 
 async function toggleStatus(el) {
     const docId = el.dataset.docId;
     el.style.opacity = '0.5';
     try {
-        const res = await fetch('/documents/' + docId + '/status', {
-            method: 'POST',
-            headers: {'Accept': 'application/json'},
-            credentials: 'same-origin'
-        });
+        const res = await fetch('/documents/' + docId + '/status', { method: 'POST', headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
         if (!res.ok) throw new Error('Status ' + res.status);
         const data = await res.json();
-        el.dataset.status = data.status;
-        if (data.status === 'paid') {
-            el.textContent = 'Apmaksāts';
-            el.className = 'pill pill-status pill-success';
-        } else {
-            el.textContent = 'Izrakstīts';
-            el.className = 'pill pill-status pill-brand';
+        const d = docsData.find(x => String(x.id) === String(docId));
+        if (d) d.status = data.status;
+        const fs = document.getElementById('fStatus').value;
+        if (fs && fs !== data.status) {
+            // The row no longer belongs in this tab.
+            renderDocs(docsData.filter(x => x.status === fs));
+        } else if (d) {
+            el.closest('td').outerHTML = statusCell(d);
         }
-    } catch(e) {
-        alert('Kļūda mainot statusu');
+    } catch (e) {
+        alert('Neizdevās mainīt statusu');
     }
     el.style.opacity = '1';
 }
 
-// --- Searchable client filter ---
-function showClientDropdown() {
-    document.getElementById('fClientDropdown').style.display = 'block';
-    filterClients();
+/* ------------------------------------------------------------ filters */
+const fClientSearch = document.getElementById('fClientSearch');
+const fClientDropdown = document.getElementById('fClientDropdown');
+function renderClientFilter() {
+    const q = fClientSearch.value.trim().toLowerCase();
+    const list = clients.filter(c => !q || c.name.toLowerCase().includes(q)).slice(0, 40);
+    fClientDropdown.innerHTML = '<div class="search-dropdown-item" data-id=""><span>Visi klienti</span></div>'
+        + list.map(c => '<div class="search-dropdown-item" data-id="' + c.id + '"><span>' + esc(c.name) + '</span></div>').join('');
+    fClientDropdown.hidden = false;
 }
-function filterClients() {
-    var q = document.getElementById('fClientSearch').value.toLowerCase();
-    document.querySelectorAll('#fClientDropdown .search-dropdown-item').forEach(function(el) {
-        var name = el.textContent.toLowerCase();
-        el.style.display = (!q || name.includes(q)) ? '' : 'none';
-    });
-}
-function selectFilterClient(id, name) {
+fClientSearch.addEventListener('focus', renderClientFilter);
+fClientSearch.addEventListener('input', renderClientFilter);
+fClientSearch.addEventListener('blur', () => setTimeout(() => { fClientDropdown.hidden = true; }, 120));
+fClientDropdown.addEventListener('mousedown', e => {
+    const it = e.target.closest('.search-dropdown-item');
+    if (!it) return;
+    e.preventDefault();
+    const id = it.dataset.id;
     document.getElementById('fClientId').value = id;
-    document.getElementById('fClientSearch').value = id ? name : '';
-    document.getElementById('fClientDropdown').style.display = 'none';
+    const c = clients.find(x => String(x.id) === id);
+    fClientSearch.value = c ? c.name : '';
+    fClientDropdown.hidden = true;
+    fClientSearch.blur();
     loadDocs();
-}
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('#fClientSearch') && !e.target.closest('#fClientDropdown')) {
-        document.getElementById('fClientDropdown').style.display = 'none';
-    }
 });
-// Init client search field with current selection
-(function() {
-    var cid = document.getElementById('fClientId').value;
-    if (cid) {
-        var item = document.querySelector('#fClientDropdown .search-dropdown-item[data-id="' + cid + '"]');
-        if (item) document.getElementById('fClientSearch').value = item.textContent.trim();
-    }
+(function () {
+    const cid = document.getElementById('fClientId').value;
+    const c = clients.find(x => String(x.id) === String(cid));
+    if (c) fClientSearch.value = c.name;
 })();
 
-// --- AJAX document loading ---
-var loadTimer = null;
-function loadDocs() {
-    clearTimeout(loadTimer);
-    loadTimer = setTimeout(_doLoad, 150);
-}
-
-function _doLoad() {
-    var params = new URLSearchParams();
-    var docType = document.getElementById('fDocType');
-    if (docType && docType.value) params.set('doc_type', docType.value);
-    var clientId = document.getElementById('fClientId').value;
-    if (clientId) params.set('client_id', clientId);
-    var status = document.getElementById('fStatus');
-    if (status && status.value) params.set('status', status.value);
-    var df = document.getElementById('dateFrom').value;
-    var dt = document.getElementById('dateTo').value;
-    if (df) params.set('date_from', df);
-    if (dt) params.set('date_to', dt);
-
-    // Update URL without reload
-    var newUrl = '/documents' + (params.toString() ? '?' + params.toString() : '');
-    history.replaceState(null, '', newUrl);
-
-    fetch('/api/documents?' + params.toString(), {credentials: 'same-origin'})
-        .then(function(r) { return r.json(); })
-        .then(function(docs) { renderDocs(docs); });
-}
-
-function fmtDate(iso) {
-    if (!iso || !iso.includes('-')) return iso;
-    var p = iso.split('-');
-    return p[2] + '/' + p[1] + '/' + p[0];
-}
-
-function avatarColor(d) {
-    if (d && d.client_id != null) return d.client_id % 10;
-    var s = (d && d.client_name || '?').charCodeAt(0) || 0;
-    return s % 10;
-}
-function escapeHtml(s) {
-    return (s || '').replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
-}
-function renderDocs(docs) {
-    var tbody = document.getElementById('docsBody');
-    if (!tbody) return;
-    if (!docs.length) {
-        tbody.innerHTML = '<tr><td colspan="' + (statusTracking ? 7 : 6) + '" style="padding:0">'
-            + '<div class="empty-state-rich">'
-            + '<div class="empty-state-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-            + 'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-            + '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>'
-            + '<div class="empty-state-title">Nav dokumentu ar šiem filtriem</div>'
-            + '<div class="empty-state-text">Neviens dokuments neatbilst izvēlētajiem kritērijiem. '
-            + 'Pamēģiniet paplašināt meklēšanu.</div>'
-            + '<div class="empty-state-actions"><a href="/documents" class="btn btn-primary btn-sm">Notīrīt filtrus</a></div>'
-            + '</div></td></tr>';
-        return;
-    }
-    var html = '';
-    docs.forEach(function(d) {
-        var typePill = d.doc_type === 'buy'
-            ? '<span class="pill pill-warning">Iegāde</span>'
-            : '<span class="pill pill-brand">Pārdošana</span>';
-        var statusHtml = '';
-        if (statusTracking) {
-            var isPaid = d.status === 'paid';
-            statusHtml = '<td class="doc-cell-status"><span class="pill pill-status ' + (isPaid ? 'pill-success' : 'pill-brand') + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" style="cursor:pointer" title="Noklikšķiniet, lai mainītu statusu">' + (isPaid ? 'Apmaksāts' : 'Izrakstīts') + '</span></td>';
-        }
-        var clientName = d.client_name || '';
-        var initials = (clientName || '?').slice(0, 2).toUpperCase();
-        var clientHtml = '<span class="doc-client-cell">'
-            + '<span class="brand-avatar sm bg-' + avatarColor(d) + '">' + escapeHtml(initials) + '</span>'
-            + '<span>' + escapeHtml(clientName) + '</span>'
-            + '</span>';
-        html += '<tr data-href="/documents/' + d.id + '" class="clickable-row">'
-            + '<td data-label="Nr." class="mobile-card-title" style="font-weight:600">' + escapeHtml(d.doc_number) + (d.excluded_from_stats ? ' <span class="pill pill-neutral" style="font-weight:600" title="Netiek iekļauts statistikā">&#8709;</span>' : '') + '</td>'
-            + '<td data-label="Tips">' + typePill + '</td>'
-            + '<td data-label="Klients" class="mobile-card-meta">' + clientHtml + '</td>'
-            + '<td data-label="Datums" class="mobile-card-meta">' + fmtDate(d.doc_date) + '</td>'
-            + '<td data-label="Summa" style="font-weight:700">' + d.total_with_vat.toFixed(2) + ' €</td>'
-            + statusHtml
-            + '<td class="doc-cell-actions">' + menuHtml(d) + '</td>'
-            + '</tr>';
-    });
-    tbody.innerHTML = html;
-}
-
-function menuHtml(d) {
-    var items = '<a href="/documents/' + d.id + '" class="row-menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Skatīt</a>';
-    items += '<a href="/documents/' + d.id + '/edit" class="row-menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Rediģēt</a>';
-    items += '<a href="/documents/' + d.id + '/pdf" class="row-menu-item" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Lejupielādēt PDF</a>';
-    if (einvoiceEnabled) {
-        items += '<a href="/documents/' + d.id + '/einvoice" class="row-menu-item" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Lejupielādēt E-rēķinu (XML)</a>';
-    } else {
-        items += '<a href="/pricing" class="row-menu-item row-menu-disabled"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>E-rēķins (XML) <span class="badge-pro-menu">PRO</span></a>';
-    }
-    items += '<div class="row-menu-divider"></div>';
-    if (emailEnabled) {
-        items += '<button type="button" class="row-menu-item" data-action="send" data-doc-id="' + d.id + '" data-client-id="' + (d.client_id || '') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Nosūtīt klientam</button>';
-    } else {
-        items += '<a href="/pricing" class="row-menu-item row-menu-disabled"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Nosūtīt klientam <span class="badge-pro-menu">PRO</span></a>';
-    }
-    if (recurringEnabled) {
-        items += '<button type="button" class="row-menu-item" data-action="recurring" data-doc-id="' + d.id + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Periodiskais rēķins</button>';
-    } else {
-        items += '<a href="/pricing" class="row-menu-item row-menu-disabled"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Periodiskais rēķins <span class="badge-pro-menu">PRO</span></a>';
-    }
-    items += '<div class="row-menu-divider"></div>';
-    items += '<form method="post" action="/documents/' + d.id + '/delete"><button type="submit" class="row-menu-item row-menu-danger"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Pārvietot uz papīrgrozu</button></form>';
-    return '<div class="row-menu-wrapper"><button type="button" class="row-menu-trigger" aria-label="Darbības"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button><div class="row-menu-dropdown">' + items + '</div></div>';
-}
+document.querySelectorAll('.list-tabs [data-status]').forEach(b => b.addEventListener('click', () => {
+    document.getElementById('fStatus').value = b.dataset.status;
+    document.querySelectorAll('.list-tabs [data-status]').forEach(x => x.classList.toggle('active', x === b));
+    loadDocs();
+}));
+document.querySelectorAll('.segmented [data-type]').forEach(b => b.addEventListener('click', () => {
+    document.getElementById('fDocType').value = b.dataset.type;
+    document.querySelectorAll('.segmented [data-type]').forEach(x => x.classList.toggle('on', x === b));
+    loadDocs();
+}));
 
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
-
-function setThisMonth() {
-    var now = new Date();
-    var y = now.getFullYear();
-    var m = now.getMonth();
-    document.getElementById('dateFrom').value = y + '-' + pad(m + 1) + '-01';
-    var last = new Date(y, m + 1, 0);
-    document.getElementById('dateTo').value = y + '-' + pad(m + 1) + '-' + pad(last.getDate());
-    loadDocs();
+function monthRange(offset) {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+    const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    return [iso(first), iso(last)];
 }
-
-function setLastMonth() {
-    var now = new Date();
-    var y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    var m = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-    document.getElementById('dateFrom').value = y + '-' + pad(m + 1) + '-01';
-    var last = new Date(y, m + 1, 0);
-    document.getElementById('dateTo').value = y + '-' + pad(m + 1) + '-' + pad(last.getDate());
+const presets = { this: monthRange(0), last: monthRange(-1) };
+document.querySelectorAll('[data-preset]').forEach(ch => ch.addEventListener('click', () => {
+    const p = presets[ch.dataset.preset];
+    const df = document.getElementById('dateFrom'), dt = document.getElementById('dateTo');
+    const already = df.value === p[0] && dt.value === p[1];
+    df.value = already ? '' : p[0];
+    dt.value = already ? '' : p[1];
     loadDocs();
+}));
+function paintFilterState() {
+    const df = document.getElementById('dateFrom').value, dt = document.getElementById('dateTo').value;
+    document.querySelectorAll('[data-preset]').forEach(ch => {
+        const p = presets[ch.dataset.preset];
+        ch.classList.toggle('on', df === p[0] && dt === p[1]);
+    });
+    const any = df || dt || document.getElementById('fClientId').value || document.getElementById('fStatus').value
+        || (document.getElementById('fDocType') && document.getElementById('fDocType').value);
+    document.getElementById('clearFilters').hidden = !any;
 }
-
-// Wire up date inputs for AJAX
 document.getElementById('dateFrom').addEventListener('change', loadDocs);
 document.getElementById('dateTo').addEventListener('change', loadDocs);
 
-// Client email lookup for send modal
+let loadTimer = null;
+function loadDocs() {
+    paintFilterState();
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(_doLoad, 120);
+}
+function _doLoad() {
+    const params = new URLSearchParams();
+    const dt = document.getElementById('fDocType');
+    if (dt && dt.value) params.set('doc_type', dt.value);
+    const cid = document.getElementById('fClientId').value;
+    if (cid) params.set('client_id', cid);
+    const st = document.getElementById('fStatus').value;
+    if (st) params.set('status', st);
+    const df = document.getElementById('dateFrom').value, dto = document.getElementById('dateTo').value;
+    if (df) params.set('date_from', df);
+    if (dto) params.set('date_to', dto);
+    history.replaceState(null, '', '/documents' + (params.toString() ? '?' + params : ''));
+    fetch('/api/documents?' + params, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(renderDocs);
+}
+
+renderDocs(docsData);
+paintFilterState();
+
+/* ------------------------------------------------------- row actions */
 const clientEmailMap = {
     {% for c in clients %}{{ c.id }}: {{ (c.email or '') | tojson }},{% endfor %}
 };
-
 function listToggleCustomEmail() {
-    var section = document.getElementById('listCustomEmailSection');
-    section.style.display = document.getElementById('listCustomEmailToggle').checked ? 'block' : 'none';
+    document.getElementById('listCustomEmailSection').style.display = document.getElementById('listCustomEmailToggle').checked ? 'block' : 'none';
 }
-
 function updateListAttachmentName() {
-    var el = document.getElementById('listSendAttachment');
-    var sel = document.getElementById('listSendFormat');
-    if (!el) return;
-    var base = window._listSendDocNumber || 'dokuments';
-    el.textContent = base + (sel && sel.value === 'xml' ? '.xml' : '.pdf');
+    const el = document.getElementById('listSendAttachment');
+    const sel = document.getElementById('listSendFormat');
+    if (el) el.textContent = (window._listSendDocNumber || 'dokuments') + (sel && sel.value === 'xml' ? '.xml' : '.pdf');
 }
-
 function openListSendModal(docId, clientId) {
-    var form = document.getElementById('listSendForm');
-    form.action = '/documents/' + docId + '/send';
-    var emailInput = document.getElementById('listSendEmail');
-    var subjectInput = document.getElementById('listSendSubject');
-    var bodyInput = document.getElementById('listSendBody');
+    document.getElementById('listSendForm').action = '/documents/' + docId + '/send';
+    const emailInput = document.getElementById('listSendEmail');
+    const subjectInput = document.getElementById('listSendSubject');
+    const bodyInput = document.getElementById('listSendBody');
     emailInput.value = clientEmailMap[clientId] || '';
     subjectInput.value = '';
     bodyInput.value = '';
-    // Preserve current filters in the return URL so the user stays put
     document.getElementById('listSendReturnTo').value = window.location.pathname + window.location.search;
     document.getElementById('listCustomEmailToggle').checked = false;
     document.getElementById('listCustomEmailSection').style.display = 'none';
     document.getElementById('listSendModal').classList.add('active');
-    if (!emailInput.value) setTimeout(function() { emailInput.focus(); }, 50);
-    var attachEl = document.getElementById('listSendAttachment');
-    if (attachEl) attachEl.textContent = 'dokuments.pdf';
+    if (!emailInput.value) setTimeout(() => emailInput.focus(), 50);
     window._listSendDocNumber = '';
-    var fmtSel = document.getElementById('listSendFormat');
-    if (fmtSel) fmtSel.value = 'pdf';   // always start from PDF
-    fetch('/api/documents/' + docId + '/email-defaults', {credentials: 'same-origin'})
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(d) {
+    const fmtSel = document.getElementById('listSendFormat');
+    if (fmtSel) fmtSel.value = 'pdf';
+    updateListAttachmentName();
+    fetch('/api/documents/' + docId + '/email-defaults', { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
             if (!d) return;
             subjectInput.value = d.subject || '';
             bodyInput.value = d.body || '';
             if (!emailInput.value && d.client_email) emailInput.value = d.client_email;
-            if (d.doc_number) {
-                window._listSendDocNumber = d.doc_number;
-                updateListAttachmentName();
-            }
+            if (d.doc_number) { window._listSendDocNumber = d.doc_number; updateListAttachmentName(); }
         })
-        .catch(function() {});
+        .catch(() => {});
 }
-
-function openListRecurringModal(docId) {
-    document.getElementById('listRecurringForm').action = '/recurring/from-document/' + docId;
-    document.getElementById('listRecurringModal').classList.add('active');
-}
-
 function positionDropdown(trigger, dropdown) {
     const rect = trigger.getBoundingClientRect();
-    dropdown.style.left = '';
-    dropdown.style.right = '';
-    dropdown.style.top = '';
-    dropdown.style.bottom = '';
-    // Show briefly to measure
+    dropdown.style.position = 'fixed';
     dropdown.style.visibility = 'hidden';
     dropdown.style.display = 'block';
-    const dh = dropdown.offsetHeight;
-    const dw = dropdown.offsetWidth;
+    const dh = dropdown.offsetHeight, dw = dropdown.offsetWidth;
     dropdown.style.display = '';
     dropdown.style.visibility = '';
-
-    // Vertical: prefer below, flip up if not enough space
-    const spaceBelow = window.innerHeight - rect.bottom;
-    var top;
-    if (spaceBelow < dh + 8 && rect.top > dh + 8) {
-        top = rect.top - dh - 4;
-    } else {
-        top = rect.bottom + 4;
-    }
-    // Clamp to viewport
+    let top = (window.innerHeight - rect.bottom < dh + 8 && rect.top > dh + 8) ? rect.top - dh - 4 : rect.bottom + 4;
     top = Math.max(8, Math.min(top, window.innerHeight - dh - 8));
     dropdown.style.top = top + 'px';
-
-    // Horizontal: align right edge to trigger, clamp within viewport
-    var left = rect.right - dw;
-    left = Math.max(8, Math.min(left, window.innerWidth - dw - 8));
-    dropdown.style.left = left + 'px';
+    dropdown.style.left = Math.max(8, Math.min(rect.right - dw, window.innerWidth - dw - 8)) + 'px';
+    dropdown.style.right = 'auto';
 }
-
-document.addEventListener('click', function(e) {
-    // Handle menu trigger
+function closeMenus() { document.querySelectorAll('.row-menu-dropdown.open').forEach(d => d.classList.remove('open')); }
+document.addEventListener('click', function (e) {
     const trigger = e.target.closest('.row-menu-trigger');
     if (trigger) {
         e.stopPropagation();
-        const wrapper = trigger.closest('.row-menu-wrapper');
-        const dropdown = wrapper.querySelector('.row-menu-dropdown');
-        const wasOpen = wrapper.classList.contains('open');
-        document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
-        if (!wasOpen) {
-            positionDropdown(trigger, dropdown);
-            wrapper.classList.add('open');
-        }
+        const dropdown = trigger.closest('.row-menu-wrapper').querySelector('.row-menu-dropdown');
+        const wasOpen = dropdown.classList.contains('open');
+        closeMenus();
+        if (!wasOpen) { positionDropdown(trigger, dropdown); dropdown.classList.add('open'); }
         return;
     }
-
-    // Handle data-action buttons (send, recurring)
     const actionBtn = e.target.closest('[data-action]');
     if (actionBtn) {
         e.preventDefault();
-        e.stopPropagation();
-        var action = actionBtn.dataset.action;
-        var docId = actionBtn.dataset.docId;
-        document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
-        if (action === 'send') {
-            openListSendModal(docId, actionBtn.dataset.clientId);
-        } else if (action === 'recurring') {
-            openListRecurringModal(docId);
+        closeMenus();
+        const docId = actionBtn.dataset.docId;
+        if (actionBtn.dataset.action === 'send') openListSendModal(docId, actionBtn.dataset.clientId);
+        else if (actionBtn.dataset.action === 'recurring') {
+            document.getElementById('listRecurringForm').action = '/recurring/from-document/' + docId;
+            document.getElementById('listRecurringModal').classList.add('active');
         }
         return;
     }
-
-    // Clicks inside menu/interactive elements — don't navigate row
-    if (e.target.closest('.row-menu-wrapper') || e.target.closest('a') || e.target.closest('button') || e.target.closest('form') || e.target.closest('[onclick]')) {
-        return;
-    }
-    // Close any open menus
-    document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open'));
-    // Clickable row navigation
+    if (e.target.closest('.row-menu-wrapper, a, button, form, input, [onclick]')) return;
+    closeMenus();
     const row = e.target.closest('tr.clickable-row');
-    if (row && row.dataset.href) {
-        window.location.href = row.dataset.href;
-    }
+    if (row && row.dataset.href) window.location.href = row.dataset.href;
 });
-window.addEventListener('scroll', function() { document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open')); }, true);
-window.addEventListener('resize', function() { document.querySelectorAll('.row-menu-wrapper.open').forEach(w => w.classList.remove('open')); });
+window.addEventListener('scroll', closeMenus, true);
+window.addEventListener('resize', closeMenus);
 </script>
 {% endblock %}

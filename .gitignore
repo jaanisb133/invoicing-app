@@ -8,3 +8,11 @@ data/
 venv/
 *.egg-info/
 app/static/vendor/
+
+# Vendored Claude skills: keep their bundled data, ignore runtime state
+!.claude/skills/*/data/
+.claude/skills/seo/.venv/
+.claude/skills/seo/.venv.next-*/
+.claude/skills/seo/ms-playwright/
+.claude/skills/seo/runtime-state.json
+.taste-skill/

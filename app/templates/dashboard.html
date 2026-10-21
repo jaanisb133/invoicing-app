@@ -1,632 +1,333 @@
 {% extends "base.html" %}
 {% from "_empty_state.html" import empty_state %}
 
+{% set tracking = settings.get('status_tracking', '0') == '1' %}
+{% set vat_payer = settings.get('is_vat_payer', '1') == '1' %}
+{% set greet_name = current_user.display_name.strip() if (current_user.display_name and current_user.display_name.strip()) else (settings.get('company_name') or current_user.username) %}
+{% set overdue = unpaid | selectattr('days_to_due', 'ne', none) | selectattr('days_to_due', 'lt', 0) | list %}
+{% macro ddmm(iso) %}{{ iso[8:10] }}.{{ iso[5:7] }}.{% endmacro %}
+{% macro delta(pct, good_when_up=True) -%}
+    {%- if pct is none or pct == 0 -%}<span>0 %</span>
+    {%- else -%}
+        {%- set up = pct > 0 -%}
+        <span class="{{ 'up' if (up == good_when_up) else 'down' }}">{{ '+' if up else '−' }}{{ (pct | abs) | num(1) }} %</span>
+    {%- endif -%}
+{%- endmacro %}
+
+{% block title %}Pārskats · V-Rēķini{% endblock %}
+
 {% block content %}
 <style>
-/* Dashboard-local styles */
-.dash-greeting { padding: 8px 0 24px; }
-.dash-greeting h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.8px; color: var(--text); margin: 0; line-height: 1.2; }
-.dash-greeting .wave { display: inline-block; transform-origin: 70% 70%; animation: wave 2.4s ease-in-out 0.3s 1; }
-@keyframes wave { 0%,100%{transform:rotate(0)} 20%{transform:rotate(14deg)} 40%{transform:rotate(-8deg)} 60%{transform:rotate(14deg)} 80%{transform:rotate(-4deg)} }
-.dash-greeting p { font-size: 14.5px; color: var(--text-light); margin: 6px 0 0; }
+.dash-scope { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: var(--gap); }
+.dash-scope .dates { display: flex; align-items: center; gap: 6px; }
+.dash-scope .dates .form-control { height: 32px; width: 124px; min-width: 0; font-size: 13px; padding: 0 10px; }
+.dash-scope .dates .sep { color: var(--faint); }
+.finding .neg { color: var(--negative); font-weight: 500; }
 
-.dash-date-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 22px;
-}
-.dash-date-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    font-size: 13px;
-    color: var(--text);
-    cursor: pointer;
-    transition: all var(--transition);
-}
-.dash-date-pill:hover { border-color: var(--border-strong); background: var(--bg-card-hover); }
-.dash-date-pill svg { color: var(--text-light); }
-.dash-date-inputs { display: flex; align-items: center; gap: 6px; }
-.dash-date-inputs .form-control { width: auto; padding: 8px 12px; font-size: 13px; }
-.dash-presets { display: flex; gap: 6px; }
+.kpi-strip.is-loading .kpi-value, .kpi-strip.is-loading .kpi-foot > * { background: var(--active); color: transparent !important; border-radius: 4px; }
+.kpi-split { font-size: 12px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.kpi-split b { font-weight: 500; color: var(--text); }
+.kpi-split[hidden] { display: none; }
 
-.dash-stats-grid {
-    display: grid;
-    grid-template-columns: repeat({{ 4 if settings.get('status_tracking', '0') == '1' else 3 }}, 1fr);
-    gap: 14px;
-    margin-bottom: 22px;
-}
-.dash-stat {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 18px 18px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    text-decoration: none;
-    color: inherit;
-    transition: all var(--transition);
-}
-.dash-stat:hover { border-color: var(--border-strong); background: var(--bg-card-hover); }
-.dash-stat-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.dash-stat-label { font-size: 12.5px; font-weight: 500; color: var(--text-light); letter-spacing: -0.1px; }
-.dash-stat-value { font-size: 26px; font-weight: 700; color: var(--text); letter-spacing: -0.7px; line-height: 1.1; }
-.dash-stat-value small { font-size: 13px; font-weight: 500; color: var(--text-light); margin-left: 4px; }
-.dash-stat-foot { display: flex; align-items: center; gap: 6px; min-height: 23px; font-size: 11.5px; color: var(--text-lighter); }
-/* Secondary figures under a stat value (Apgrozījums: bez PVN · PVN) */
-/* No separator glyph on purpose: the two figures wrap onto separate lines
-   in narrow cards (2-up mobile grid) and a "·" would be stranded. The gap
-   plus muted label / stronger number keeps them apart on one line. */
-.dash-stat-sub { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin-top: -6px;
-                 font-size: 12px; color: var(--text-lighter); font-variant-numeric: tabular-nums; }
-.dash-stat-sub > span { white-space: nowrap; }
-.dash-stat-sub b { font-weight: 500; color: var(--text-light); margin-left: 2px; }
-.dash-stat-sub[hidden] { display: none; }
-.dash-stat-foot .pill { font-size: 11px; padding: 2px 8px; }
+.dash-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gap); align-items: start; margin-bottom: var(--gap); }
+/* The chart grows to the height of the card beside it, so the row ends on one line */
+.dash-row.stretch { align-items: stretch; }
+.chart-card { display: flex; flex-direction: column; }
+.chart-card .chart-body { flex: 1; min-height: 240px; height: auto; }
+.dash-row > .card { margin: 0; }
 
-/* --- Sparklines --- */
-.dash-stat-spark { height: 32px; margin-top: auto; position: relative; }
-/* The svg carries explicit pixel width/height matching its viewBox 1:1, so the
-   stroke and its dash pattern share one coordinate system. Don't stretch it. */
-.dash-stat-spark svg { display: block; height: 32px; }
-.dash-stat-spark .spark-area { fill: var(--text); opacity: 0.055; }
-.dash-stat-spark .spark-dot {
-    position: absolute;
-    width: 5px; height: 5px;
-    margin: -2.5px 0 0 -2.5px;
-    border-radius: 50%;
-    background: var(--text);
-    opacity: 0;
-    transition: opacity var(--transition);
-}
-.dash-stat-spark .spark-line {
-    fill: none;
-    stroke: var(--text);
-    stroke-width: 1.5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    opacity: 0.42;
-    transition: opacity var(--transition);
-}
-.dash-stat:hover .spark-line { opacity: 0.72; }
-.dash-stat:hover .spark-dot { opacity: 0.8; }
-/* Draw the line in on first paint */
-.dash-stat-spark.spark-enter .spark-line {
-    stroke-dasharray: var(--spark-len);
-    stroke-dashoffset: var(--spark-len);
-    animation: sparkDraw 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
-}
-.dash-stat-spark.spark-enter .spark-area { animation: sparkFade 0.9s ease forwards; opacity: 0; }
-@keyframes sparkDraw { to { stroke-dashoffset: 0; } }
-@keyframes sparkFade { to { opacity: 0.055; } }
+.chart-card .card-header { padding-bottom: 4px; }
+.chart-body { position: relative; height: 240px; padding: 8px 12px 4px 8px; transition: opacity .2s; }
+.chart-card.is-loading .chart-body { opacity: .35; }
+.chart-foot { border-top: 1px solid var(--rule); padding: 12px var(--card-pad); font-size: 13px; color: var(--muted); }
+.chart-foot b { color: var(--text); font-weight: 500; }
 
-/* --- Loading skeletons (AJAX date-range refresh) --- */
-.dash-stats-grid.is-loading .dash-stat-value,
-.dash-stats-grid.is-loading .dash-stat-sub > span,
-.dash-stats-grid.is-loading .dash-stat-foot > * {
-    color: transparent !important;
-    border-color: transparent !important;
-    background: linear-gradient(90deg, var(--bg-card-hover) 25%, var(--border) 37%, var(--bg-card-hover) 63%);
-    background-size: 200% 100%;
-    animation: shimmer 1.4s ease-in-out infinite;
-    border-radius: 6px;
-}
-.dash-stats-grid.is-loading .dash-stat-value small,
-.dash-stats-grid.is-loading .dash-stat-sub b { color: transparent !important; }
-.dash-stats-grid.is-loading .dash-stat-spark { opacity: 0.25; transition: opacity 0.2s; }
-.dash-stat-spark { transition: opacity 0.2s; }
-.dash-chart-card.is-loading .dash-chart-body { opacity: 0.3; transition: opacity 0.2s; }
-.dash-chart-body { transition: opacity 0.2s; }
-@media (prefers-reduced-motion: reduce) {
-    .dash-stat-spark.spark-enter .spark-line { animation: none; stroke-dashoffset: 0; }
-    .dash-stat-spark.spark-enter .spark-area { animation: none; opacity: 0.055; }
-    .dash-stats-grid.is-loading .dash-stat-value,
-    .dash-stats-grid.is-loading .dash-stat-foot > * { animation: none; }
-}
+/* Termiņi: every unpaid invoice on one time axis, today marked */
+.due-list { padding: 4px var(--card-pad) 8px; }
+.due-row { display: block; padding: 10px 0 8px; border-bottom: 1px solid var(--rule); color: inherit; }
+.due-row:last-child { border-bottom: 0; }
+.due-row:hover .due-name { text-decoration: underline; text-decoration-color: var(--control); text-underline-offset: 3px; }
+.due-line1 { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.due-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.due-amt { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
+.due-line2 { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 12px; align-items: center; margin-top: 6px; }
+.due-track { position: relative; height: 12px; }
+.due-track::before { content: ""; position: absolute; left: 0; right: 0; top: 5px; height: 2px; border-radius: 1px; background: var(--active); }
+.due-today { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--text); }
+.due-mark { position: absolute; top: 1px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--data); box-shadow: 0 0 0 2px var(--surface); }
+.due-mark.late { background: var(--negative); }
+.due-mark.edge::after { content: ""; position: absolute; right: 100%; top: 4px; width: 6px; height: 2px; background: var(--negative); }
+.due-when { font-size: 12px; color: var(--muted); text-align: right; white-space: nowrap; }
+.due-when.late { color: var(--negative); font-weight: 500; }
+.due-axis { position: relative; height: 16px; margin: 2px calc(92px + 12px) 0 0; font-size: 11px; color: var(--faint); }
+.due-axis span { position: absolute; top: 0; white-space: nowrap; }
+.due-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--rule); padding: 12px var(--card-pad); font-size: 13px; }
+.due-foot .muted { font-variant-numeric: tabular-nums; }
+.due-empty { padding: 20px var(--card-pad) 24px; font-size: 14px; color: var(--muted); }
 
-.dash-chart-card { margin-bottom: 22px; }
-.dash-chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 20px 4px;
-    border-bottom: none;
-}
-.dash-chart-header h3 { font-size: 14px; font-weight: 600; color: var(--text); margin: 0; letter-spacing: -0.2px; }
-.dash-chart-switch {
-    display: inline-flex;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 2px;
-    gap: 0;
-}
-.dash-chart-switch button {
-    padding: 5px 10px;
-    border: none;
-    background: transparent;
-    color: var(--text-light);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    border-radius: 6px;
-    transition: all var(--transition);
-}
-.dash-chart-switch button.active { background: var(--brand); color: #fff; }
-.dash-chart-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.dash-chart-grain button { font-size: 12px; font-weight: 500; padding: 5px 10px; letter-spacing: -0.1px; }
-@media (max-width: 560px) {
-    .dash-chart-header { flex-wrap: wrap; gap: 10px; }
-    .dash-chart-controls { width: 100%; justify-content: space-between; }
-    .dash-chart-grain button { padding: 5px 8px; font-size: 11.5px; }
-}
+/* Recent documents */
+.recent td { white-space: nowrap; }
+.recent .client-cell { white-space: normal; }
+.recent .row-link { font-weight: 500; }
 
-{# Compute how many insight cards will render: top-client always; revexp only with stock; overdue only with status tracking #}
-{% set insight_cols = 1 + (1 if stock_enabled else 0) + (1 if settings.get('status_tracking', '0') == '1' else 0) %}
-.dash-insights-grid {
-    display: grid;
-    grid-template-columns: repeat({{ insight_cols }}, 1fr);
-    gap: 14px;
-    margin-bottom: 22px;
-}
-.insight-card { display: flex; align-items: center; gap: 14px; padding: 18px; }
-.insight-body { flex: 1; min-width: 0; }
-.insight-label { font-size: 12px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
-.insight-title { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.2px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.insight-sub { font-size: 12px; color: var(--text-light); margin-top: 3px; }
-.insight-big { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+/* Activity */
+.activity { padding: 4px var(--card-pad) 10px; }
+.act { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--rule); color: inherit; }
+.act:last-child { border-bottom: 0; }
+.act-title { font-size: 14px; }
+.act-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-amt { font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.act-time { font-size: 12px; color: var(--faint); text-align: right; }
 
-.dash-menu-wrapper { position: relative; display: inline-block; }
-.dash-menu-trigger {
-    background: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer;
-    padding: 6px; color: var(--text-light); display: flex; align-items: center; transition: all 0.15s;
+@media (max-width: 1100px) {
+    .dash-row { grid-template-columns: minmax(0, 1fr); }
 }
-.dash-menu-trigger:hover { background: var(--bg-card-hover); color: var(--text); }
-.dash-menu-dropdown {
-    display: none; position: fixed;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 12px; box-shadow: var(--shadow-lg); min-width: 220px;
-    z-index: 9999; padding: 6px; white-space: nowrap;
-}
-.dash-menu-wrapper.open .dash-menu-dropdown { display: block; }
-.dash-menu-item {
-    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
-    font-size: 13.5px; color: var(--text); text-decoration: none;
-    cursor: pointer; transition: background 0.1s; border: none; background: none;
-    width: 100%; text-align: left; font-family: inherit; border-radius: 8px;
-}
-.dash-menu-item:hover { background: var(--bg-card-hover); }
-.dash-menu-item svg { flex-shrink: 0; color: var(--text-light); }
-.dash-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
-.dash-menu-disabled { opacity: 0.55; }
-.dash-menu-danger { color: var(--danger) !important; }
-.dash-menu-danger:hover { background: var(--danger-soft) !important; }
-.dash-menu-danger svg { color: var(--danger) !important; }
-.badge-pro-menu {
-    display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 5px;
-    border-radius: 4px; background: var(--brand); color: #fff; vertical-align: middle; line-height: 1.3; letter-spacing: 0.4px;
-}
-
 @media (max-width: 768px) {
-    .dash-stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .dash-stats-grid .dash-stat { padding: 14px 14px 12px; }
-    .dash-stats-grid .dash-stat-value { font-size: 20px; letter-spacing: -0.5px; }
-    .dash-stats-grid .dash-stat-value small { font-size: 11px; }
-    .dash-stats-grid .dash-stat-label { font-size: 11.5px; }
-    .dash-stats-grid .icon-square { width: 32px; height: 32px; border-radius: 9px; }
-    .dash-stats-grid .icon-square svg { width: 16px; height: 16px; }
-    .dash-stats-grid .dash-stat-foot { font-size: 10.5px; flex-wrap: wrap; }
-    .dash-stats-grid .dash-stat-foot .pill { font-size: 10px; padding: 1px 6px; }
-    .dash-date-bar { flex-direction: column; align-items: stretch; }
-    .dash-date-inputs { width: 100%; }
-    .dash-date-inputs .form-control { flex: 1; }
-    .dash-presets { width: 100%; }
-    .dash-presets .btn { flex: 1; }
-    .dash-desktop-header { display: none !important; }
-    .dash-greeting h1 { font-size: 24px; }
-    .dash-greeting { padding: 12px 0 16px; }
-    .dash-insights-grid { grid-template-columns: 1fr; }
+    .dash-scope .segmented { flex: 1 1 100%; display: flex; }
+    .dash-scope .segmented > * { flex: 1; }
+    .dash-scope .dates { flex: 1 1 100%; min-width: 0; }
+    .dash-scope .dates .form-control { flex: 1 1 0; width: 0; height: 40px; }
+    .chart-card .chart-body { min-height: 190px; }
+    .recent thead { display: none; }
+    .recent, .recent tbody { display: block; }
+    .recent tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px var(--card-pad); border-bottom: 1px solid var(--rule); }
+    .recent tbody tr:last-child { border-bottom: 0; }
+    .recent td { display: block; padding: 0 !important; height: auto; border: 0; }
+    .recent td.c-client { grid-column: 1; grid-row: 1; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recent td.c-sum { grid-column: 2; grid-row: 1; text-align: right; }
+    .recent td.c-meta { grid-column: 1; grid-row: 2; font-size: 13px; color: var(--muted); }
+    .recent td.c-status { grid-column: 2; grid-row: 2; text-align: right; }
+    .recent td.c-num, .recent td.c-date, .recent td.c-menu { display: none; }
 }
-@media (min-width: 769px) {
-    .dash-quick-actions { display: none !important; }
-}
+@media (min-width: 769px) { .recent td.c-meta { display: none; } }
 </style>
 
-<!-- Desktop header (replaced with greeting inside body) -->
-<div class="page-header dash-desktop-header" style="padding:18px 32px 0;justify-content:flex-end">
-    <div class="btn-group">
+<div class="page-header">
+    <div>
+        <h1>Sveiki, {{ greet_name }}.</h1>
+        <p class="page-sub finding" id="dashFinding">
+            {% if tracking %}
+                {% if overdue %}
+                    {% set oldest = overdue[0] %}
+                    <span class="neg">{{ overdue | length }} {{ 'rēķins kavēts' if overdue | length == 1 else 'rēķini kavēti' }}</span>
+                    par {{ overdue | sum(attribute='total') | eur }} — {{ oldest.client_name }} kavē {{ -oldest.days_to_due }} {{ 'dienu' if -oldest.days_to_due == 1 else 'dienas' }}.
+                {% elif unpaid %}
+                    Apmaksu gaida {{ unpaid | length }} {{ 'rēķins' if unpaid | length == 1 else 'rēķini' }} par {{ unpaid | sum(attribute='total') | eur }}. Nekas nav kavēts.
+                {% else %}
+                    Visi izrakstītie rēķini ir apmaksāti.
+                {% endif %}
+            {% else %}
+                Pārskats par periodu un pēdējiem dokumentiem.
+            {% endif %}
+        </p>
+    </div>
+    <div class="btn-group hide-mobile">
         {% if stock_enabled %}
-        <a href="/documents/new?doc_type=buy" class="btn btn-outline"><span class="btn-label-full">+ Iegādes dokuments</span><span class="btn-label-short">+ Iegāde</span></a>
+        <a href="/documents/new?doc_type=buy" class="btn btn-outline">Iegādes dokuments</a>
         {% endif %}
-        <a href="/documents/new?doc_type=sell" class="btn btn-primary"><span class="btn-label-full">+ Jauns rēķins</span><span class="btn-label-short">+ Rēķins</span></a>
+        <a href="/documents/new?doc_type=sell" class="btn btn-primary">Jauns rēķins</a>
     </div>
 </div>
 
-<div class="page-body dash-has-quick-actions">
-    {% if not settings.get('company_name') %}
-    <div class="alert alert-info">
-        Sveicināti! Lai sāktu, lūdzu aizpildiet <a href="/settings">uzņēmuma iestatījumus</a>.
-    </div>
-    {% endif %}
-
-    <!-- Greeting -->
-    {% set greet_name = (current_user.display_name or current_user.username) if (current_user.display_name and current_user.display_name.strip()) else (settings.get('company_name') or current_user.username) %}
-    <div class="dash-greeting">
-        <h1>Sveiki, {{ greet_name }} <span class="wave">👋</span></h1>
-        <p>Šeit ir pārskats par Jūsu biznesa rādītājiem.</p>
-    </div>
-
-    <!-- Date Range Bar -->
-    <div class="dash-date-bar">
-        <div class="dash-date-inputs">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-lighter)"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <input type="date" id="dashDateFrom" class="form-control" value="{{ date_from }}">
-            <span style="color:var(--text-lighter);font-size:13px">—</span>
-            <input type="date" id="dashDateTo" class="form-control" value="{{ date_to }}">
+<div class="page-body">
+    <div class="dash-scope">
+        <div class="segmented" role="group" aria-label="Periods">
+            <button type="button" id="btnThisMonth">Šomēnes</button>
+            <button type="button" id="btnLastMonth">Iepriekšējais</button>
+            <button type="button" id="btnThisYear">Šogad</button>
         </div>
-        <div class="dash-presets">
-            <button type="button" class="btn btn-outline btn-sm" id="btnThisMonth">Šomēnes</button>
-            <button type="button" class="btn btn-outline btn-sm" id="btnLastMonth">Iepr. mēnesis</button>
-            <button type="button" class="btn btn-outline btn-sm" id="btnThisYear">Šogad</button>
+        <div class="dates">
+            <input type="date" id="dashDateFrom" class="form-control" value="{{ date_from }}" aria-label="No">
+            <span class="sep">–</span>
+            <input type="date" id="dashDateTo" class="form-control" value="{{ date_to }}" aria-label="Līdz">
         </div>
     </div>
 
-    <!-- Stats Grid -->
-    <div class="dash-stats-grid" id="dashStatsGrid">
-        <div class="dash-stat">
-            <div class="dash-stat-top">
-                <div class="dash-stat-label">Apgrozījums</div>
-                <span class="icon-square tint-violet">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                </span>
-            </div>
-            <div class="dash-stat-value" id="statRevenue">{{ "%.2f" | format(range_stats.total_revenue) }} <small>EUR</small></div>
-            {# Net / VAT split of the total above. Hidden for non-VAT-payers
-               unless the period still holds VAT (invoices from before they
-               stopped being a payer); loadStats() re-applies the same rule. #}
-            {% set vat_payer = settings.get('is_vat_payer', '1') == '1' %}
-            <div class="dash-stat-sub" id="statRevenueSplit" data-vat-payer="{{ '1' if vat_payer else '0' }}"
+    {% set kpi_cols = 3 + (1 if tracking else 0) + (1 if stock_enabled else 0) %}
+    {# The previous window the change is measured against (calendar shift, clamped to the elapsed part) #}
+    {% set cmp_from = range_stats.prev_from | string %}
+    {% set cmp_to = range_stats.prev_to | string %}
+    <div class="kpi-strip" id="dashStatsGrid" style="--kpi-cols: {{ kpi_cols }}">
+        <div class="kpi">
+            <div class="kpi-label">Apgrozījums</div>
+            <div class="kpi-value lead" id="statRevenue">{{ range_stats.total_revenue | num }}<span class="unit">€</span></div>
+            <div class="kpi-split" id="statRevenueSplit" data-vat-payer="{{ '1' if vat_payer else '0' }}"
                  {% if not vat_payer and not range_stats.revenue_vat %}hidden{% endif %}>
-                <span>Bez PVN <b id="statRevenueNet">{{ "%.2f" | format(range_stats.revenue_net) }}</b></span>
-                <span>PVN <b id="statRevenueVat">{{ "%.2f" | format(range_stats.revenue_vat) }}</b></span>
+                <span>bez PVN <b id="statRevenueNet">{{ range_stats.revenue_net | num }}</b></span>
+                <span>PVN <b id="statRevenueVat">{{ range_stats.revenue_vat | num }}</b></span>
             </div>
-            <div class="dash-stat-spark" id="sparkRevenue"></div>
-            <div class="dash-stat-foot" id="statRevenueChange">
-                {% if range_stats.revenue_change > 0 %}<span class="pill pill-success">↑ {{ range_stats.revenue_change }}%</span>
-                {% elif range_stats.revenue_change < 0 %}<span class="pill pill-danger">↓ {{ range_stats.revenue_change|abs }}%</span>
-                {% else %}<span class="pill pill-neutral">0%</span>{% endif %}
-                <span>vs iepr. {{ 'gads' if range_stats.compare_mode == 'year' else 'mēnesis' }}</span>
-            </div>
+            <div class="kpi-foot" id="statRevenueChange">{{ delta(range_stats.revenue_change) }} pret <span class="cmp-window">{{ ddmm(cmp_from) }}–{{ ddmm(cmp_to) }}</span></div>
         </div>
-        {% if settings.get('status_tracking', '0') == '1' %}
-        <a href="/documents?status=issued" class="dash-stat">
-            <div class="dash-stat-top">
-                {# All-time outstanding, unlike its range-scoped neighbours —
-                   say so, or the row reads as a contradiction. #}
-                <div class="dash-stat-label" title="Visi neapmaksātie rēķini, neatkarīgi no izvēlētā perioda">Neapmaksāti (kopā)</div>
-                <span class="icon-square tint-blue">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                </span>
-            </div>
-            <div class="dash-stat-value" id="statUnpaid">{{ "%.2f" | format(range_stats.unpaid_total) }} <small>EUR</small></div>
-            {# Unpaid is a point-in-time snapshot, not a trend, so it gets no
-               sparkline — but it keeps the spacer so all four feet line up. #}
-            <div class="dash-stat-spark"></div>
-            <div class="dash-stat-foot">
-                {% if range_stats.overdue_count > 0 %}
-                <span class="pill pill-danger">{{ range_stats.overdue_count }} kavēts</span>
-                {% else %}
-                <span style="color:var(--text-lighter)">Nav kavētu</span>
-                {% endif %}
-            </div>
+        {% if tracking %}
+        <a href="/documents?status=issued" class="kpi" title="Visi neapmaksātie rēķini, neatkarīgi no perioda">
+            <div class="kpi-label">Neapmaksāti, visi</div>
+            <div class="kpi-value" id="statUnpaid">{{ range_stats.unpaid_total | num }}<span class="unit">€</span></div>
+            <div class="kpi-foot">{{ unpaid | length }} {{ 'rēķins' if unpaid | length == 1 else 'rēķini' }}{% if range_stats.overdue_count %} · <span class="down">{{ range_stats.overdue_count }} kavēt{{ 's' if range_stats.overdue_count == 1 else 'i' }}</span>{% endif %}</div>
         </a>
         {% endif %}
-        <div class="dash-stat">
-            <div class="dash-stat-top">
-                <div class="dash-stat-label">Dokumenti</div>
-                <span class="icon-square tint-green">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                </span>
-            </div>
-            <div class="dash-stat-value" id="statDocs">{{ range_stats.doc_count }}</div>
-            <div class="dash-stat-spark" id="sparkDocs"></div>
-            <div class="dash-stat-foot" id="statDocsChange">
-                {% if range_stats.doc_count_change > 0 %}<span class="pill pill-success">↑ {{ range_stats.doc_count_change }}%</span>
-                {% elif range_stats.doc_count_change < 0 %}<span class="pill pill-danger">↓ {{ range_stats.doc_count_change|abs }}%</span>
-                {% else %}<span class="pill pill-neutral">0%</span>{% endif %}
-                <span>vs iepr. {{ 'gads' if range_stats.compare_mode == 'year' else 'mēnesis' }}</span>
-            </div>
+        <div class="kpi">
+            <div class="kpi-label">Izrakstīti rēķini</div>
+            <div class="kpi-value" id="statDocs">{{ range_stats.doc_count }}</div>
+            <div class="kpi-foot" id="statDocsChange">{{ delta(range_stats.doc_count_change) }} pret <span class="cmp-window">{{ ddmm(cmp_from) }}–{{ ddmm(cmp_to) }}</span></div>
         </div>
-        <div class="dash-stat">
-            <div class="dash-stat-top">
-                <div class="dash-stat-label">Vid. rēķins</div>
-                <span class="icon-square tint-pink">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 12l4-4 3 3 5-6"/></svg>
-                </span>
-            </div>
-            <div class="dash-stat-value" id="statAvg">{{ "%.2f" | format(range_stats.avg_invoice) }} <small>EUR</small></div>
-            <div class="dash-stat-spark" id="sparkAvg"></div>
-            <div class="dash-stat-foot"><span style="color:var(--text-lighter)">Pārdošanas vidējais</span></div>
+        <div class="kpi">
+            <div class="kpi-label">Vidējais rēķins</div>
+            <div class="kpi-value" id="statAvg">{{ range_stats.avg_invoice | num }}<span class="unit">€</span></div>
+            <div class="kpi-foot">ar PVN, periodā</div>
         </div>
+        {% if stock_enabled %}
+        {% set net = range_stats.total_revenue - range_stats.total_expenses %}
+        <div class="kpi" id="cardRevenueExpenses">
+            <div class="kpi-label">Ieņēmumi − izdevumi</div>
+            <div class="kpi-value" id="statNet">{{ net | num }}<span class="unit">€</span></div>
+            <div class="kpi-foot">izdevumi <span id="statExpRed">{{ range_stats.total_expenses | num }}</span> €</div>
+        </div>
+        {% endif %}
     </div>
 
-    <!-- Chart + Activity row -->
-    <div class="dash-main-grid">
-    <!-- Revenue Chart -->
-    <div class="card dash-chart-card">
-        <div class="dash-chart-header">
-            <h3 id="chartTitle">Apgrozījums pa dienām</h3>
-            <div class="dash-chart-controls">
-                <div class="dash-chart-switch dash-chart-grain">
-                    <button type="button" id="chartGrainDay" onclick="switchChartGrain('day')" title="Pa dienām">Dienas</button>
-                    <button type="button" id="chartGrainWeek" onclick="switchChartGrain('week')" title="Pa nedēļām">Nedēļas</button>
-                    <button type="button" id="chartGrainMonth" onclick="switchChartGrain('month')" title="Pa mēnešiem">Mēneši</button>
-                </div>
-                <div class="dash-chart-switch">
-                    <button type="button" id="chartTypeBar" onclick="switchChartType('bar')" class="active" title="Stabiņu grafiks">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
-                    </button>
-                    <button type="button" id="chartTypeLine" onclick="switchChartType('line')" title="Līniju grafiks">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 8 13 13 8 8 2 14"/></svg>
-                    </button>
+    <div class="dash-row stretch">
+        <section class="card chart-card">
+            <div class="card-header">
+                <h2 id="chartTitle" style="font-size:inherit;font-weight:inherit">Apgrozījums pa dienām</h2>
+                <div class="segmented dash-chart-grain" role="group" aria-label="Grupēt">
+                    <button type="button" id="chartGrainDay" onclick="switchChartGrain('day')">Dienas</button>
+                    <button type="button" id="chartGrainWeek" onclick="switchChartGrain('week')">Nedēļas</button>
+                    <button type="button" id="chartGrainMonth" onclick="switchChartGrain('month')">Mēneši</button>
                 </div>
             </div>
-        </div>
-        <div class="card-body" style="padding:8px 20px 16px">
-            <div class="dash-chart-body" style="position:relative;height:280px"><canvas id="revenueChart"></canvas></div>
-        </div>
-    </div>
+            <div class="chart-body"><canvas id="revenueChart" aria-label="Apgrozījuma grafiks" role="img"></canvas></div>
+            <div class="chart-foot" id="cardTopClient">
+                {% if range_stats.top_client %}
+                Lielākais klients periodā: <b>{{ range_stats.top_client.name }}</b> · {{ range_stats.top_client.count }} {{ 'rēķins' if range_stats.top_client.count == 1 else 'rēķini' }} · {{ range_stats.top_client.revenue | eur }}
+                {% else %}
+                Periodā nav izrakstītu rēķinu.
+                {% endif %}
+            </div>
+        </section>
 
-    <!-- Activity feed -->
-    <div class="card dash-activity-card">
-        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:14px;font-weight:600">Pēdējā aktivitāte</span>
-        </div>
-        <div class="card-body" style="padding:8px 16px 16px">
-            {% if recent_events %}
-            <div class="activity-list">
-                {% for ev in recent_events %}
-                <a href="{% if ev.document_id %}/documents/{{ ev.document_id }}{% else %}#{% endif %}" class="activity-item">
-                    {% if ev.event_type == 'document_sent' %}
-                        <span class="icon-square sm tint-blue">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                        </span>
-                        <div class="activity-body">
-                            <div class="activity-title">{% if ev.meta.send_type == 'recurring' %}Automātiski nosūtīts{% else %}Rēķins nosūtīts{% endif %}</div>
-                            <div class="activity-sub">{{ ev.client_name or ev.doc_number or '—' }}</div>
+        {% if tracking %}
+        <section class="card">
+            <div class="card-header">
+                <h2 style="font-size:inherit;font-weight:inherit">Termiņi</h2>
+                <span class="hint">neapmaksātie, pēc termiņa</span>
+            </div>
+            {% if unpaid %}
+            {% set lo, span = -14, 35 %}
+            <div class="due-list">
+                {% for inv in unpaid[:5] %}
+                {% set d = inv.days_to_due %}
+                {% set pos = (((d if d is not none else 21) | int) - lo) %}
+                {% set pct = ([[pos, 0] | max, span] | min) / span * 100 %}
+                <a href="/documents/{{ inv.id }}" class="due-row plain">
+                    <div class="due-line1">
+                        <span class="due-name">{{ inv.client_name or inv.doc_number }}</span>
+                        <span class="due-amt">{{ inv.total | eur }}</span>
+                    </div>
+                    <div class="due-line2">
+                        <div class="due-track">
+                            <span class="due-today" style="left:{{ (0 - lo) / span * 100 }}%"></span>
+                            {% if d is not none %}
+                            <span class="due-mark{% if d < 0 %} late{% endif %}{% if d < lo %} edge{% endif %}" style="left:{{ pct }}%"></span>
+                            {% endif %}
                         </div>
-                    {% else %}
-                        <span class="icon-square sm tint-violet">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                        </span>
-                        <div class="activity-body">
-                            <div class="activity-title">{% if ev.meta.source == 'recurring' %}Periodiskais rēķins izveidots{% else %}Rēķins izveidots{% endif %}</div>
-                            <div class="activity-sub">{{ ev.client_name or ev.doc_number or '—' }}</div>
-                        </div>
-                    {% endif %}
-                    <div class="activity-meta">
-                        {% if ev.amount and ev.amount > 0 %}<div class="activity-amount">{{ "%.2f" | format(ev.amount) }} €</div>{% endif %}
-                        <div data-event-time="{{ ev.created_at }}">—</div>
+                        {% if d is none %}<span class="due-when">bez termiņa</span>
+                        {% elif d < 0 %}<span class="due-when late">kavēts {{ -d }} d.</span>
+                        {% elif d == 0 %}<span class="due-when">šodien</span>
+                        {% else %}<span class="due-when">pēc {{ d }} d.</span>{% endif %}
                     </div>
                 </a>
                 {% endfor %}
+                <div class="due-axis" aria-hidden="true">
+                    <span style="left:0">pirms 2 ned.</span>
+                    <span style="left:{{ (0 - lo) / span * 100 }}%;transform:translateX(-50%)">šodien</span>
+                    <span style="right:0">pēc 3 ned.</span>
+                </div>
+            </div>
+            <div class="due-foot">
+                <span class="muted">Kopā {{ unpaid | sum(attribute='total') | eur }}</span>
+                <a href="/documents?status=issued" class="btn btn-ghost btn-sm">{% if unpaid | length > 5 %}Visi {{ unpaid | length }}{% else %}Atvērt sarakstu{% endif %}</a>
             </div>
             {% else %}
-            <div style="text-align:center;padding:24px 12px;color:var(--text-lighter);font-size:13px">
-                <div style="font-size:32px;margin-bottom:8px">📋</div>
-                Vēl nav aktivitātes.<br>Izveidojiet pirmo dokumentu.
-            </div>
+            <div class="due-empty">Nav neapmaksātu rēķinu. Kad izrakstīsiet nākamo, tā termiņš parādīsies šeit.</div>
             {% endif %}
-        </div>
-    </div>
-    </div>
-
-    <style>
-    .dash-main-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 22px; }
-    .dash-main-grid .dash-chart-card { margin-bottom: 0; }
-    .dash-main-grid .dash-activity-card { margin-bottom: 0; }
-    @media (min-width: 1100px) {
-        .dash-main-grid { grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
-    }
-    </style>
-
-    <!-- Insights Row -->
-    <div class="dash-insights-grid">
-        {% if stock_enabled %}
-        <div class="card insight-card" style="margin-bottom:0">
-            <span class="icon-square lg tint-emerald">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
-            </span>
-            <div class="insight-body" id="cardRevenueExpenses">
-                <div class="insight-label">Ieņēmumi vs Izdevumi</div>
-                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
-                    <span style="font-size:12px;color:var(--text-light)">Neto</span>
-                    {% set net = range_stats.total_revenue - range_stats.total_expenses %}
-                    <span class="insight-big" id="statNet">{{ "%.2f" | format(net) }}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-light)">
-                    <span>+<span id="statRevGreen">{{ "%.2f" | format(range_stats.total_revenue) }}</span></span>
-                    <span>−<span id="statExpRed">{{ "%.2f" | format(range_stats.total_expenses) }}</span></span>
-                </div>
-            </div>
-        </div>
+        </section>
+        {% else %}
+        {% set show_activity_top = true %}
         {% endif %}
-        <div class="card insight-card" style="margin-bottom:0">
-            <span class="icon-square lg tint-cyan">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            </span>
-            <div class="insight-body" id="cardTopClient">
-                <div class="insight-label">Top klients</div>
-                {% if range_stats.top_client %}
-                <div class="insight-title">{{ range_stats.top_client.name }}</div>
-                <div class="insight-sub">{{ range_stats.top_client.count }} dok. · {{ "%.2f" | format(range_stats.top_client.revenue) }} EUR</div>
-                {% else %}
-                <div class="insight-title" style="color:var(--text-lighter);font-weight:500">Nav datu</div>
-                <div class="insight-sub">Periodā nav pārdošanas dokumentu</div>
-                {% endif %}
-            </div>
-        </div>
-        {% if settings.get('status_tracking', '0') == '1' %}
-        <div class="card insight-card" style="margin-bottom:0">
-            <span class="icon-square lg {{ 'tint-rose' if range_stats.overdue_count > 0 else 'tint-green' }}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </span>
-            <div class="insight-body" id="cardOverdue">
-                <div class="insight-label">Kavētie rēķini</div>
-                {% if range_stats.overdue_count > 0 %}
-                <div class="insight-big" style="color:var(--danger)">{{ range_stats.overdue_count }}</div>
-                <div class="insight-sub">{{ "%.2f" | format(range_stats.overdue_total) }} EUR jāatgūst</div>
-                {% else %}
-                <div class="insight-big" style="color:var(--success)">0</div>
-                <div class="insight-sub">Viss savlaicīgi</div>
-                {% endif %}
-            </div>
-        </div>
+
+        {% if not tracking %}
+        <section class="card">
+            <div class="card-header"><h2 style="font-size:inherit;font-weight:inherit">Aktivitāte</h2></div>
+            {% include "_dash_activity.html" %}
+        </section>
         {% endif %}
     </div>
 
-    {% if stock_enabled and stock %}
-    <div class="stats-grid" style="margin-bottom:20px">
-        <div class="stat-card">
-            <div class="stat-value">{{ stock | length }}</div>
-            <div class="stat-label">Aktīvi produkti</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">
-                {% set total_stock = stock | sum(attribute='stock') %}
-                {{ "%.0f" | format(total_stock) }}
+    <div class="dash-row">
+        <section class="card">
+            <div class="card-header">
+                <h2 style="font-size:inherit;font-weight:inherit">Pēdējie rēķini</h2>
+                <a href="/documents" class="btn btn-ghost btn-sm">Visi</a>
             </div>
-            <div class="stat-label">Kopējais krājums</div>
-        </div>
-    </div>
-    {% endif %}
-
-    <div class="card dash-recent-mobile">
-        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:14px;font-weight:600">Pēdējie dokumenti</span>
-            <a href="/documents" class="btn btn-ghost btn-sm">Skatīt visus →</a>
-        </div>
-        <div class="card-body">
-            {% if recent_docs %}
-            <div class="table-wrapper">
-                <table class="mobile-cards">
+            <div class="card-body flush" style="padding-top:8px">
+                {% if recent_docs %}
+                <table class="recent">
                     <thead>
                         <tr>
-                            <th>Nr.</th>
-                            <th>Tips</th>
-                            <th>Klients</th>
-                            <th>Datums</th>
-                            <th class="text-right">Summa</th>
-                            {% if settings.get('status_tracking', '0') == '1' %}
-                            <th>Statuss</th>
-                            {% endif %}
-                            <th></th>
+                            <th class="c-num">Nr.</th>
+                            <th class="c-client">Klients</th>
+                            <th class="c-date">Datums</th>
+                            <th class="c-sum text-right">Summa</th>
+                            {% if tracking %}<th class="c-status">Statuss</th>{% endif %}
+                            <th class="c-menu"><span class="sr-only">Darbības</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for doc in recent_docs %}
                         <tr>
-                            <td data-label="Nr."><strong>{{ doc.doc_number }}</strong></td>
-                            <td data-label="Tips">
-                                {% if doc.doc_type == 'buy' %}
-                                <span class="pill pill-warning">Iegāde</span>
-                                {% else %}
-                                <span class="pill pill-brand">Pārdošana</span>
-                                {% endif %}
-                            </td>
-                            <td data-label="Klients">{{ doc.client_name }}</td>
-                            <td class="text-muted">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
-                            <td class="text-right" data-label="Summa" style="font-weight:500;white-space:nowrap;color:var(--text)">{{ "%.2f" | format(doc.total_with_vat) }} €</td>
-                            {% if settings.get('status_tracking', '0') == '1' %}
-                            <td>
-                                <span class="pill pill-status {% if doc.status == 'paid' %}pill-success{% else %}pill-brand{% endif %}"
-                                      data-doc-id="{{ doc.id }}"
-                                      data-status="{{ doc.status or 'issued' }}"
-                                      onclick="dashToggleStatus(this)"
-                                      style="cursor:pointer"
-                                      title="Noklikšķiniet, lai mainītu statusu">
-                                    {% if doc.status == 'paid' %}Apmaksāts{% else %}Izrakstīts{% endif %}
-                                </span>
+                            <td class="c-num"><a href="/documents/{{ doc.id }}" class="row-link">{{ doc.doc_number }}</a></td>
+                            <td class="c-client client-cell"><a href="/documents/{{ doc.id }}" class="row-link plain" style="font-weight:400">{{ doc.client_name }}</a>{% if doc.doc_type == 'buy' %} <span class="pill pill-warning">Iegāde</span>{% endif %}</td>
+                            <td class="c-meta">{{ doc.doc_number }} · {{ ddmm(doc.doc_date) }}{{ doc.doc_date[:4] }}</td>
+                            <td class="c-date num">{{ ddmm(doc.doc_date) }}{{ doc.doc_date[:4] }}</td>
+                            <td class="c-sum num text-right">{{ doc.total_with_vat | eur }}</td>
+                            {% if tracking %}
+                            <td class="c-status">
+                                <button type="button" class="pill badge-status {% if doc.status == 'paid' %}pill-success{% else %}pill-neutral{% endif %}"
+                                        style="border:0;cursor:pointer" data-doc-id="{{ doc.id }}" data-status="{{ doc.status or 'issued' }}"
+                                        onclick="dashToggleStatus(this)" title="Mainīt statusu">{% if doc.status == 'paid' %}apmaksāts{% else %}gaida{% endif %}</button>
                             </td>
                             {% endif %}
-                            <td>
+                            <td class="c-menu text-right">
                                 <div class="dash-menu-wrapper">
-                                    <button type="button" class="dash-menu-trigger" aria-label="Darbības">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                                    <button type="button" class="dash-menu-trigger" aria-label="Darbības ar {{ doc.doc_number }}">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
                                     </button>
                                     <div class="dash-menu-dropdown">
-                                        <a href="/documents/{{ doc.id }}" class="dash-menu-item">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                            Skatīt
-                                        </a>
-                                        <a href="/documents/{{ doc.id }}/edit" class="dash-menu-item">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                            Rediģēt
-                                        </a>
-                                        <a href="/documents/{{ doc.id }}/pdf" class="dash-menu-item" target="_blank">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                            Lejupielādēt PDF
-                                        </a>
+                                        <a href="/documents/{{ doc.id }}" class="dash-menu-item">Atvērt</a>
+                                        <a href="/documents/{{ doc.id }}/edit" class="dash-menu-item">Rediģēt</a>
+                                        <a href="/documents/{{ doc.id }}/pdf" class="dash-menu-item" target="_blank">Lejupielādēt PDF</a>
                                         {% if einvoice_enabled %}
-                                        <a href="/documents/{{ doc.id }}/einvoice" class="dash-menu-item" target="_blank">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            Lejupielādēt E-rēķinu (XML)
-                                        </a>
+                                        <a href="/documents/{{ doc.id }}/einvoice" class="dash-menu-item" target="_blank">E-rēķins (XML)</a>
                                         {% else %}
-                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            E-rēķins (XML) <span class="badge-pro-menu">PRO</span>
-                                        </a>
+                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">E-rēķins (XML) · PRO</a>
                                         {% endif %}
                                         <div class="dash-menu-divider"></div>
                                         {% if email_enabled %}
-                                        <button type="button" class="dash-menu-item" data-dash-action="send" data-doc-id="{{ doc.id }}" data-client-id="{{ doc.client_id }}">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                                            Nosūtīt klientam
-                                        </button>
+                                        <button type="button" class="dash-menu-item" data-dash-action="send" data-doc-id="{{ doc.id }}" data-client-id="{{ doc.client_id }}">Nosūtīt klientam</button>
                                         {% else %}
-                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                                            Nosūtīt klientam <span class="badge-pro-menu">PRO</span>
-                                        </a>
+                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">Nosūtīt klientam · PRO</a>
                                         {% endif %}
                                         {% if recurring_enabled %}
-                                        <button type="button" class="dash-menu-item" data-dash-action="recurring" data-doc-id="{{ doc.id }}">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                                            Periodiskais rēķins
-                                        </button>
+                                        <button type="button" class="dash-menu-item" data-dash-action="recurring" data-doc-id="{{ doc.id }}">Padarīt periodisku</button>
                                         {% else %}
-                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                                            Periodiskais rēķins <span class="badge-pro-menu">PRO</span>
-                                        </a>
+                                        <a href="/pricing" class="dash-menu-item dash-menu-disabled">Padarīt periodisku · PRO</a>
                                         {% endif %}
-                                        {% if settings.get('status_tracking', '0') == '1' %}
-                                        <div class="dash-menu-divider"></div>
-                                        <button type="button" class="dash-menu-item" data-dash-action="status" data-doc-id="{{ doc.id }}">
-                                            {% if doc.status == 'paid' %}
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                                            Atzīmēt kā izrakstītu
-                                            {% else %}
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                                            Atzīmēt kā apmaksātu
-                                            {% endif %}
-                                        </button>
+                                        {% if tracking %}
+                                        <button type="button" class="dash-menu-item" data-dash-action="status" data-doc-id="{{ doc.id }}">{% if doc.status == 'paid' %}Atzīmēt kā neapmaksātu{% else %}Atzīmēt kā apmaksātu{% endif %}</button>
                                         {% endif %}
                                         <div class="dash-menu-divider"></div>
-                                        <form method="post" action="/documents/{{ doc.id }}/delete"
-                                              onsubmit="return confirm('Vai tiešām dzēst dokumentu {{ doc.doc_number }}?')">
-                                            <button type="submit" class="dash-menu-item dash-menu-danger">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                                Dzēst
-                                            </button>
+                                        <form method="post" action="/documents/{{ doc.id }}/delete" onsubmit="return confirm('Pārvietot {{ doc.doc_number }} uz papīrgrozu?')">
+                                            <button type="submit" class="dash-menu-item dash-menu-danger">Dzēst</button>
                                         </form>
                                     </div>
                                 </div>
@@ -635,181 +336,151 @@
                         {% endfor %}
                     </tbody>
                 </table>
+                {% else %}
+                {{ empty_state(
+                    icon="document",
+                    title="Vēl nav neviena rēķina",
+                    text="Izveidojiet pirmo — klients, rindas, un PDF ir gatavs.",
+                    cta_href="/documents/new",
+                    cta_label="Jauns rēķins") }}
+                {% endif %}
             </div>
-            {% else %}
-            {{ empty_state(
-                icon="document",
-                title="Vēl nav neviena dokumenta",
-                text="Izveidojiet pirmo rēķinu — tas aizņems mazāk par minūti.",
-                cta_href="/documents/new",
-                cta_label="Jauns dokuments") }}
-            {% endif %}
-        </div>
-    </div>
+        </section>
 
-    {% if stock_enabled and stock %}
-    <div class="card">
-        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px">
-            <span style="font-size:14px;font-weight:600">Noliktavas atlikumi</span>
-            <a href="/stock" class="btn btn-outline btn-sm">Skatīt →</a>
-        </div>
-        <div class="card-body">
-            <div class="table-wrapper">
+        {% if tracking %}
+        <section class="card">
+            <div class="card-header"><h2 style="font-size:inherit;font-weight:inherit">Aktivitāte</h2></div>
+            {% include "_dash_activity.html" %}
+        </section>
+        {% elif stock_enabled and stock %}
+        <section class="card">
+            <div class="card-header">
+                <h2 style="font-size:inherit;font-weight:inherit">Noliktava</h2>
+                <a href="/stock" class="btn btn-ghost btn-sm">Visi</a>
+            </div>
+            <div class="card-body flush" style="padding-top:8px">
                 <table>
-                    <thead>
-                        <tr>
-                            <th>Produkts</th>
-                            <th>Mērvienība</th>
-                            <th class="text-right">Iepirkts</th>
-                            <th class="text-right">Pārdots</th>
-                            <th class="text-right">Atlikums</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Produkts</th><th class="text-right">Atlikums</th></tr></thead>
                     <tbody>
-                        {% for s in stock %}
-                        <tr>
-                            <td>{{ s.name }}</td>
-                            <td>{{ s.unit }}</td>
-                            <td class="text-right">{{ "%.2f" | format(s.bought) }}</td>
-                            <td class="text-right">{{ "%.2f" | format(s.sold) }}</td>
-                            <td class="text-right" style="font-weight:600">{{ "%.2f" | format(s.stock) }}</td>
-                        </tr>
+                        {% for s in stock[:6] %}
+                        <tr><td>{{ s.name }}</td><td class="num text-right">{{ s.stock | qty }} {{ s.unit }}</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-        </div>
+        </section>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
-<!-- Send Email Modal (dashboard) -->
-<div class="modal-overlay" id="dashSendModal">
+<!-- Send by e-mail -->
+<div class="modal-overlay" id="dashSendModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal" style="max-width:560px">
-        <div class="modal-title">Nosūtīt dokumentu pa e-pastu</div>
+        <div class="modal-title">Nosūtīt pa e-pastu</div>
         <form method="post" id="dashSendForm" action="">
             <input type="hidden" name="template" value="classic">
             <input type="hidden" name="return_to" value="/">
             <div class="form-group">
-                <label>Saņēmēja e-pasts</label>
-                <input type="email" name="email" id="dashSendEmail" class="form-control"
-                       required placeholder="klients@epasts.lv">
+                <label for="dashSendEmail">Saņēmējs</label>
+                <input type="email" name="email" id="dashSendEmail" class="form-control" required placeholder="klients@epasts.lv">
             </div>
             <div class="form-group">
-                <label>Tēma</label>
+                <label for="dashSendSubject">Tēma</label>
                 <input type="text" name="email_subject" id="dashSendSubject" class="form-control">
             </div>
             <div class="form-group">
-                <label>Pielikuma formāts</label>
+                <label for="dashSendFormat">Pielikums</label>
                 <select name="attachment_format" id="dashSendFormat" class="form-control" onchange="updateDashAttachmentName()">
                     <option value="pdf" selected>PDF</option>
-                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>
-                        E-rēķins (PEPPOL XML){% if not einvoice_enabled %} — PRO{% endif %}
-                    </option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · PRO{% endif %}</option>
                 </select>
             </div>
-            <div style="background:var(--bg);border-radius:var(--radius);padding:10px 16px;font-size:12px;margin-bottom:16px;border:1px solid var(--border);color:var(--text-light)">
-                No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;
-                {% if request.state.user.email %} · Atbildēt uz: {{ request.state.user.email }}{% endif %}
-                 · Pielikums: <span id="dashSendAttachment">dokuments.pdf</span>
-            </div>
-            <div class="form-group" style="margin-bottom:12px">
-                <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                    <input type="checkbox" id="dashCustomEmailToggle" onchange="dashToggleCustomEmail()"
-                           style="width:18px;height:18px;cursor:pointer">
-                    Pielāgot e-pasta ziņojumu
-                </label>
+            <p class="field-hint" style="margin:-4px 0 16px">
+                No: {{ settings.get('company_name', 'V-Rēķini') }} &lt;rekini@v-rekini.lv&gt;{% if request.state.user.email %} · atbildes uz {{ request.state.user.email }}{% endif %}
+                · <span id="dashSendAttachment">dokuments.pdf</span>
+            </p>
+            <div class="form-group">
+                <label class="check"><input type="checkbox" id="dashCustomEmailToggle" onchange="dashToggleCustomEmail()"> Rakstīt savu ziņojumu</label>
             </div>
             <div id="dashCustomEmailSection" style="display:none">
                 <div class="form-group">
-                    <label>E-pasta teksts</label>
-                    <textarea name="email_body" id="dashSendBody" class="form-control" rows="6"
-                              style="font-size:13px;line-height:1.5;resize:vertical"></textarea>
+                    <label for="dashSendBody">Ziņojums</label>
+                    <textarea name="email_body" id="dashSendBody" class="form-control" rows="6"></textarea>
                 </div>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('dashSendModal').classList.remove('active')">Atcelt</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('dashSendModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Nosūtīt</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Schedule Recurring Modal (dashboard) -->
-<div class="modal-overlay" id="dashRecurringModal">
+<!-- Recurring -->
+<div class="modal-overlay" id="dashRecurringModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal">
-        <div class="modal-title">Izveidot periodisku rēķinu</div>
+        <div class="modal-title">Periodisks rēķins</div>
         <form method="post" id="dashRecurringForm" action="">
             <input type="hidden" name="template" value="classic">
             <div class="form-group">
-                <label>Biežums</label>
-                <select name="frequency" class="form-control">
+                <label for="dashRecFreq">Cik bieži</label>
+                <select name="frequency" id="dashRecFreq" class="form-control">
                     <option value="monthly">Katru mēnesi</option>
-                    <option value="bimonthly">Katrus 2 mēnešus</option>
+                    <option value="bimonthly">Ik pēc 2 mēnešiem</option>
                     <option value="quarterly">Katru ceturksni</option>
-                    <option value="halfyearly">Katrus 6 mēnešus</option>
+                    <option value="halfyearly">Ik pēc 6 mēnešiem</option>
                     <option value="yearly">Katru gadu</option>
                 </select>
             </div>
             <div class="form-group">
-                <label>Pirmā izpilde</label>
-                <input type="date" name="next_run" class="form-control" value="">
+                <label for="dashRecNext">Pirmais rēķins</label>
+                <input type="date" name="next_run" id="dashRecNext" class="form-control" value="">
             </div>
-            <div class="form-group" style="display:flex;align-items:center;gap:8px">
-                <input type="checkbox" name="send_email" value="1" id="dashRecSendEmail">
-                <label for="dashRecSendEmail" style="margin:0;font-weight:400">Automātiski nosūtīt pa e-pastu</label>
+            <div class="form-group">
+                <label class="check"><input type="checkbox" name="send_email" value="1" id="dashRecSendEmail"> Nosūtīt klientam automātiski</label>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('dashRecurringModal').classList.remove('active')">Atcelt</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('dashRecurringModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Izveidot</button>
             </div>
         </form>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Relative-time formatter for activity feed (Latvian)
-(function() {
+(function () {
     function relTime(iso) {
         if (!iso) return '';
-        // SQLite returns "YYYY-MM-DD HH:MM:SS" in UTC. Make it parseable.
         var d = new Date(iso.replace(' ', 'T') + (iso.indexOf('Z') >= 0 ? '' : 'Z'));
         var diff = Math.floor((Date.now() - d.getTime()) / 1000);
         if (diff < 60) return 'tikko';
         if (diff < 3600) return 'pirms ' + Math.floor(diff / 60) + ' min';
         if (diff < 86400) return 'pirms ' + Math.floor(diff / 3600) + ' h';
         if (diff < 172800) return 'vakar';
-        if (diff < 604800) return 'pirms ' + Math.floor(diff / 86400) + ' d';
-        return d.getDate() + '/' + (d.getMonth() + 1);
+        if (diff < 604800) return 'pirms ' + Math.floor(diff / 86400) + ' d.';
+        return fmtDate(d.toISOString().slice(0, 10));
     }
-    document.querySelectorAll('[data-event-time]').forEach(function(el) {
+    document.querySelectorAll('[data-event-time]').forEach(function (el) {
         el.textContent = relTime(el.getAttribute('data-event-time'));
     });
 })();
 
 var dashRangeStats = {{ range_stats_json | safe }};
 
-// --- Revenue Chart ---
-var _chartType = localStorage.getItem('dashChartType') || 'line';
-// 'auto' picks a granularity from the range width; an explicit choice sticks.
-var _chartGrain = localStorage.getItem('dashChartGrain') || 'auto';
-
-var LV_MONTHS_SHORT = ['jan.', 'feb.', 'mar.', 'apr.', 'mai.', 'jūn.',
-                       'jūl.', 'aug.', 'sep.', 'okt.', 'nov.', 'dec.'];
+/* ------------------------------------------------------------------ chart */
+var _chartGrain = 'auto';
+try { _chartGrain = localStorage.getItem('dashChartGrain') || 'auto'; } catch (e) {}
+var LV_MONTHS_SHORT = ['janv.', 'febr.', 'marts', 'apr.', 'maijs', 'jūn.', 'jūl.', 'aug.', 'sept.', 'okt.', 'nov.', 'dec.'];
 
 function _pad2(n) { return n < 10 ? '0' + n : '' + n; }
 function _isoOf(d) { return d.getFullYear() + '-' + _pad2(d.getMonth() + 1) + '-' + _pad2(d.getDate()); }
 function _parseISO(s) { var p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
-
 function _chartRange() {
-    var f = document.getElementById('dashDateFrom');
-    var t = document.getElementById('dashDateTo');
+    var f = document.getElementById('dashDateFrom'), t = document.getElementById('dashDateTo');
     return { from: f && f.value, to: t && t.value };
 }
-
 function effectiveGrain(fromISO, toISO) {
     if (_chartGrain !== 'auto') return _chartGrain;
     if (!fromISO || !toISO) return 'day';
@@ -818,22 +489,15 @@ function effectiveGrain(fromISO, toISO) {
     if (days <= 366) return 'week';
     return 'month';
 }
-
-// Turns the sparse per-day figures from the API into a gap-free series at the
-// requested granularity. Days without documents become 0 rather than being
-// skipped — otherwise the line jumps straight between two distant days and
-// reads as if there were revenue in between.
+// Sparse per-day API figures -> a gap-free series at the chosen granularity.
+// Buckets clip to the range, so totals are identical at every granularity.
 function buildChartSeries(daily, fromISO, toISO, grain) {
     var byDay = {};
-    (daily || []).forEach(function(d) {
-        byDay[d.date] = (byDay[d.date] || 0) + Number(d.total || 0);
-    });
+    (daily || []).forEach(function (d) { byDay[d.date] = (byDay[d.date] || 0) + Number(d.total || 0); });
     if (!fromISO || !toISO) return { labels: [], values: [] };
-
     var start = _parseISO(fromISO), end = _parseISO(toISO);
     var labels = [], values = [], d;
     if (end < start) return { labels: [], values: [] };
-
     function sumBetween(a, b) {
         var total = 0;
         for (var x = new Date(a); x <= b; x.setDate(x.getDate() + 1)) {
@@ -841,14 +505,12 @@ function buildChartSeries(daily, fromISO, toISO, grain) {
         }
         return Math.round(total * 100) / 100;
     }
-
     if (grain === 'week') {
         var cur = new Date(start);
-        cur.setDate(cur.getDate() - ((cur.getDay() + 6) % 7));  // back to Monday
+        cur.setDate(cur.getDate() - ((cur.getDay() + 6) % 7));
         while (cur <= end) {
-            var wEnd = new Date(cur);
-            wEnd.setDate(wEnd.getDate() + 6);
-            labels.push(_pad2(cur.getDate()) + '/' + _pad2(cur.getMonth() + 1));
+            var wEnd = new Date(cur); wEnd.setDate(wEnd.getDate() + 6);
+            labels.push(cur.getDate() + '.' + (cur.getMonth() + 1) + '.');
             values.push(sumBetween(cur, wEnd));
             cur.setDate(cur.getDate() + 7);
         }
@@ -857,446 +519,219 @@ function buildChartSeries(daily, fromISO, toISO, grain) {
         var m = new Date(start.getFullYear(), start.getMonth(), 1);
         while (m <= end) {
             var mEnd = new Date(m.getFullYear(), m.getMonth() + 1, 0);
-            labels.push(LV_MONTHS_SHORT[m.getMonth()]
-                + (multiYear ? " '" + String(m.getFullYear()).slice(2) : ''));
+            labels.push(LV_MONTHS_SHORT[m.getMonth()] + (multiYear ? " '" + String(m.getFullYear()).slice(2) : ''));
             values.push(sumBetween(m, mEnd));
             m = new Date(m.getFullYear(), m.getMonth() + 1, 1);
         }
     } else {
         for (d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            labels.push(_pad2(d.getDate()) + '/' + _pad2(d.getMonth() + 1));
+            labels.push(d.getDate() + '.' + (d.getMonth() + 1) + '.');
             values.push(byDay[_isoOf(d)] || 0);
         }
     }
     return { labels: labels, values: values };
 }
-
 function _grainTitle(grain) {
-    return grain === 'week' ? 'Apgrozījums pa nedēļām'
-         : grain === 'month' ? 'Apgrozījums pa mēnešiem'
-         : 'Apgrozījums pa dienām';
+    return grain === 'week' ? 'Apgrozījums pa nedēļām' : grain === 'month' ? 'Apgrozījums pa mēnešiem' : 'Apgrozījums pa dienām';
 }
-
 function _updateGrainButtons(grain) {
-    ['day', 'week', 'month'].forEach(function(g) {
+    ['day', 'week', 'month'].forEach(function (g) {
         var el = document.getElementById('chartGrain' + g.charAt(0).toUpperCase() + g.slice(1));
-        if (el) el.classList.toggle('active', g === grain);
+        if (el) el.classList.toggle('on', g === grain);
     });
     var title = document.getElementById('chartTitle');
     if (title) title.textContent = _grainTitle(grain);
 }
-(function() {
+function _css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function _niceAxisMax(v) {
+    if (v <= 0) return 100;
+    var mag = Math.pow(10, Math.floor(Math.log10(v)));
+    var steps = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+    for (var i = 0; i < steps.length; i++) if (steps[i] * mag > v) return steps[i] * mag;
+    return 10 * mag;
+}
+function _chartTheme(chart) {
+    var muted = _css('--muted'), grid = _css('--rule'), data = _css('--data');
+    chart.options.scales.x.ticks.color = muted;
+    chart.options.scales.y.ticks.color = muted;
+    chart.options.scales.y.grid.color = grid;
+    chart.options.scales.x.border = { color: _css('--border') };
+    chart.data.datasets.forEach(function (ds) { ds.backgroundColor = data; ds.hoverBackgroundColor = _css('--text'); });
+}
+(function () {
     var ctx = document.getElementById('revenueChart');
     if (!ctx) return;
-    // Chart.js comes from a CDN. If it failed to load (offline, blocked, CDN
-    // down) the chart is skipped rather than thrown — everything further down
-    // this script block still needs to run.
+    // Chart.js comes from a CDN; if it did not load, skip the chart but keep
+    // everything else in this script running.
     if (typeof Chart === 'undefined') {
-        var host = ctx.closest('.dash-chart-body') || ctx.parentNode;
-        if (host) {
-            host.innerHTML = '<div class="empty-state" style="padding:80px 20px">'
-                + 'Grafiks nav pieejams bezsaistē.</div>';
-        }
-        // No chart to re-draw, so the granularity switch has nothing to act on.
+        ctx.parentNode.innerHTML = '<div class="empty-state">Grafiks nav pieejams bezsaistē.</div>';
         var controls = document.querySelector('.dash-chart-grain');
         if (controls) controls.style.display = 'none';
         return;
     }
-    var _range = _chartRange();
-    var _grain = effectiveGrain(_range.from, _range.to);
-    var series = buildChartSeries(dashRangeStats.daily_revenue, _range.from, _range.to, _grain);
-    window._chartSeries = series;
-    var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    var gridColor = isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.06)';
-    var textColor = isLight ? '#64748B' : '#9CA3AF';
-
-    window._chartColors = { isLight: isLight, gridColor: gridColor, textColor: textColor };
-
-    var BRAND = '#3B82F6';
-
-    function makeDataset(type) {
-        var ds = {
-            label: 'Apgrozījums (EUR)',
-            data: (window._chartSeries || { values: [] }).values.slice(),
-        };
-        if (type === 'line') {
-            // Gradient area fill
-            var canvasCtx = ctx.getContext('2d');
-            var gradient = canvasCtx.createLinearGradient(0, 0, 0, 280);
-            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.30)');
-            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
-            ds.borderColor = BRAND;
-            ds.backgroundColor = gradient;
-            ds.fill = true;
-            ds.tension = 0.4;
-            ds.pointRadius = 0;
-            ds.pointHoverRadius = 5;
-            ds.pointBackgroundColor = BRAND;
-            ds.pointBorderColor = '#fff';
-            ds.pointBorderWidth = 2;
-            ds.borderWidth = 2;
-        } else {
-            ds.backgroundColor = BRAND;
-            ds.borderRadius = 6;
-            ds.borderSkipped = false;
-            ds.maxBarThickness = 28;
-            ds.hoverBackgroundColor = '#2563EB';
-        }
-        return ds;
-    }
-
-    window._makeChartDataset = makeDataset;
-
+    var range = _chartRange();
+    var grain = effectiveGrain(range.from, range.to);
+    var series = buildChartSeries(dashRangeStats.daily_revenue, range.from, range.to, grain);
+    var maxV = Math.max.apply(null, series.values.concat([0]));
     window._revenueChart = new Chart(ctx, {
-        type: _chartType,
-        data: {
-            labels: series.labels.slice(),
-            datasets: [makeDataset(_chartType)]
-        },
+        type: 'bar',
+        data: { labels: series.labels, datasets: [{ label: 'Apgrozījums', data: series.values, borderRadius: { topLeft: 2, topRight: 2 }, borderSkipped: 'bottom', maxBarThickness: 28, categoryPercentage: .8, barPercentage: .9 }] },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            animation: window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-                ? false
-                : { duration: 750, easing: 'easeOutQuart' },
-            interaction: {
-                mode: 'index',
-                intersect: false
-            },
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        label: function(c) { return c.parsed.y.toFixed(2) + ' EUR'; }
-                    }
+                    backgroundColor: _css('--text'), titleColor: _css('--surface'), bodyColor: _css('--surface'),
+                    displayColors: false, cornerRadius: 4, padding: 8,
+                    titleFont: { family: _css('--font'), weight: '500' }, bodyFont: { family: _css('--font') },
+                    callbacks: { label: function (c) { return fmtEur(c.parsed.y); } }
                 }
             },
             scales: {
                 y: {
-                    beginAtZero: true,
-                    grid: { color: gridColor },
-                    ticks: { color: textColor, callback: function(v) { return v.toFixed(0) + ' €'; } }
+                    beginAtZero: true, max: _niceAxisMax(maxV),
+                    grid: { drawTicks: false }, border: { display: false },
+                    ticks: { maxTicksLimit: 5, padding: 8, font: { family: _css('--font'), size: 12 },
+                             callback: function (v) { return fmtNum(v, 0) + ' €'; } }
                 },
                 x: {
                     grid: { display: false },
-                    ticks: { color: textColor, maxRotation: 45 }
+                    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { family: _css('--font'), size: 12 } }
                 }
             }
         }
     });
-
-    // Set initial button state
-    _updateChartButtons(_chartType);
-    _updateGrainButtons(_grain);
+    _chartTheme(window._revenueChart);
+    window._revenueChart.update();
+    _updateGrainButtons(grain);
+    document.addEventListener('themechange', function () { _chartTheme(window._revenueChart); window._revenueChart.update(); });
 })();
 
-function _updateChartButtons(type) {
-    var barBtn = document.getElementById('chartTypeBar');
-    var lineBtn = document.getElementById('chartTypeLine');
-    if (!barBtn || !lineBtn) return;
-    barBtn.classList.toggle('active', type !== 'line');
-    lineBtn.classList.toggle('active', type === 'line');
-}
-
-function switchChartType(type) {
-    _chartType = type;
-    localStorage.setItem('dashChartType', type);
-    var chart = window._revenueChart;
-    if (!chart) return;
-    chart.config.type = type;
-    chart.data.datasets = [window._makeChartDataset(type)];
-    chart.update();
-    _updateChartButtons(type);
-}
-
-// Rebuilds the series from whatever the API last returned. Called when the
-// granularity changes and after every date-range refresh.
 function redrawChart(daily) {
     var range = _chartRange();
     var grain = effectiveGrain(range.from, range.to);
-    window._chartSeries = buildChartSeries(
-        daily || (window.dashRangeStats && dashRangeStats.daily_revenue) || [],
-        range.from, range.to, grain);
+    var series = buildChartSeries(daily || (dashRangeStats && dashRangeStats.daily_revenue) || [], range.from, range.to, grain);
     _updateGrainButtons(grain);
     var chart = window._revenueChart;
     if (!chart) return;
-    chart.data.labels = window._chartSeries.labels.slice();
-    chart.data.datasets = [window._makeChartDataset(_chartType)];
-    chart.config.type = _chartType;
+    chart.data.labels = series.labels;
+    chart.data.datasets[0].data = series.values;
+    chart.options.scales.y.max = _niceAxisMax(Math.max.apply(null, series.values.concat([0])));
     chart.update();
 }
-
 function switchChartGrain(grain) {
     _chartGrain = grain;
-    localStorage.setItem('dashChartGrain', grain);
+    try { localStorage.setItem('dashChartGrain', grain); } catch (e) {}
     redrawChart();
 }
 
-// --- Date Range Presets & Dynamic Update ---
-(function() {
+/* ------------------------------------------------------- period + stats */
+(function () {
     var fromEl = document.getElementById('dashDateFrom');
     var toEl = document.getElementById('dashDateTo');
-
-    function pad(n) { return n < 10 ? '0' + n : '' + n; }
-    function isoDate(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
-    function lastDayOfMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
-
+    function iso(d) { return _isoOf(d); }
     var today = new Date();
-    var thisMonthStart = isoDate(new Date(today.getFullYear(), today.getMonth(), 1));
-    // Month-to-date, not month-end: the rest of the month hasn't happened yet,
-    // and this keeps the button in step with what the server renders on load.
-    var thisMonthEnd = isoDate(today);
-    var lastMonthStart = isoDate(new Date(today.getFullYear(), today.getMonth() - 1, 1));
-    var lastMonthEnd = isoDate(new Date(today.getFullYear(), today.getMonth() - 1, lastDayOfMonth(today.getFullYear(), today.getMonth() - 1)));
-    var thisYearStart = today.getFullYear() + '-01-01';
-    var thisYearEnd = isoDate(today);
-
-    document.getElementById('btnThisMonth').onclick = function() { fromEl.value = thisMonthStart; toEl.value = thisMonthEnd; loadStats(); };
-    document.getElementById('btnLastMonth').onclick = function() { fromEl.value = lastMonthStart; toEl.value = lastMonthEnd; loadStats(); };
-    document.getElementById('btnThisYear').onclick = function() { fromEl.value = thisYearStart; toEl.value = thisYearEnd; loadStats(); };
-    fromEl.onchange = loadStats;
-    toEl.onchange = loadStats;
-
-    function fmt(n) { return Number(n).toFixed(2); }
-
-    var _reduceMotion = window.matchMedia
-        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    // Counts a stat value up to its new figure. Reads the number already on
-    // screen so an AJAX refresh tweens from the old value rather than from 0.
-    function countUp(el, to, decimals, suffix, fromValue) {
-        if (!el) return;
-        suffix = suffix || '';
-        var render = function(v) { el.innerHTML = Number(v).toFixed(decimals) + suffix; };
-        if (_reduceMotion) { render(to); return; }
-
-        var from = fromValue;
-        if (from === undefined) {
-            from = parseFloat(String(el.textContent).replace(/[^\d.-]/g, ''));
-        }
-        if (!isFinite(from)) from = 0;
-        if (from === to) { render(to); return; }
-
-        if (el._countRAF) cancelAnimationFrame(el._countRAF);
-        var dur = 600, start = null;
-        function step(ts) {
-            if (start === null) start = ts;
-            var p = Math.min((ts - start) / dur, 1);
-            var eased = 1 - Math.pow(1 - p, 3);  // easeOutCubic
-            render(from + (to - from) * eased);
-            if (p < 1) { el._countRAF = requestAnimationFrame(step); }
-            else { el._countRAF = null; render(to); }
-        }
-        el._countRAF = requestAnimationFrame(step);
-    }
-
-    // Must match the server-rendered badge exactly, or the number visibly
-    // changes shape on refresh (Python prints 13.0, JS would print 13).
-    function pctText(v) { return Number(v).toFixed(1); }
-
-    function changeHtml(pct) {
-        if (pct > 0) return '<span class="pill pill-success">↑ ' + pctText(pct) + '%</span> ';
-        if (pct < 0) return '<span class="pill pill-danger">↓ ' + pctText(Math.abs(pct)) + '%</span> ';
-        return '<span class="pill pill-neutral">0%</span> ';
-    }
-
-    // --- Sparklines -------------------------------------------------------
-    // Inline SVG, no library. The svg is drawn at its real pixel size rather
-    // than in a fixed box stretched to fit: with a stretched viewBox the dash
-    // pattern used for the draw-in animation is measured in screen pixels
-    // (non-scaling-stroke) while getTotalLength() reports viewBox units, so the
-    // dash came out about half the path length and left a gap in the line.
-    // Drawing 1:1 keeps both in the same coordinate system.
-    var SPARK_H = 32, SPARK_PAD = 3;
-
-    function renderSpark(el, values, animate) {
-        if (!el) return;
-        var vals = (values || []).map(Number).filter(function(v) { return isFinite(v); });
-        // One point can't make a line, and a flat all-zero series is just noise.
-        if (vals.length < 2 || Math.max.apply(null, vals) <= 0) {
-            el.innerHTML = '';
-            el._sparkValues = null;
-            return;
-        }
-        el._sparkValues = vals;
-
-        var w = Math.max(Math.round(el.clientWidth) || 0, 40);
-        var max = Math.max.apply(null, vals);
-        var min = Math.min.apply(null, vals);
-        if (max === min) { max = min + 1; }
-        var stepX = w / (vals.length - 1);
-        var usableH = SPARK_H - SPARK_PAD * 2;
-
-        var pts = vals.map(function(v, i) {
-            var x = i * stepX;
-            var y = SPARK_PAD + usableH - ((v - min) / (max - min)) * usableH;
-            return [Math.round(x * 100) / 100, Math.round(y * 100) / 100];
+    var presets = {
+        btnThisMonth: [iso(new Date(today.getFullYear(), today.getMonth(), 1)), iso(today)],
+        btnLastMonth: [iso(new Date(today.getFullYear(), today.getMonth() - 1, 1)), iso(new Date(today.getFullYear(), today.getMonth(), 0))],
+        btnThisYear: [today.getFullYear() + '-01-01', iso(today)],
+    };
+    function paintPresets() {
+        Object.keys(presets).forEach(function (id) {
+            var p = presets[id];
+            document.getElementById(id).classList.toggle('on', fromEl.value === p[0] && toEl.value === p[1]);
         });
-
-        var line = pts.map(function(p, i) { return (i ? 'L' : 'M') + p[0] + ' ' + p[1]; }).join(' ');
-        var area = line + ' L' + w + ' ' + SPARK_H + ' L0 ' + SPARK_H + ' Z';
-        var last = pts[pts.length - 1];
-
-        el.innerHTML =
-            '<svg width="' + w + '" height="' + SPARK_H + '" viewBox="0 0 ' + w + ' ' + SPARK_H
-            + '" aria-hidden="true" focusable="false">'
-            + '<path class="spark-area" d="' + area + '"/>'
-            + '<path class="spark-line" d="' + line + '"/>'
-            + '</svg>'
-            + '<i class="spark-dot" style="left:' + last[0] + 'px;top:' + last[1] + 'px"></i>';
-
-        el.classList.remove('spark-enter');
-        if (animate) {
-            var path = el.querySelector('.spark-line');
-            // Now in the same units the dash pattern uses.
-            var len = path.getTotalLength ? path.getTotalLength() : w;
-            el.style.setProperty('--spark-len', len);
-            void el.offsetWidth;  // restart the animation on re-render
-            el.classList.add('spark-enter');
-        }
     }
-
-    // Sparkline geometry is baked in pixels, so it has to be rebuilt when the
-    // cards change width. No animation on resize — it would fire constantly.
-    var _sparkResizeTimer = null;
-    window.addEventListener('resize', function() {
-        clearTimeout(_sparkResizeTimer);
-        _sparkResizeTimer = setTimeout(function() {
-            ['sparkRevenue', 'sparkDocs', 'sparkAvg'].forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el && el._sparkValues) renderSpark(el, el._sparkValues, false);
-            });
-        }, 150);
+    Object.keys(presets).forEach(function (id) {
+        document.getElementById(id).onclick = function () {
+            fromEl.value = presets[id][0];
+            toEl.value = presets[id][1];
+            loadStats();
+        };
     });
+    fromEl.addEventListener('change', loadStats);
+    toEl.addEventListener('change', loadStats);
+    paintPresets();
 
-    function renderAllSparks(s, animate) {
-        renderSpark(document.getElementById('sparkRevenue'), s.spark_revenue, animate);
-        renderSpark(document.getElementById('sparkDocs'), s.spark_docs, animate);
-        renderSpark(document.getElementById('sparkAvg'), s.spark_avg, animate);
+    function setMoney(id, v) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = fmtNum(v) + '<span class="unit">€</span>';
+    }
+    function ddmm(s) { return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' : ''; }
+    function deltaHtml(pct) {
+        if (!pct) return '<span>0 %</span>';
+        var up = pct > 0;
+        return '<span class="' + (up ? 'up' : 'down') + '">' + (up ? '+' : '−') + fmtNum(Math.abs(pct), 1) + ' %</span>';
     }
 
     var _loadCtrl = null;
     function loadStats() {
         var df = fromEl.value, dt = toEl.value;
+        paintPresets();
         if (!df || !dt) return;
         if (_loadCtrl) _loadCtrl.abort();
         _loadCtrl = new AbortController();
         var grid = document.getElementById('dashStatsGrid');
-        var chartCard = document.querySelector('.dash-chart-card');
-        if (grid) grid.classList.add('is-loading');
+        var chartCard = document.querySelector('.chart-card');
+        grid.classList.add('is-loading');
         if (chartCard) chartCard.classList.add('is-loading');
-        // Keep the range in the URL so a refresh reloads what's on screen
-        // instead of silently snapping back to the server default.
-        try {
-            history.replaceState(null, '', '/?date_from=' + df + '&date_to=' + dt);
-        } catch (e) {}
-        fetch('/api/dashboard-stats?date_from=' + df + '&date_to=' + dt, {
-            credentials: 'same-origin',
-            signal: _loadCtrl.signal
-        })
-            .then(function(r) { return r.json(); })
-            .then(function(s) {
-                if (grid) grid.classList.remove('is-loading');
+        try { history.replaceState(null, '', '/?date_from=' + df + '&date_to=' + dt); } catch (e) {}
+        fetch('/api/dashboard-stats?date_from=' + df + '&date_to=' + dt, { credentials: 'same-origin', signal: _loadCtrl.signal })
+            .then(function (r) { return r.json(); })
+            .then(function (s) {
                 dashRangeStats = s;
-                // Update stat cards. The "Neapmaksāti" card only exists when
-                // status tracking is on, so every lookup here has to be guarded.
-                var sm = ' <small>EUR</small>';
-                countUp(document.getElementById('statRevenue'), s.total_revenue, 2, sm);
-                countUp(document.getElementById('statUnpaid'), s.unpaid_total, 2, sm);
-                countUp(document.getElementById('statDocs'), s.doc_count, 0, '');
-                countUp(document.getElementById('statAvg'), s.avg_invoice, 2, sm);
-                var splitEl = document.getElementById('statRevenueSplit');
-                if (splitEl) {
-                    var netEl = document.getElementById('statRevenueNet');
-                    var vatEl = document.getElementById('statRevenueVat');
-                    if (netEl) netEl.textContent = fmt(s.revenue_net || 0);
-                    if (vatEl) vatEl.textContent = fmt(s.revenue_vat || 0);
-                    splitEl.hidden = splitEl.dataset.vatPayer !== '1' && !s.revenue_vat;
+                setMoney('statRevenue', s.total_revenue);
+                setMoney('statUnpaid', s.unpaid_total);
+                setMoney('statAvg', s.avg_invoice);
+                var docs = document.getElementById('statDocs');
+                if (docs) docs.textContent = s.doc_count;
+                var split = document.getElementById('statRevenueSplit');
+                if (split) {
+                    document.getElementById('statRevenueNet').textContent = fmtNum(s.revenue_net || 0);
+                    document.getElementById('statRevenueVat').textContent = fmtNum(s.revenue_vat || 0);
+                    split.hidden = split.dataset.vatPayer !== '1' && !s.revenue_vat;
                 }
-                renderAllSparks(s, true);
-
-                // Update change indicators
-                var cmpLabel = s.compare_mode === 'year' ? 'gads' : 'mēnesis';
-                var rcEl = document.getElementById('statRevenueChange');
-                if (rcEl) {
-                    rcEl.innerHTML = changeHtml(s.revenue_change) + '<span>vs iepr. ' + cmpLabel + '</span>';
+                var win = ddmm(String(s.prev_from || '')) + '–' + ddmm(String(s.prev_to || ''));
+                var rc = document.getElementById('statRevenueChange');
+                if (rc) rc.innerHTML = deltaHtml(s.revenue_change) + ' pret <span class="cmp-window">' + win + '</span>';
+                var dc = document.getElementById('statDocsChange');
+                if (dc) dc.innerHTML = deltaHtml(s.doc_count_change) + ' pret <span class="cmp-window">' + win + '</span>';
+                if (document.getElementById('statNet')) {
+                    setMoney('statNet', s.total_revenue - s.total_expenses);
+                    document.getElementById('statExpRed').textContent = fmtNum(s.total_expenses);
                 }
-                var dcEl = document.getElementById('statDocsChange');
-                if (dcEl) {
-                    dcEl.innerHTML = changeHtml(s.doc_count_change) + '<span>vs iepr. ' + cmpLabel + '</span>';
+                var tc = document.getElementById('cardTopClient');
+                if (tc) {
+                    var esc = function (x) { return String(x).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); };
+                    tc.innerHTML = s.top_client
+                        ? 'Lielākais klients periodā: <b>' + esc(s.top_client.name) + '</b> · ' + s.top_client.count + (s.top_client.count === 1 ? ' rēķins' : ' rēķini') + ' · ' + fmtEur(s.top_client.revenue)
+                        : 'Periodā nav izrakstītu rēķinu.';
                 }
-
-                // Revenue vs Expenses
-                if (document.getElementById('statRevGreen')) {
-                    document.getElementById('statRevGreen').textContent = fmt(s.total_revenue);
-                    document.getElementById('statExpRed').textContent = fmt(s.total_expenses);
-                    var net = s.total_revenue - s.total_expenses;
-                    document.getElementById('statNet').textContent = fmt(net);
-                }
-
-                // Top client
-                var tcEl = document.getElementById('cardTopClient');
-                var lbl = '<div style="font-size:12px;color:var(--text-light);margin-bottom:12px">Top klients</div>';
-                if (!tcEl) { /* card hidden for this user */ }
-                else if (s.top_client) {
-                    tcEl.innerHTML = lbl + '<div style="font-size:15px;font-weight:600;letter-spacing:-0.2px;color:var(--text)">' + s.top_client.name + '</div>'
-                        + '<div style="font-size:12px;color:var(--text-light);margin-top:4px">' + s.top_client.count + ' dok. · ' + fmt(s.top_client.revenue) + ' EUR</div>';
-                } else {
-                    tcEl.innerHTML = lbl + '<div class="text-muted" style="font-size:13px">Nav datu</div>';
-                }
-
-                // Overdue
-                var odEl = document.getElementById('cardOverdue');
-                var odLbl = '<div style="font-size:12px;color:var(--text-light);margin-bottom:12px">Kavētie rēķini</div>';
-                if (!odEl) { /* card hidden for this user */ }
-                else if (s.overdue_count > 0) {
-                    odEl.innerHTML = odLbl + '<div style="font-size:20px;font-weight:600;color:var(--text)">' + s.overdue_count + '</div>'
-                        + '<div style="font-size:12px;color:var(--text-light);margin-top:4px">' + fmt(s.overdue_total) + ' EUR</div>';
-                } else {
-                    odEl.innerHTML = odLbl + '<div style="font-size:20px;font-weight:600;color:var(--text-lighter)">0</div>'
-                        + '<div style="font-size:12px;color:var(--text-light);margin-top:4px">Nav kavētu rēķinu</div>';
-                }
-
-                // Update chart at whatever granularity is in effect
                 redrawChart(s.daily_revenue || []);
-                if (chartCard) chartCard.classList.remove('is-loading');
             })
-            .catch(function(e) {
-                if (e.name === 'AbortError') return;
-                if (grid) grid.classList.remove('is-loading');
+            .catch(function (e) { if (e.name === 'AbortError') return; })
+            .finally(function () {
+                grid.classList.remove('is-loading');
                 if (chartCard) chartCard.classList.remove('is-loading');
             });
     }
-
-    // First paint: draw the sparklines and count the server-rendered figures
-    // up from zero, so the dashboard arrives rather than just appearing.
-    var sm0 = ' <small>EUR</small>';
-    countUp(document.getElementById('statRevenue'), dashRangeStats.total_revenue, 2, sm0, 0);
-    countUp(document.getElementById('statUnpaid'), dashRangeStats.unpaid_total, 2, sm0, 0);
-    countUp(document.getElementById('statDocs'), dashRangeStats.doc_count, 0, '', 0);
-    countUp(document.getElementById('statAvg'), dashRangeStats.avg_invoice, 2, sm0, 0);
-    renderAllSparks(dashRangeStats, true);
 })();
 
+/* --------------------------------------------------------- row actions */
 const dashClientEmailMap = {
     {% for c in clients %}{{ c.id }}: {{ (c.email or '') | tojson }},{% endfor %}
 };
-
 function dashToggleCustomEmail() {
-    var section = document.getElementById('dashCustomEmailSection');
-    section.style.display = document.getElementById('dashCustomEmailToggle').checked ? 'block' : 'none';
+    document.getElementById('dashCustomEmailSection').style.display = document.getElementById('dashCustomEmailToggle').checked ? 'block' : 'none';
 }
-
 function updateDashAttachmentName() {
     var el = document.getElementById('dashSendAttachment');
     var sel = document.getElementById('dashSendFormat');
-    if (!el) return;
-    var base = window._dashSendDocNumber || 'dokuments';
-    el.textContent = base + (sel && sel.value === 'xml' ? '.xml' : '.pdf');
+    if (el) el.textContent = (window._dashSendDocNumber || 'dokuments') + (sel && sel.value === 'xml' ? '.xml' : '.pdf');
 }
-
 function dashOpenSendModal(docId, clientId) {
     var form = document.getElementById('dashSendForm');
     form.action = '/documents/' + docId + '/send';
@@ -1306,112 +741,76 @@ function dashOpenSendModal(docId, clientId) {
     emailInput.value = dashClientEmailMap[clientId] || '';
     subjectInput.value = '';
     bodyInput.value = '';
-    // Reset custom-email toggle
     document.getElementById('dashCustomEmailToggle').checked = false;
     document.getElementById('dashCustomEmailSection').style.display = 'none';
     document.getElementById('dashSendModal').classList.add('active');
-    if (!emailInput.value) setTimeout(function() { emailInput.focus(); }, 50);
-    // Reset attachment label until API responds
-    var attachEl = document.getElementById('dashSendAttachment');
-    if (attachEl) attachEl.textContent = 'dokuments.pdf';
+    if (!emailInput.value) setTimeout(function () { emailInput.focus(); }, 50);
     window._dashSendDocNumber = '';
     var dashFmt = document.getElementById('dashSendFormat');
-    if (dashFmt) dashFmt.value = 'pdf';   // always start from PDF
-    // Fetch saved-template defaults so user sees what will be sent
-    fetch('/api/documents/' + docId + '/email-defaults', {credentials: 'same-origin'})
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(d) {
+    if (dashFmt) dashFmt.value = 'pdf';
+    updateDashAttachmentName();
+    fetch('/api/documents/' + docId + '/email-defaults', { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
             if (!d) return;
             subjectInput.value = d.subject || '';
             bodyInput.value = d.body || '';
             if (!emailInput.value && d.client_email) emailInput.value = d.client_email;
-            if (d.doc_number) {
-                window._dashSendDocNumber = d.doc_number;
-                updateDashAttachmentName();
-            }
+            if (d.doc_number) { window._dashSendDocNumber = d.doc_number; updateDashAttachmentName(); }
         })
-        .catch(function() {});
+        .catch(function () {});
 }
-
 async function dashToggleStatus(el) {
     const docId = el.dataset.docId;
     el.style.opacity = '0.5';
     try {
-        const res = await fetch('/documents/' + docId + '/status', {
-            method: 'POST',
-            headers: {'Accept': 'application/json'},
-            credentials: 'same-origin'
-        });
+        const res = await fetch('/documents/' + docId + '/status', { method: 'POST', headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
         if (!res.ok) throw new Error('Status ' + res.status);
         const data = await res.json();
         el.dataset.status = data.status;
-        if (data.status === 'paid') {
-            el.textContent = 'Apmaksāts';
-            el.className = 'badge badge-status badge-paid';
-        } else {
-            el.textContent = 'Izrakstīts';
-            el.className = 'badge badge-status badge-issued';
-        }
-    } catch(e) {
-        alert('Kļūda mainot statusu');
+        const paid = data.status === 'paid';
+        el.textContent = paid ? 'apmaksāts' : 'gaida';
+        el.classList.toggle('pill-success', paid);
+        el.classList.toggle('pill-neutral', !paid);
+    } catch (e) {
+        alert('Neizdevās mainīt statusu');
     }
     el.style.opacity = '1';
 }
-
 function dashPositionDropdown(trigger, dropdown) {
     const rect = trigger.getBoundingClientRect();
-    dropdown.style.left = '';
-    dropdown.style.top = '';
+    dropdown.style.position = 'fixed';
     dropdown.style.visibility = 'hidden';
     dropdown.style.display = 'block';
-    const dh = dropdown.offsetHeight;
-    const dw = dropdown.offsetWidth;
+    const dh = dropdown.offsetHeight, dw = dropdown.offsetWidth;
     dropdown.style.display = '';
     dropdown.style.visibility = '';
-
-    const spaceBelow = window.innerHeight - rect.bottom;
-    var top = spaceBelow < dh + 8 && rect.top > dh + 8
-        ? rect.top - dh - 4
-        : rect.bottom + 4;
+    let top = (window.innerHeight - rect.bottom < dh + 8 && rect.top > dh + 8) ? rect.top - dh - 4 : rect.bottom + 4;
     top = Math.max(8, Math.min(top, window.innerHeight - dh - 8));
     dropdown.style.top = top + 'px';
-
-    var left = rect.right - dw;
-    left = Math.max(8, Math.min(left, window.innerWidth - dw - 8));
-    dropdown.style.left = left + 'px';
+    dropdown.style.left = Math.max(8, Math.min(rect.right - dw, window.innerWidth - dw - 8)) + 'px';
+    dropdown.style.right = 'auto';
 }
-
 function dashCloseMenus() {
-    document.querySelectorAll('.dash-menu-wrapper.open').forEach(w => w.classList.remove('open'));
+    document.querySelectorAll('.dash-menu-dropdown.open').forEach(d => d.classList.remove('open'));
 }
-
-document.addEventListener('click', function(e) {
-    // Handle menu trigger
+document.addEventListener('click', function (e) {
     var trigger = e.target.closest('.dash-menu-trigger');
     if (trigger) {
         e.stopPropagation();
-        var wrapper = trigger.closest('.dash-menu-wrapper');
-        var dropdown = wrapper.querySelector('.dash-menu-dropdown');
-        var wasOpen = wrapper.classList.contains('open');
+        var dropdown = trigger.closest('.dash-menu-wrapper').querySelector('.dash-menu-dropdown');
+        var wasOpen = dropdown.classList.contains('open');
         dashCloseMenus();
-        if (!wasOpen) {
-            dashPositionDropdown(trigger, dropdown);
-            wrapper.classList.add('open');
-        }
+        if (!wasOpen) { dashPositionDropdown(trigger, dropdown); dropdown.classList.add('open'); }
         return;
     }
-
-    // Handle data-dash-action buttons
     var actionBtn = e.target.closest('[data-dash-action]');
     if (actionBtn) {
         e.preventDefault();
-        e.stopPropagation();
-        var action = actionBtn.dataset.dashAction;
-        var docId = actionBtn.dataset.docId;
+        var action = actionBtn.dataset.dashAction, docId = actionBtn.dataset.docId;
         dashCloseMenus();
-        if (action === 'send') {
-            dashOpenSendModal(docId, actionBtn.dataset.clientId);
-        } else if (action === 'recurring') {
+        if (action === 'send') dashOpenSendModal(docId, actionBtn.dataset.clientId);
+        else if (action === 'recurring') {
             document.getElementById('dashRecurringForm').action = '/recurring/from-document/' + docId;
             document.getElementById('dashRecurringModal').classList.add('active');
         } else if (action === 'status') {
@@ -1420,11 +819,7 @@ document.addEventListener('click', function(e) {
         }
         return;
     }
-
-    // Close menus on outside click
-    if (!e.target.closest('.dash-menu-wrapper')) {
-        dashCloseMenus();
-    }
+    if (!e.target.closest('.dash-menu-wrapper')) dashCloseMenus();
 });
 window.addEventListener('scroll', dashCloseMenus, true);
 window.addEventListener('resize', dashCloseMenus);

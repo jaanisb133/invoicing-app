@@ -1,0 +1,21 @@
+{# Recent events for the dashboard: what happened, to whom, when. #}
+{% if recent_events %}
+<div class="activity">
+    {% for ev in recent_events %}
+    <a href="{% if ev.document_id %}/documents/{{ ev.document_id }}{% else %}#{% endif %}" class="act plain">
+        <span class="act-title">
+            {%- if ev.event_type == 'document_sent' -%}
+                {{ 'Automātiski nosūtīts' if ev.meta.send_type == 'recurring' else 'Nosūtīts klientam' }}
+            {%- else -%}
+                {{ 'Periodiskais rēķins izveidots' if ev.meta.source == 'recurring' else 'Rēķins izveidots' }}
+            {%- endif -%}
+        </span>
+        <span class="act-amt">{% if ev.amount and ev.amount > 0 %}{{ ev.amount | eur }}{% endif %}</span>
+        <span class="act-sub">{{ ev.client_name or ev.doc_number or '—' }}</span>
+        <span class="act-time" data-event-time="{{ ev.created_at }}"></span>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="due-empty">Te parādīsies izveidotie un nosūtītie rēķini.</div>
+{% endif %}

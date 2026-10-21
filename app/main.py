@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
 import json
+import re
 import secrets
 import datetime
 import asyncio
@@ -37,6 +38,7 @@ if not logger.handlers:
     logger.propagate = False
 
 from app import database as db
+from app import fmt
 from app import registry
 from app.pdf_generator import generate_invoice_pdf, TEMPLATES
 from app import pdf_branded
@@ -54,13 +56,17 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "38"
+CSS_VERSION = "40"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
 # template — the pricing page used to hardcode every figure twice.
 templates.env.globals["tiers"] = db.TIER_LIMITS
 templates.env.filters["price"] = db.format_price
+templates.env.filters["eur"] = fmt.eur
+templates.env.filters["num"] = fmt.num
+templates.env.filters["qty"] = fmt.qty
+templates.env.filters["initials"] = fmt.initials
 
 
 def _usage_pct(current, maximum):
@@ -141,7 +147,7 @@ def _activate_license(key: str) -> bool:
         f.write(f"{key}\n{_get_machine_id()}\n")
     return True
 
-UNITS = ["gab", "kg", "kaste", "iepak.", "l", "h", "m", "m²", "m³"]
+UNITS = ["gab", "h", "st.", "diena", "mēn.", "kompl.", "pakalp.", "kg", "l", "m", "m²", "m³", "km", "kaste", "iepak."]
 
 
 # --- Simple in-memory rate limiter ---
@@ -367,6 +373,7 @@ def _base_context(request):
         "tier_label": db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
         "tier_limits": db.get_tier_limits(tier),
         "needs_setup": not db.get_user_setting(user["account_id"], "company_name"),
+        "company_name": db.get_user_setting(user["account_id"], "company_name"),
         "offline_mode": OFFLINE_MODE,
         # Members work on someone else's account: no settings, billing or team.
         "is_owner": _is_owner(user),
@@ -1982,9 +1989,18 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
     stats = db.get_dashboard_stats(uid)
     range_stats = db.get_dashboard_stats_range(uid, date_from, date_to, compare_mode)
     recent_events = db.get_recent_events(uid, limit=5)
+    unpaid = db.get_unpaid_invoices(uid) if settings.get("status_tracking", "0") == "1" else []
+    for inv in unpaid:
+        try:
+            due = datetime.date.fromisoformat(str(inv.get("payment_due_date") or "")[:10])
+            inv["days_to_due"] = (due - today).days
+        except ValueError:
+            inv["days_to_due"] = None
 
     ctx.update({
         "recent_docs": recent_docs,
+        "unpaid": unpaid,
+        "today": today.isoformat(),
         "clients": clients,
         "stock": stock,
         "settings": settings,
@@ -2429,6 +2445,7 @@ async def products_page(request: Request):
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "products": products,
+        "product_prices": db.get_product_last_prices(user["account_id"]),
         "units": UNITS,
         "usage": usage,
         "limits": limits,
@@ -2475,6 +2492,7 @@ async def clients_page(request: Request):
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "clients": clients,
+        "client_last_billed": db.get_client_last_billed(user["account_id"]),
         "usage": usage,
         "limits": limits,
         "page": "clients",
@@ -2566,6 +2584,8 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "documents": docs,
+        "doc_rows": _doc_list_rows(docs, settings.get("status_tracking", "0") == "1"),
+        "today": datetime.date.today().isoformat(),
         "clients": clients,
         "settings": settings,
         "usage": usage,
@@ -2615,7 +2635,7 @@ async def offers_page(request: Request, client_id: str = "",
 
 
 @app.get("/documents/new", response_class=HTMLResponse)
-async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0):
+async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0, client_id: int = 0):
     ctx = _base_context(request)
     user = request.state.user
     uid = user["account_id"]
@@ -2654,6 +2674,8 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         "doc_type": doc_type,
         "doc_type_name": doc_type_name,
         "stock_map": stock_map,
+        "product_prices": db.get_product_last_prices(uid, doc_type),
+        "client_last_billed": db.get_client_last_billed(uid),
         "templates": TEMPLATES,
         "today": datetime.date.today().isoformat(),
         "page": "new_document" if doc_type != "offer" else "new_offer",
@@ -2665,8 +2687,42 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         "offer_presets": (db.get_offer_presets(uid)
                           if doc_type == "offer" and _branded_offers_enabled(uid) else []),
         "offer_meta": None,
+        # "Izrakstīt rēķinu" from the clients list starts the form on that client.
+        "preselect_client_id": client_id if any(c["id"] == client_id for c in clients) else 0,
     })
     return templates.TemplateResponse("document_form.html", ctx)
+
+
+_ITEM_KEY = re.compile(r"^items\[(\d+)\]\[quantity\]$")
+
+
+def _parse_doc_items(form):
+    """Line items from the document form, in row order.
+
+    Rows are read by the indices actually present, not by counting up from 0:
+    the form used to lose every row after a deleted one, because a gap in the
+    numbering ended the loop. Numbers may be typed the Latvian way ("8,50").
+    Blank rows (no product and no text) are skipped.
+    """
+    indices = sorted(int(m.group(1)) for k in form.keys() if (m := _ITEM_KEY.match(k)))
+    items = []
+    for i in indices:
+        pid_raw = (form.get(f"items[{i}][product_id]") or "").strip()
+        product_id = int(pid_raw) if pid_raw.isdigit() and pid_raw != "0" else None
+        description = (form.get(f"items[{i}][product_name]") or "").strip()
+        if not product_id and not description:
+            continue
+        included_in_price = form.get(f"items[{i}][included_in_price]") == "1"
+        price_raw = form.get(f"items[{i}][price_per_unit]") or ""
+        items.append({
+            "product_id": product_id,
+            "description": description,
+            "quantity": fmt.parse_decimal(form.get(f"items[{i}][quantity]"), 1.0),
+            "unit": form.get(f"items[{i}][unit]") or "gab",
+            "price_per_unit": 0.0 if included_in_price else fmt.parse_decimal(price_raw),
+            "included_in_price": included_in_price,
+        })
+    return items
 
 
 @app.post("/documents/create")
@@ -2698,30 +2754,7 @@ async def create_document(request: Request):
     notes = form.get("notes", "")
     template = _resolve_template(user, form.get("template", ""))
 
-    items = []
-    i = 0
-    while f"items[{i}][quantity]" in form:
-        pid_raw = (form.get(f"items[{i}][product_id]") or "").strip()
-        product_id = int(pid_raw) if pid_raw.isdigit() and pid_raw != "0" else None
-        description = (form.get(f"items[{i}][product_name]") or "").strip()
-        quantity = float(form[f"items[{i}][quantity]"])
-        unit = form[f"items[{i}][unit]"]
-        included_in_price = form.get(f"items[{i}][included_in_price]") == "1"
-        price_raw = form.get(f"items[{i}][price_per_unit]") or ""
-        price_per_unit = 0.0 if included_in_price or not price_raw else float(price_raw)
-        # Skip blank lines (no product selected and no free-text)
-        if not product_id and not description:
-            i += 1
-            continue
-        items.append({
-            "product_id": product_id,
-            "description": description,
-            "quantity": quantity,
-            "unit": unit,
-            "price_per_unit": price_per_unit,
-            "included_in_price": included_in_price,
-        })
-        i += 1
+    items = _parse_doc_items(form)
 
     if not items:
         return RedirectResponse(f"/documents/new?doc_type={doc_type}&error=no_items", status_code=303)
@@ -2801,6 +2834,8 @@ async def edit_document_page(request: Request, doc_id: int):
         "doc_type": doc["doc_type"],
         "doc_type_name": doc_type_name,
         "stock_map": stock_map,
+        "product_prices": db.get_product_last_prices(uid, doc["doc_type"]),
+        "client_last_billed": db.get_client_last_billed(uid),
         "templates": TEMPLATES,
         "today": datetime.date.today().isoformat(),
         "page": "offers" if doc["doc_type"] == "offer" else "documents",
@@ -2830,29 +2865,7 @@ async def update_document(request: Request, doc_id: int):
     template = _resolve_template(user, form.get("template", ""))
     payment_due_date = form.get("payment_due_date", "")
 
-    items = []
-    i = 0
-    while f"items[{i}][quantity]" in form:
-        pid_raw = (form.get(f"items[{i}][product_id]") or "").strip()
-        product_id = int(pid_raw) if pid_raw.isdigit() and pid_raw != "0" else None
-        description = (form.get(f"items[{i}][product_name]") or "").strip()
-        quantity = float(form[f"items[{i}][quantity]"])
-        unit = form[f"items[{i}][unit]"]
-        included_in_price = form.get(f"items[{i}][included_in_price]") == "1"
-        price_raw = form.get(f"items[{i}][price_per_unit]") or ""
-        price_per_unit = 0.0 if included_in_price or not price_raw else float(price_raw)
-        if not product_id and not description:
-            i += 1
-            continue
-        items.append({
-            "product_id": product_id,
-            "description": description,
-            "quantity": quantity,
-            "unit": unit,
-            "price_per_unit": price_per_unit,
-            "included_in_price": included_in_price,
-        })
-        i += 1
+    items = _parse_doc_items(form)
 
     if not items:
         return RedirectResponse(f"/documents/{doc_id}/edit?error=no_items", status_code=303)
@@ -2903,6 +2916,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "items": items,
         "client": client,
         "settings": settings,
+        "today": datetime.date.today().isoformat(),
         "subtotal": subtotal,
         "vat_amount": vat_amount,
         "total": total,
@@ -3181,12 +3195,9 @@ async def team_remove(request: Request, member_id: int):
 async def trash_page(request: Request):
     user = request.state.user
     deleted_docs = db.get_deleted_documents(user["account_id"])
-    return templates.TemplateResponse("trash.html", {
-        "request": request, "current_user": user, "page": "trash",
-        "documents": deleted_docs,
-        "tier": user.get("tier", "free"),
-        "tier_limits": db.get_tier_limits(user.get("tier", "free")),
-    })
+    ctx = _base_context(request)
+    ctx.update({"page": "trash", "documents": deleted_docs})
+    return templates.TemplateResponse("trash.html", ctx)
 
 
 @app.post("/trash/{doc_id}/restore")
@@ -3396,6 +3407,9 @@ def _sync_client_email(user_id: int, client_id: int, email: str):
         db.update_client(user_id, client_id, email=email)
 
 
+_RECURRING_ITEM_KEY = re.compile(r"^items\[(\d+)\]\[product_id\]$")
+
+
 def _parse_recurring_form(form):
     """Parse and validate the recurring form. Returns dict or raises ValueError."""
     try:
@@ -3441,23 +3455,24 @@ def _parse_recurring_form(form):
         raise ValueError("Lai automātiski sūtītu rēķinu, norādiet klienta e-pastu")
 
     items = []
-    i = 0
-    while f"items[{i}][product_id]" in form:
+    # Row indices as present in the form: a deleted middle row leaves a gap
+    # and must not end the loop (it used to drop every row after it).
+    row_ids = sorted(int(m.group(1)) for k in form.keys()
+                     if (m := _RECURRING_ITEM_KEY.match(k)))
+    for i in row_ids:
         try:
             pid = int(form[f"items[{i}][product_id]"])
-            qty = float(form[f"items[{i}][quantity]"])
-            price = float(form[f"items[{i}][price_per_unit]"])
-        except (ValueError, TypeError):
-            i += 1
+            qty = fmt.parse_decimal(form[f"items[{i}][quantity]"])
+            price = fmt.parse_decimal(form[f"items[{i}][price_per_unit]"])
+        except (ValueError, TypeError, KeyError):
             continue
         if pid > 0 and qty > 0:
             items.append({
                 "product_id": pid,
                 "quantity": qty,
-                "unit": form[f"items[{i}][unit]"],
+                "unit": form.get(f"items[{i}][unit]", ""),
                 "price_per_unit": price,
             })
-        i += 1
 
     if not items:
         raise ValueError("Jāpievieno vismaz viena pozīcija")
@@ -4223,21 +4238,23 @@ async def api_documents(request: Request, doc_type: str = "", client_id: str = "
         exclude_doc_types=["offer"],
     )
     settings = _user_settings(user["account_id"])
-    status_tracking = settings.get("status_tracking", "0") == "1"
-    rows = []
-    for d in docs:
-        rows.append({
-            "id": d["id"],
-            "doc_number": d["doc_number"],
-            "doc_type": d["doc_type"],
-            "client_name": d["client_name"],
-            "client_id": d.get("client_id", 0),
-            "doc_date": d["doc_date"],
-            "total_with_vat": round(d.get("total_with_vat") or 0, 2),
-            "status": d.get("status", "issued") if status_tracking else None,
-            "excluded_from_stats": d.get("excluded_from_stats", 0),
-        })
-    return JSONResponse(rows)
+    return JSONResponse(_doc_list_rows(docs, settings.get("status_tracking", "0") == "1"))
+
+
+def _doc_list_rows(docs, status_tracking):
+    """The fields the documents list renders, shared by the page and its API."""
+    return [{
+        "id": d["id"],
+        "doc_number": d["doc_number"],
+        "doc_type": d["doc_type"],
+        "client_name": d["client_name"],
+        "client_id": d.get("client_id", 0),
+        "doc_date": d["doc_date"],
+        "total_with_vat": round(d.get("total_with_vat") or 0, 2),
+        "status": d.get("status", "issued") if status_tracking else None,
+        "payment_due_date": d.get("payment_due_date") or "",
+        "excluded_from_stats": d.get("excluded_from_stats", 0),
+    } for d in docs]
 
 
 @app.post("/api/clients/add")

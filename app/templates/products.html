@@ -1,127 +1,130 @@
 {% extends "base.html" %}
 {% from "_empty_state.html" import empty_state %}
 
+{% block title %}Produkti un pakalpojumi · V-Rēķini{% endblock %}
+
 {% block content %}
+<style>
+.products td.c-name { width: 55%; }
+.products td.c-name a { color: inherit; font-weight: 500; }
+.products .c-actions { text-align: right; white-space: nowrap; }
+@media (max-width: 768px) {
+    .products thead { display: none; }
+    .products, .products tbody { display: block; }
+    .products tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px var(--card-pad); border-bottom: 1px solid var(--rule); }
+    .products tbody tr:last-child { border-bottom: 0; }
+    .products td { display: block; padding: 0 !important; height: auto; border: 0; }
+    .products td.c-name { grid-column: 1; grid-row: 1; width: auto; font-size: 15px; }
+    .products td.c-price { grid-column: 2; grid-row: 1; text-align: right; }
+    .products td.c-unit { grid-column: 1; grid-row: 2; font-size: 13px; color: var(--muted); }
+    .products td.c-actions { grid-column: 2; grid-row: 2; }
+    .products td.c-actions > .btn { display: none; }
+    .products td.c-actions .btn-sm { height: 28px; }
+}
+</style>
+
 <div class="page-header">
     <div>
-        <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.6px;margin:0;color:var(--text)">Produkti / Pakalpojumi</h2>
-        <p style="font-size:13.5px;color:var(--text-light);margin:4px 0 0">Jūsu produktu un pakalpojumu katalogs.</p>
+        <h1>Produkti un pakalpojumi</h1>
+        <p class="page-sub">
+            {% set pct = usage_pct(usage.products, limits.max_products) %}
+            Rēķinā pietiek ierakstīt nosaukuma sākumu — mērvienība un pēdējā cena aizpildīsies pašas.{% if pct >= 50 %} <span class="{% if pct >= 80 %}text-negative{% endif %}">{{ usage.products }} no {{ limits.max_products }} plānā.</span>{% endif %}
+        </p>
     </div>
-    <button class="btn btn-primary" onclick="document.getElementById('addProductModal').classList.add('active')">
-        + Pievienot produktu
-    </button>
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="openAddProduct()">Pievienot produktu</button>
+    </div>
 </div>
 
 <div class="page-body">
     {% if request.query_params.get('error') == 'limit' %}
-    <div class="alert alert-danger">Produktu limits sasniegts ({{ tier_limits.max_products | limit_text }}). <a href="/pricing">Uzlabojiet plānu</a>, lai pievienotu vairāk.</div>
+    <div class="alert alert-danger">Sasniegts produktu limits ({{ tier_limits.max_products | limit_text }}). <a href="/pricing">Mainiet plānu</a>, lai pievienotu vairāk.</div>
     {% endif %}
-    <div class="usage-section" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 18px">
-        <div class="usage-item" style="margin:0">
-            <div class="usage-label" style="font-size:12px;color:var(--text-light);font-weight:500;letter-spacing:0;text-transform:none;margin-bottom:8px">Produkti</div>
-            <div class="usage-bar" style="background:var(--bg-input)">
-                <div class="usage-fill" style="background:var(--brand);width: {{ usage_pct(usage.products, limits.max_products) }}%"></div>
+    <section class="card">
+        {% if products %}
+        <div style="padding:14px var(--card-pad);border-bottom:1px solid var(--rule)">
+            <div class="search-field" style="max-width:340px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input type="search" id="productFilter" class="form-control" placeholder="Meklēt" aria-label="Meklēt produktu">
             </div>
-            <div class="usage-count" style="font-size:12px;color:var(--text-light);margin-top:6px">{{ usage.products }} / {{ limits.max_products | limit_text }}</div>
         </div>
-    </div>
-    <div class="card">
-        <div class="card-body" style="padding:8px">
-            {% if products %}
-            <div class="table-wrapper">
-                <table class="mobile-cards">
-                    <thead>
-                        <tr>
-                            <th>Nosaukums</th>
-                            <th>Mērvienība</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for p in products %}
-                        <tr>
-                            <td data-label="Nosaukums" class="mobile-card-title">
-                                <span class="doc-client-cell">
-                                    <span class="icon-square sm tint-emerald"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span>
-                                    <span>{{ p.name }}</span>
-                                </span>
-                            </td>
-                            <td data-label="Mērvienība" class="mobile-card-meta"><span class="pill pill-neutral">{{ p.unit }}</span></td>
-                            <td>
-                                <div class="btn-group">
-                                    <button class="btn btn-outline btn-sm"
-                                            onclick="editProduct({{ p.id }}, '{{ p.name }}', '{{ p.unit }}')">
-                                        Rediģēt
-                                    </button>
-                                    <form method="post" action="/products/{{ p.id }}/delete"
-                                          onsubmit="return confirm('Vai tiešām dzēst šo produktu?')">
-                                        <button type="submit" class="btn btn-danger btn-sm">Dzēst</button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            {{ empty_state(
-                icon="product",
-                title="Vēl nav neviena produkta",
-                text="Saglabājiet biežāk izmantotos produktus un pakalpojumus, lai tos vienā klikšķī pievienotu rēķinam.",
-                cta_label="Pievienot produktu",
-                cta_onclick="document.getElementById('addProductModal').classList.add('active')") }}
-            {% endif %}
-        </div>
-    </div>
+        <table class="products">
+            <thead>
+                <tr>
+                    <th class="c-name">Nosaukums</th>
+                    <th class="c-unit">Mērvienība</th>
+                    <th class="c-price text-right">Pēdējā cena</th>
+                    <th class="c-actions"><span class="sr-only">Darbības</span></th>
+                </tr>
+            </thead>
+            <tbody id="productsBody">
+                {% for p in products %}
+                {% set price = product_prices.get(p.id) %}
+                <tr data-search="{{ p.name | lower }}">
+                    <td class="c-name"><a href="#" class="plain" onclick='event.preventDefault();editProduct({{ p.id }}, {{ p.name | tojson }}, {{ p.unit | tojson }})'>{{ p.name }}</a></td>
+                    <td class="c-unit">{{ p.unit }}</td>
+                    <td class="c-price num text-right">{% if price is not none %}{{ price | eur }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td class="c-actions">
+                        <button class="btn btn-ghost btn-sm" onclick='editProduct({{ p.id }}, {{ p.name | tojson }}, {{ p.unit | tojson }})'>Rediģēt</button>
+                        <form method="post" action="/products/{{ p.id }}/delete" style="display:inline" onsubmit='return confirm({{ ("Dzēst " ~ p.name ~ "? Izrakstītie rēķini paliks.") | tojson }})'>
+                            <button type="submit" class="btn btn-ghost btn-sm" aria-label="Dzēst" title="Dzēst">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 6h17M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6M18.5 6l-.8 13.1a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 6"/></svg>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="empty-inline" id="productsNoMatch" hidden style="margin:16px var(--card-pad)">Nav produkta ar šādu nosaukumu.</div>
+        {% else %}
+        {{ empty_state(
+            icon="product",
+            title="Vēl nav neviena produkta",
+            text="Saglabājiet biežāk izmantotos produktus un pakalpojumus — rēķinā tie atradīsies pēc pirmajiem burtiem.",
+            cta_label="Pievienot produktu",
+            cta_onclick="openAddProduct()") }}
+        {% endif %}
+    </section>
 </div>
 
-<!-- Add Product Modal -->
-<div class="modal-overlay" id="addProductModal">
+<datalist id="unitOptions">{% for u in units %}<option value="{{ u }}">{% endfor %}</datalist>
+
+<div class="modal-overlay" id="addProductModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal">
-        <div class="modal-title">Pievienot produktu</div>
+        <div class="modal-title">Jauns produkts vai pakalpojums</div>
         <form method="post" action="/products/add">
             <div class="form-group">
-                <label>Nosaukums</label>
-                <input type="text" name="name" class="form-control" required>
+                <label for="addProductName">Nosaukums</label>
+                <input type="text" name="name" id="addProductName" class="form-control" required>
             </div>
             <div class="form-group">
-                <label>Mērvienība</label>
-                <select name="unit" class="form-control">
-                    {% for u in units %}
-                    <option value="{{ u }}">{{ u }}</option>
-                    {% endfor %}
-                </select>
+                <label for="addProductUnit">Mērvienība</label>
+                <input type="text" name="unit" id="addProductUnit" class="form-control" list="unitOptions" value="{{ units[0] }}" required>
+                <span class="field-hint">Izvēlieties no saraksta vai ierakstiet savu, piemēram, „pakalp.”.</span>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline"
-                        onclick="document.getElementById('addProductModal').classList.remove('active')">Atcelt</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('addProductModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Pievienot</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Edit Product Modal -->
-<div class="modal-overlay" id="editProductModal">
+<div class="modal-overlay" id="editProductModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal">
         <div class="modal-title">Rediģēt produktu</div>
         <form method="post" id="editProductForm">
             <div class="form-group">
-                <label>Nosaukums</label>
+                <label for="editProductName">Nosaukums</label>
                 <input type="text" name="name" id="editProductName" class="form-control" required>
             </div>
             <div class="form-group">
-                <label>Mērvienība</label>
-                <select name="unit" id="editProductUnit" class="form-control">
-                    {% for u in units %}
-                    <option value="{{ u }}">{{ u }}</option>
-                    {% endfor %}
-                </select>
+                <label for="editProductUnit">Mērvienība</label>
+                <input type="text" name="unit" id="editProductUnit" class="form-control" list="unitOptions" required>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn btn-outline"
-                        onclick="document.getElementById('editProductModal').classList.remove('active')">Atcelt</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('editProductModal').classList.remove('active')">Atcelt</button>
                 <button type="submit" class="btn btn-primary">Saglabāt</button>
             </div>
         </form>
@@ -131,11 +134,29 @@
 
 {% block scripts %}
 <script>
+function openAddProduct() {
+    document.getElementById('addProductModal').classList.add('active');
+    setTimeout(() => document.getElementById('addProductName').focus(), 30);
+}
 function editProduct(id, name, unit) {
     document.getElementById('editProductForm').action = '/products/' + id + '/edit';
     document.getElementById('editProductName').value = name;
     document.getElementById('editProductUnit').value = unit;
     document.getElementById('editProductModal').classList.add('active');
 }
+(function () {
+    const input = document.getElementById('productFilter');
+    if (!input) return;
+    input.addEventListener('input', () => {
+        const q = input.value.trim().toLowerCase();
+        let shown = 0;
+        document.querySelectorAll('#productsBody tr').forEach(tr => {
+            const hit = !q || tr.dataset.search.includes(q);
+            tr.hidden = !hit;
+            if (hit) shown++;
+        });
+        document.getElementById('productsNoMatch').hidden = shown > 0;
+    });
+})();
 </script>
 {% endblock %}

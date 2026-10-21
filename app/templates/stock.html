@@ -58,10 +58,10 @@
                         <tr>
                             <td>{{ s.name }}</td>
                             <td>{{ s.unit }}</td>
-                            <td class="text-right">{{ "%.2f" | format(s.bought) }}</td>
-                            <td class="text-right">{{ "%.2f" | format(s.sold) }}</td>
+                            <td class="text-right">{{ s.bought | num }}</td>
+                            <td class="text-right">{{ s.sold | num }}</td>
                             <td class="text-right" style="font-weight:600;{% if s.stock <= 0 %}color:var(--danger){% endif %}">
-                                {{ "%.2f" | format(s.stock) }}
+                                {{ s.stock | num }}
                             </td>
                         </tr>
                         {% endfor %}
