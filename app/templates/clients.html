@@ -189,6 +189,11 @@
                 <label>E-pasts</label>
                 <input type="email" name="email" class="form-control">
             </div>
+            <div class="form-group">
+                <label>Pircēja atsauce</label>
+                <input type="text" name="buyer_reference" class="form-control" maxlength="100">
+                <div class="field-hint">Ja klients to prasa rēķinā: iestādes vai struktūrvienības kods, pasūtījuma nr. Pievienojas jauniem rēķiniem.</div>
+            </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-ghost"
                         onclick="document.getElementById('addClientModal').classList.remove('active')">Atcelt</button>
@@ -272,6 +277,11 @@
             <div class="form-group">
                 <label>E-pasts</label>
                 <input type="email" name="email" id="ec_email" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="ec_buyer_reference">Pircēja atsauce</label>
+                <input type="text" name="buyer_reference" id="ec_buyer_reference" class="form-control" maxlength="100">
+                <div class="field-hint">Ja klients to prasa rēķinā: iestādes vai struktūrvienības kods, pasūtījuma nr. Pievienojas jauniem rēķiniem.</div>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-ghost"
@@ -380,7 +390,7 @@ document.getElementById('editClientForm').addEventListener('submit', function(e)
 function editClient(c) {
     document.getElementById('editClientForm').action = '/clients/' + c.id + '/edit';
     const fields = ['name', 'reg_number', 'vat_number', 'legal_address',
-                     'bank_name', 'bank_account', 'contact_person', 'phone', 'email'];
+                     'bank_name', 'bank_account', 'contact_person', 'phone', 'email', 'buyer_reference'];
     fields.forEach(f => {
         document.getElementById('ec_' + f).value = c[f] || '';
     });

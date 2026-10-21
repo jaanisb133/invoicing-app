@@ -409,7 +409,10 @@ def _run_migrations():
     doc_cols = {row[1] for row in cursor.execute("PRAGMA table_info(documents)").fetchall()}
     for col, ddl in (("subtotal", "REAL"), ("vat_amount", "REAL"), ("total", "REAL"),
                      ("rounding", "REAL NOT NULL DEFAULT 0"), ("sent_at", "TIMESTAMP"),
-                     ("ref_doc_id", "INTEGER")):
+                     ("ref_doc_id", "INTEGER"),
+                     # The buyer's own reference (EN 16931 BT-10): the code a council or
+                     # its school routes the invoice on, an order number, a cost centre
+                     ("buyer_reference", "TEXT NOT NULL DEFAULT ''")):
         if col not in doc_cols:
             cursor.execute(f"ALTER TABLE documents ADD COLUMN {col} {ddl}")
     if "sent_at" not in doc_cols:
@@ -421,6 +424,10 @@ def _run_migrations():
         cursor.execute("""UPDATE documents SET sent_at = COALESCE(sent_at, created_at, CURRENT_TIMESTAMP)
                           WHERE doc_type = 'sell' AND status = 'paid'""")
     _backfill_legacy_totals(cursor)
+    client_cols = {row[1] for row in cursor.execute("PRAGMA table_info(clients)").fetchall()}
+    if "buyer_reference" not in client_cols:
+        # The client's usual reference, copied onto new invoices for them
+        cursor.execute("ALTER TABLE clients ADD COLUMN buyer_reference TEXT NOT NULL DEFAULT ''")
 
     conn.commit()
     conn.close()
@@ -694,14 +701,15 @@ def get_product(product_id):
 
 def add_client(user_id, name, reg_number="", vat_number="", vat_payer=0, legal_address="",
                bank_name="", bank_account="", contact_person="", phone="", email="",
-               client_type="business", one_time=0):
+               client_type="business", one_time=0, buyer_reference=""):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO clients (user_id, name, reg_number, vat_number, vat_payer, legal_address,
-           bank_name, bank_account, contact_person, phone, email, client_type, one_time)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           bank_name, bank_account, contact_person, phone, email, client_type, one_time, buyer_reference)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (user_id, name, reg_number, vat_number, int(vat_payer), legal_address,
-         bank_name, bank_account, contact_person, phone, email, client_type, int(one_time))
+         bank_name, bank_account, contact_person, phone, email, client_type, int(one_time),
+         (buyer_reference or "").strip()[:100])
     )
     client_id = cursor.lastrowid
     conn.commit()
@@ -712,7 +720,7 @@ def add_client(user_id, name, reg_number="", vat_number="", vat_payer=0, legal_a
 def update_client(user_id, client_id, **kwargs):
     allowed_fields = {"name", "reg_number", "vat_number", "vat_payer", "legal_address",
                       "bank_name", "bank_account", "contact_person", "phone", "email",
-                      "client_type"}
+                      "client_type", "buyer_reference"}
     conn = get_connection()
     for key, value in kwargs.items():
         if key in allowed_fields:
@@ -1047,7 +1055,7 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
         return doc_number, next_num
 
 
-def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None, created_by_user_id=None, offer_meta=None, ref_doc_id=None, rounding=0):
+def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, converted_from_offer_id=None, created_by_user_id=None, offer_meta=None, ref_doc_id=None, rounding=0, buyer_reference=""):
     """
     Create a document with line items.
     items: list of dicts with keys: product_id (int or None), description (str, used
@@ -1078,14 +1086,14 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
 
         cursor = conn.execute(
             """INSERT INTO documents (user_id, doc_type, doc_number, seq_num, client_id, doc_date, payment_due_date, vat_rate, notes, reverse_charge, converted_from_offer_id, created_by_user_id, offer_meta,
-                                      ref_doc_id, subtotal, vat_amount, rounding, total)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                      buyer_reference, ref_doc_id, subtotal, vat_amount, rounding, total)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user_id, doc_type, doc_number, seq_num, client_id,
              doc_date if isinstance(doc_date, str) else doc_date.isoformat(),
              payment_due_date or None, vat_rate, notes, int(reverse_charge),
              converted_from_offer_id or None, created_by_user_id or user_id,
              json.dumps(offer_meta, ensure_ascii=False) if offer_meta else None,
-             ref_doc_id or None, *totals["doc"])
+             (buyer_reference or "").strip()[:100], ref_doc_id or None, *totals["doc"])
         )
         doc_id = cursor.lastrowid
         _insert_items(conn, doc_id, items, totals["lines"])
@@ -1135,7 +1143,7 @@ def _insert_items(conn, doc_id, items, line_totals):
         )
 
 
-def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, offer_meta=None):
+def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, notes="", payment_due_date="", reverse_charge=False, offer_meta=None, buyer_reference=None):
     """
     Update an existing document and its line items.
     items: list of dicts with keys: product_id, quantity, unit, price_per_unit
@@ -1198,6 +1206,9 @@ def update_document(user_id, doc_id, client_id, doc_date, items, vat_rate=21.0, 
             "UPDATE documents SET subtotal = ?, vat_amount = ?, rounding = ?, total = ? WHERE id = ?",
             (*totals["doc"], doc_id),
         )
+        if buyer_reference is not None:  # None: the form had no such field (offers)
+            conn.execute("UPDATE documents SET buyer_reference = ? WHERE id = ?",
+                         (buyer_reference.strip()[:100], doc_id))
 
         # Delete old items and insert new ones
         conn.execute("DELETE FROM document_items WHERE document_id = ?", (doc_id,))
@@ -2333,9 +2344,10 @@ TIER_LIMITS = {
         "einvoice": True, "accounting_export": False, "stock": False,
         "max_users": 1,
         "label": "Mini",
-        # Every paid step sits under Numbero's nearest plan (2 / 6 / 10 € a month)
-        # with more in it. Yearly is ten months' price: "two months free".
-        "price_monthly": 199, "price_yearly": 1990,
+        # Against Numbero's nearest plans (2 / 6 / 10 € a month): Mini costs the
+        # same 2 € with 50 invoices instead of 6; the others cost less and hold
+        # more. Yearly is ten months' price: "two months free".
+        "price_monthly": 200, "price_yearly": 2000,
     },
     "starter": {
         "max_documents": 500, "max_clients": 100, "max_products": UNLIMITED,

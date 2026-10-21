@@ -290,6 +290,7 @@ def _get_doc_data(doc_id):
     else:
         supplier = party_info(None, from_settings=True)
         buyer = party_info(client)
+        buyer["ref"] = (doc.get("buyer_reference") or "").strip()
 
     # Under reverse charge the supplier charges no VAT, whatever rate is stored
     vat_rate = 0.0 if doc.get("reverse_charge") else doc["vat_rate"]
@@ -715,6 +716,8 @@ def _party(ctx, title, info):
         lines.append("PVN Nr. " + info["vat"])
     if info["addr"]:
         lines.append(info["addr"])
+    if info.get("ref"):
+        lines.append("Atsauce: " + info["ref"])  # the buyer's reference (BT-10)
     if lines:
         out.append(Paragraph("<br/>".join(_xq(l) for l in lines), st["muted"]))
     return out

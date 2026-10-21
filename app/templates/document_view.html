@@ -415,7 +415,8 @@ const docData = {
         vat: {{ ((client.vat_number or '') if s_own else settings.get('vat_number', '')) | tojson }},
         addr: {{ ((client.legal_address or '') if s_own else settings.get('legal_address', '')) | tojson }},
         bank: '', account: '',
-        person: {{ 'true' if (client.client_type == 'individual' if s_own else settings.get('entity_type') == 'individual') else 'false' }}
+        person: {{ 'true' if (client.client_type == 'individual' if s_own else settings.get('entity_type') == 'individual') else 'false' }},
+        ref: {{ ((doc.buyer_reference or '') if s_own else '') | tojson }}
     },
     items: [
         {% for item in items %}
