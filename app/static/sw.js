@@ -1,6 +1,8 @@
 // V-Rēķini service worker
-// Cache strategy: cache-first for /static/, network-first for HTML pages
-const CACHE = 'vrekini-v3';
+// Cache strategy: cache-first for /static/, network-first for HTML pages.
+// Bump CACHE when an unversioned static file changes (manifest, icons, vendor):
+// cache-first never looks at the network again, and activate drops the old cache.
+const CACHE = 'vrekini-v4';
 const STATIC_ASSETS = [
     
     '/static/manifest.json',

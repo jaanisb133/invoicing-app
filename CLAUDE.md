@@ -162,7 +162,8 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 
 ### SEO state (2026-10-21)
 - Indexable: `/`, `/pricing`, `/contacts`, `/terms` — listed in `SITEMAP_PAGES` with real
-  lastmod dates (update the date when a page's content changes). `/login`, `/register` are
+  lastmod dates (update the date when a page's content changes) — plus `/celvedis` and every
+  published guide, which the sitemap adds from `GUIDES` (lastmod = `updated`). `/login`, `/register` are
   crawlable but `noindex` (robots.txt must not block them, or the noindex is never read).
 - Unknown URLs return a real 404 (`404.html`); guests used to be 303'd to /login (soft 404).
 - `HeadAndSecurityHeaders` middleware: HEAD works on every GET route; nosniff, Referrer-Policy,
@@ -192,8 +193,8 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 ### Sign-up and first run (2026-10-21)
 - Every sign-up e-mails the owner (`NEW_ACCOUNT_NOTIFY_EMAIL`, default janis@vnmedia.lv;
   empty turns it off) after the response, so a slow mail server never holds up sign-up.
-- "Ienākt" is a real button top-right: in the pinned invoice's corner on the landing
-  (beside the wordmark on phones), and in `_site_bar.html` / the pricing header.
+- "Ienākt" is a real button: beside "Sākt bez maksas" in the landing hero (owner moved it
+  there from the pinned invoice's corner), and top-right in `_site_bar.html` / the pricing header.
 - Register: company via registry search (or name for a person), e-mail, one password with
   show/hide. Picked plan (`?plan=mini|starter|business|lifetime`) carries through setup to
   checkout. Setup is one screen; payment term defaults to 14 days.
@@ -202,14 +203,22 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   seen keys per person in user setting `tours_seen` (`POST /api/tour-seen`). Tours:
   `dashboard`, `editor`. Help page `/palidziba` (`help.html`).
 
-### Guides (`/celvedis`, drafts 2026-10-21)
+### Guides (`/celvedis`, all five published 2026-10-21)
 - `app/guides.py` (`GUIDES` list) + body files `app/templates/guides/<slug>.html`, rendered by
   `guide.html`. `published: False` → reachable by URL, `noindex`, not in the sitemap or menus.
   `/celvedis` lists the drafts (tagged "Melnraksts", `noindex`) while none is published;
   after that guests see published guides and the admin also sees drafts.
-  Publishing = set True and bump `updated`; sitemap and `/celvedis` pick it up.
+  Publishing = set True and `published_on` to the day (Article `datePublished`); a later
+  content change bumps `updated` only. Sitemap and `/celvedis` pick it up.
+- Linked from the public top bar ("Ceļvedis", desktop), every public footer, and two landing
+  FAQ answers (`faq_more` in `landing.html`; the FAQPage JSON-LD stays plain text). Each guide
+  lists three others under "Vēl ceļvedī".
 - `/static/guides/rekina-paraugs.pdf` is a real app PDF of the article's sample invoice
   (`scripts/footage/sample_pdf.py` on the footage account; change article and PDF together).
+  The script also renders `rekina-paraugs.png` (pdftoppm), the thumbnail in the download
+  block that opens the article: any guide with `static/guides/<slug>.pdf` gets that block
+  (`sample_title` / `sample_pages` / `sample_alt` in `GUIDES`).
+- Line tables in articles fit a 360 px phone (tight cells ≤ 520px); under that they scroll.
 - Checked against the law texts on likumi.lv on 2026-10-21 (PVN likums 41–43, 59, 125–133,
   141–143.⁴; Grāmatvedības likums 3, 6, 11, 28 + pārejas noteikumi 8–10; MK 749; MK 322;
   e-address and e-documents laws). Claims only VID made were removed or reworded onto the
@@ -340,6 +349,13 @@ can't kill the main form logic.
 - **Numbering never reuses a sent number.** Type 2 (daily) numbering counts from the day's
   highest `seq_num`, not the number of documents: with a count, deleting the 2nd of three
   made the next one a second "03".
+- **Icons:** `scripts/icons.py` draws every icon from the receipt mark (PWA tiles, apple-touch,
+  favicon SVG/PNG/ICO; 16 px has its own pixel-grid drawing). Every `<head>` includes
+  `_icons.html` — the only place icon links live. Browsers cache favicons by URL, so after a
+  change bump its `?v=` (and the manifest's). The old blue "VR" lingered for exactly this reason.
+  `/favicon.ico` is a real route (Bing and feed readers ask for it).
+- **The service worker is cache-first for `/static/`** (`static/sw.js`) and never revalidates:
+  a changed file only reaches app users under a new URL (`?v=`) or after `CACHE` is bumped.
 - **Phone lists act by swipe** (`static/js/swipe.js`): the ⋯ menu is hidden ≤ 768px, so rows
   carry `data-swipe` and the page passes their actions to `vrSwipe.attach`. Delete and
   restore answer JSON when asked (`Accept: application/json`) so the swipe can offer undo.

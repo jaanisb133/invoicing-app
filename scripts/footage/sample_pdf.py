@@ -8,6 +8,7 @@ The guide walks through this exact invoice (Nr. 26-041, 1 488,30 €), so change
 import datetime as dt
 import os
 import shutil
+import subprocess
 import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
@@ -30,6 +31,13 @@ conn.execute("UPDATE documents SET doc_number='26-041' WHERE id=?", (doc_id,))
 conn.commit()
 conn.close()
 path = pg.generate_invoice_pdf(doc_id, template="modern")
-shutil.copy(path, os.path.join(ROOT, "app", "static", "guides", "rekina-paraugs.pdf"))
+out = os.path.join(ROOT, "app", "static", "guides", "rekina-paraugs")
+shutil.copy(path, out + ".pdf")
 os.remove(path)
 print("wrote app/static/guides/rekina-paraugs.pdf")
+# The thumbnail beside the download button (shown at 132 px, drawn at 2x)
+if shutil.which("pdftoppm"):
+    subprocess.run(["pdftoppm", "-png", "-singlefile", "-scale-to-x", "264", "-scale-to-y", "-1", out + ".pdf", out], check=True)
+    print("wrote app/static/guides/rekina-paraugs.png")
+else:
+    print("pdftoppm missing: re-render app/static/guides/rekina-paraugs.png by hand")

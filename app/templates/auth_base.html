@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}V-Rēķini{% endblock %}</title>
     {% block meta %}<meta name="robots" content="noindex,follow">{% endblock %}
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
-    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    {% include "_icons.html" %}
     <meta name="theme-color" content="#f2f4f7">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,7 +33,7 @@
 </main>
 <footer class="auth-foot">
     <span>© {{ current_year() }} SIA „VN Media”</span>
-    <nav aria-label="Kājene"><a href="/pricing">Cenas</a><a href="/terms">Noteikumi</a><a href="/contacts">Kontakti</a></nav>
+    <nav aria-label="Kājene"><a href="/pricing">Cenas</a><a href="/celvedis">Ceļvedis</a><a href="/terms">Noteikumi</a><a href="/contacts">Kontakti</a></nav>
 </footer>
 {% block scripts %}{% endblock %}
 <script>
