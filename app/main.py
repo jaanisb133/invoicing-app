@@ -58,7 +58,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "45"
+CSS_VERSION = "46"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -383,6 +383,8 @@ def _base_context(request):
         "trial_available": user.get("plan_tier") == "free" and db.trial_available(user["account_id"]),
         # Free plan: how many of this month's invoices are left (None on paid plans and trials)
         "docs_left": _docs_left(user),
+        # Short guided tours already seen by this person (not the account: each teammate gets their own)
+        "tours_seen": set(filter(None, db.get_user_setting(user["id"], "tours_seen", "").split(","))),
         "needs_setup": not db.get_user_setting(user["account_id"], "company_name"),
         "company_name": db.get_user_setting(user["account_id"], "company_name"),
         "offline_mode": OFFLINE_MODE,
@@ -1326,6 +1328,37 @@ async def logout(request: Request):
 # Initial Setup (simplified onboarding)
 # =============================================================================
 
+TOURS = {"dashboard", "editor"}
+
+
+@app.post("/api/tour-seen")
+async def tour_seen(request: Request):
+    """Remember that this person has finished or skipped a tour."""
+    user = request.state.user
+    try:
+        key = (await request.json()).get("tour", "")
+    except Exception:
+        key = ""
+    if key in TOURS:
+        seen = set(filter(None, db.get_user_setting(user["id"], "tours_seen", "").split(",")))
+        seen.add(key)
+        db.set_user_setting(user["id"], "tours_seen", ",".join(sorted(seen)))
+    return JSONResponse({"ok": True})
+
+
+@app.post("/onboarding/dismiss")
+async def onboarding_dismiss(request: Request):
+    db.set_user_setting(request.state.user["account_id"], "onboarding_hidden", "1")
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/palidziba", response_class=HTMLResponse)
+async def help_page(request: Request):
+    ctx = _base_context(request)
+    ctx["page"] = "help"
+    return templates.TemplateResponse("help.html", ctx)
+
+
 @app.post("/trial/start")
 async def trial_start(request: Request):
     """Start the one-time Pamata trial (offered on locked features to free accounts)."""
@@ -2128,7 +2161,24 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
         except ValueError:
             inv["days_to_due"] = None
 
+    # First steps for a new account, until done or hidden
+    onboarding = None
+    if db.get_user_setting(uid, "onboarding_hidden", "") != "1":
+        ob = db.get_onboarding_state(uid)
+        acct = db.get_all_user_settings(uid)
+        steps = [
+            {"done": True, "title": "Konts izveidots", "href": None},
+            {"done": bool(acct.get("bank_account")), "title": "Pievienot bankas kontu", "text": "Lai klients zina, kur maksāt.", "href": "/settings"},
+            {"done": ob["has_invoice"], "title": "Izrakstīt pirmo rēķinu", "text": "Klients, rindas, un PDF ir gatavs.", "href": "/documents/new?doc_type=sell"},
+            {"done": ob["has_sent"], "title": "Nosūtīt rēķinu klientam", "text": "E-pastā ar PDF pielikumu no Jūsu vārda.",
+             "href": f"/documents/{ob['first_invoice_id']}" if ob["first_invoice_id"] else "/documents/new?doc_type=sell"},
+            {"done": bool(_get_logo_path(uid)), "title": "Pievienot logotipu", "text": "Neobligāti, bet rēķins izskatīsies pēc Jums.", "href": "/settings"},
+        ]
+        if not all(st["done"] for st in steps):
+            onboarding = {"steps": steps, "done": sum(st["done"] for st in steps), "first": not ob["has_invoice"]}
+
     ctx.update({
+        "onboarding": onboarding,
         "recent_docs": recent_docs,
         "unpaid": unpaid,
         "today": today.isoformat(),

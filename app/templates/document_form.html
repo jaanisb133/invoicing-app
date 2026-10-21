@@ -1560,3 +1560,15 @@ if (!document.getElementById('clientSelect').value && !editMode && matchMedia('(
 </script>
 {% endif %}
 {% endblock %}
+
+{% block tour %}
+{% if not edit_mode and doc_type == 'sell' and 'editor' not in tours_seen %}
+<script>
+window.VR_TOUR = { key: 'editor', steps: [
+    { sel: '#clientSearchInput', title: 'Klients', text: 'Ierakstiet nosaukumu vai reģistrācijas numuru. Jaunu klientu atradīsiet Uzņēmumu reģistrā.' },
+    { sel: '#product-name-0', title: 'Rindas', text: 'Raksta kā tabulā: Enter pāriet uz nākamo lauku, pēc cenas rodas jauna rinda. Produkta cena ienāk pati.' },
+    { sel: '#railTotal', m: '.editor-bar', title: 'Saglabāt', text: 'Kopsumma un priekšskatījums ir šeit. Saglabā poga „Izveidot” vai Ctrl + Enter.' }
+] };
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Palīdzība{% endblock %}
+{% block content %}
+{% set mod = '⌘' if request.headers.get('user-agent', '').find('Mac') != -1 else 'Ctrl' %}
+<div class="page-header">
+    <div>
+        <h1>Palīdzība</h1>
+        <p class="page-sub">Īsas atbildes uz to, kā izdarīt biežākās lietas.</p>
+    </div>
+    <div class="btn-group hide-mobile">
+        <button type="button" class="btn btn-outline" onclick="window.vrTour && window.vrTour.replay('dashboard')">Parādīt ievadu vēlreiz</button>
+    </div>
+</div>
+<div class="page-body help">
+    <nav class="help-toc" aria-label="Saturs">
+        <a href="#pirmais">Pirmais rēķins</a>
+        <a href="#klienti">Klienti un produkti</a>
+        <a href="#nosutit">Nosūtīšana klientam</a>
+        <a href="#apmaksa">Apmaksa un kavētie rēķini</a>
+        <a href="#piedavajumi">Piedāvājumi</a>
+        <a href="#periodiskie">Periodiskie rēķini</a>
+        <a href="#e-rekini">E-rēķini</a>
+        <a href="#eksports">Eksports grāmatvedim</a>
+        <a href="#iestatijumi">Numerācija un izskats</a>
+        <a href="#telefons">Telefonā</a>
+        <a href="#plani">Plāni un izmēģinājums</a>
+        <a href="#taustini">Īsinājumtaustiņi</a>
+    </nav>
+
+    <div class="help-body">
+        <section class="card help-sec" id="pirmais">
+            <h2>Kā izrakstīt pirmo rēķinu</h2>
+            <ol>
+                <li>Spiediet <a href="/documents/new?doc_type=sell">Jauns rēķins</a> (telefonā: <b>+</b> apakšējā joslā).</li>
+                <li>Laukā <b>Klients</b> ierakstiet nosaukumu vai reģistrācijas numuru. Ja klienta vēl nav, izvēlieties „+ Jauns klients”: rekvizītus atradīsiet Uzņēmumu reģistrā.</li>
+                <li>Rindā ierakstiet, par ko ir rēķins, daudzumu un cenu. <b>Enter</b> pāriet uz nākamo lauku, un pēc cenas rodas jauna rinda.</li>
+                <li>Pārbaudiet datumu, apmaksas termiņu un PVN. Labajā pusē redzams rēķins tā, kā to saņems klients.</li>
+                <li>Spiediet <b>Izveidot rēķinu</b> ({{ mod }}&nbsp;+&nbsp;Enter). Numurs tiek piešķirts saglabājot.</li>
+            </ol>
+            <p>Saglabātu rēķinu var labot, lejupielādēt PDF vai nosūtīt klientam no rēķina lapas.</p>
+        </section>
+
+        <section class="card help-sec" id="klienti">
+            <h2>Klienti un produkti</h2>
+            <p>Klientus un produktus var pievienot uzreiz rēķinā vai sadaļās <a href="/clients">Klienti</a> un <a href="/products">Produkti</a>. Produktam saglabājas mērvienība, un nākamajā rēķinā ienāk tā pēdējā cena.</p>
+            <p>Klientu sarakstā redzams, kad katram izrakstīts pēdējais rēķins, un no turienes var uzreiz izrakstīt jaunu.</p>
+        </section>
+
+        <section class="card help-sec" id="nosutit">
+            <h2>Kā nosūtīt rēķinu klientam</h2>
+            <p>Rēķina lapā spiediet <b>Nosūtīt klientam</b>. Klients saņems e-pastu ar PDF pielikumu no Jūsu uzņēmuma vārda, un atbildes nonāks Jūsu e-pastā. E-pasta tekstu var mainīt <a href="/settings">iestatījumos</a>.</p>
+            <p>Ja sūtāt paši, spiediet <b>Lejupielādēt PDF</b>. Visi nosūtītie e-pasti redzami <a href="/email-log">e-pastu vēsturē</a>.</p>
+        </section>
+
+        <section class="card help-sec" id="apmaksa">
+            <h2>Apmaksa un kavētie rēķini</h2>
+            <p>Kad klients samaksā, rēķina lapā vai sarakstā (izvēlne ⋯) atzīmējiet <b>Apmaksāts</b>. Rēķins, kura apmaksas termiņš pagājis, kļūst <b>kavēts</b>, un <a href="/">pārskats</a> rāda, cik dienas un par kādu summu.</p>
+            <p>Ja termiņš rēķinā nav norādīts, rēķins nevar kļūt kavēts. Noklusēto termiņu var mainīt <a href="/settings">iestatījumos</a>.</p>
+        </section>
+
+        <section class="card help-sec" id="piedavajumi">
+            <h2>Piedāvājumi un rēķins no piedāvājuma</h2>
+            <p>Sadaļā <a href="/offers">Piedāvājumi</a> veidojiet cenu piedāvājumus tieši tāpat kā rēķinus. Kad klients piekrīt, atzīmējiet to kā <b>pieņemtu</b> un spiediet <b>Izveidot rēķinu</b>: rindas un cenas pārceļas, un pirms saglabāšanas tās var labot. Piedāvājumi neskaitās mēneša rēķinu limitā.</p>
+        </section>
+
+        <section class="card help-sec" id="periodiskie">
+            <h2>Periodiskie rēķini</h2>
+            <p>Abonēšanai, nomai vai apkalpošanai iestatiet rēķinu vienreiz sadaļā <a href="/recurring">Periodiskie rēķini</a> vai no esoša rēķina izvēlnes. Norādiet biežumu, pirmo datumu un apmaksas termiņu; rēķini tiks izveidoti un, ja vēlaties, nosūtīti klientam paši. Pieejams no Pamata plāna.</p>
+        </section>
+
+        <section class="card help-sec" id="e-rekini">
+            <h2>E-rēķini (PEPPOL)</h2>
+            <p>Katru rēķinu var lejupielādēt arī kā e-rēķinu PEPPOL BIS 3.0 formātā vai pievienot to e-pastam. Valsts iestādēm e-rēķini jāsūta jau tagad, un no 2028. gada 1. janvāra tie būs obligāti arī starp uzņēmumiem. Pieejams no Mini plāna.</p>
+        </section>
+
+        <section class="card help-sec" id="eksports">
+            <h2>Eksports grāmatvedim</h2>
+            <p>Sadaļā <a href="/export">Eksports</a> izvēlieties periodu un saņemiet Excel failu ar tām kolonnām, kuras gaida grāmatvedis, vai visus rēķinus vienā ZIP arhīvā kā PDF vai XML. Kolonnu izkārtojumu var saglabāt nākamajai reizei.</p>
+        </section>
+
+        <section class="card help-sec" id="iestatijumi">
+            <h2>Numerācija, logotips un izskats</h2>
+            <p><a href="/settings">Iestatījumos</a> varat mainīt numerācijas veidu, priedēkli un numuru, no kura sākt; tā numerācija turpinās bez pārrāvuma, pārejot no citas sistēmas. Tur pievienojiet arī logotipu, izvēlieties akcenta krāsu un vienu no trim rēķina veidnēm.</p>
+        </section>
+
+        <section class="card help-sec" id="telefons">
+            <h2>Telefonā</h2>
+            <p>V-Rēķini strādā telefona pārlūkā. Lai to atvērtu kā lietotni:</p>
+            <ul>
+                <li><b>iPhone:</b> Safari spiediet „Kopīgot” un „Pievienot sākuma ekrānam”.</li>
+                <li><b>Android:</b> Chrome izvēlnē (⋮) spiediet „Instalēt lietotni” vai „Pievienot sākuma ekrānam”.</li>
+            </ul>
+        </section>
+
+        <section class="card help-sec" id="plani">
+            <h2>Plāni un izmēģinājums</h2>
+            <p>Jaunam kontam pirmās 14 dienas ir visas Pamata plāna iespējas. Pēc tam konts turpinās bezmaksas plānā: {{ plans.free.max_documents }} rēķini mēnesī, līdz {{ plans.free.max_clients }} klientiem, visas veidnes un nosūtīšana e-pastā. Dati nekur nepazūd. Plānus salīdzināt un mainīt var sadaļā <a href="/pricing">Abonements</a>.</p>
+        </section>
+
+        <section class="card help-sec" id="taustini">
+            <h2>Īsinājumtaustiņi</h2>
+            <table class="help-keys">
+                <tr><td><kbd>N</kbd></td><td>Jauns rēķins (jebkurā lapā, ja nerakstāt laukā)</td></tr>
+                <tr><td><kbd>Enter</kbd></td><td>Rēķina rindā: uz nākamo lauku, pēc cenas jauna rinda</td></tr>
+                <tr><td><kbd>{{ mod }}</kbd> + <kbd>Enter</kbd></td><td>Saglabāt rēķinu</td></tr>
+                <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Izvēlēties klientu vai produktu sarakstā</td></tr>
+            </table>
+        </section>
+
+        <p class="help-contact">Neatradāt atbildi? Rakstiet mums: <a href="/contacts">kontakti</a>.</p>
+    </div>
+</div>
+{% endblock %}

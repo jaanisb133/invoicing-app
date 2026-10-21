@@ -2412,6 +2412,19 @@ def get_user_resource_counts(user_id: int) -> dict:
     }
 
 
+def get_onboarding_state(user_id: int) -> dict:
+    """What a new account has done so far, for the dashboard's first-steps list."""
+    conn = get_connection()
+    one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
+    state = {
+        "has_invoice": one("SELECT COUNT(*) FROM documents WHERE user_id = ? AND doc_type = 'sell' AND deleted_at IS NULL", user_id) > 0,
+        "has_sent": one("SELECT COUNT(*) FROM email_log WHERE user_id = ?", user_id) > 0,
+        "first_invoice_id": (conn.execute("SELECT id FROM documents WHERE user_id = ? AND doc_type = 'sell' AND deleted_at IS NULL ORDER BY id LIMIT 1", (user_id,)).fetchone() or [None])[0],
+    }
+    conn.close()
+    return state
+
+
 def get_emails_sent_this_month(user_id: int) -> int:
     """Count emails sent by user in the current calendar month."""
     conn = get_connection()

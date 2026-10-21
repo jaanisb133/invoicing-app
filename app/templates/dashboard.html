@@ -106,7 +106,9 @@
     <div>
         <h1>Sveiki, {{ greet_name }}.</h1>
         <p class="page-sub finding" id="dashFinding">
-            {% if tracking %}
+            {% if onboarding and onboarding.first %}
+                Sāksim ar pirmo rēķinu: tas aizņem minūti.
+            {% elif tracking %}
                 {% if overdue %}
                     {% set oldest = overdue[0] %}
                     <span class="neg">{{ overdue | length }} {{ 'rēķins kavēts' if overdue | length == 1 else 'rēķini kavēti' }}</span>
@@ -131,6 +133,7 @@
 
 <div class="page-body">
     {% include "_plan_note.html" %}
+    {% include "_first_steps.html" %}
     <div class="dash-scope">
         <div class="segmented" role="group" aria-label="Periods">
             <button type="button" id="btnThisMonth">Šomēnes</button>
@@ -825,4 +828,17 @@ document.addEventListener('click', function (e) {
 window.addEventListener('scroll', dashCloseMenus, true);
 window.addEventListener('resize', dashCloseMenus);
 </script>
+{% endblock %}
+
+{% block tour %}
+{% if not needs_setup and ('dashboard' not in tours_seen or request.query_params.get('tour')) %}
+<script>
+window.VR_TOUR = { key: 'dashboard', steps: [
+    { sel: '.sidebar-new', m: '.bottom-nav .fab', title: 'Jauns rēķins', text: 'Šeit sākas katrs rēķins. To atver arī taustiņš N.', mt: 'Šeit sākas katrs rēķins, no jebkuras lapas.' },
+    { sel: '.sidebar a[href="/documents"]', m: '.bottom-nav a[href="/documents"]', title: 'Rēķini', text: 'Visi izrakstītie rēķini: kas apmaksāts, kas gaida un kas kavēts.' },
+    { sel: '#dashFinding', title: 'Pārskats', text: 'Šeit vienmēr būs galvenais: kurš kavē apmaksu un par cik.' },
+    { sel: '.sidebar a[href="/palidziba"]', m: '.bottom-nav a[onclick*="openMoreSheet"]', title: 'Palīdzība', text: 'Iestatījumi, abonements un īsas atbildes uz biežākajiem jautājumiem.' }
+] };
+</script>
+{% endif %}
 {% endblock %}

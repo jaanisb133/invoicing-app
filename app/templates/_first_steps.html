@@ -1,0 +1,27 @@
+{# First steps for a new account: shown on the dashboard until all done or hidden. #}
+{% if onboarding %}
+<section class="card first-steps" aria-labelledby="fsTitle">
+    <div class="fs-head">
+        <div>
+            <h2 id="fsTitle">Pirmie soļi</h2>
+            <p class="muted">{{ onboarding.done }} no {{ onboarding.steps | length }} izdarīti</p>
+        </div>
+        <form method="post" action="/onboarding/dismiss"><button type="submit" class="btn btn-ghost btn-sm">Paslēpt</button></form>
+    </div>
+    <div class="fs-bar" aria-hidden="true"><span style="width:{{ (onboarding.done / onboarding.steps | length * 100) | round }}%"></span></div>
+    <ol class="fs-list">
+        {% for st in onboarding.steps %}
+        <li class="{% if st.done %}is-done{% endif %}">
+            <span class="fs-mark" aria-hidden="true">{% if st.done %}<svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}</span>
+            {% if st.href and not st.done %}
+            <a href="{{ st.href }}" class="fs-item plain"><b>{{ st.title }}</b>{% if st.text %}<span>{{ st.text }}</span>{% endif %}</a>
+            <svg class="fs-go" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5l4.5 4.5L6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {% else %}
+            <span class="fs-item"><b>{{ st.title }}</b><span class="sr-only">{% if st.done %} (izdarīts){% endif %}</span></span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+    <p class="fs-help">Kā kaut ko izdarīt, atradīsiet sadaļā <a href="/palidziba">Palīdzība</a>.</p>
+</section>
+{% endif %}
