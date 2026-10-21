@@ -290,15 +290,20 @@
                         {% for doc in recent_docs %}
                         <tr>
                             <td class="c-num"><a href="/documents/{{ doc.id }}" class="row-link">{{ doc.doc_number }}</a></td>
-                            <td class="c-client client-cell"><a href="/documents/{{ doc.id }}" class="row-link plain" style="font-weight:400">{{ doc.client_name }}</a>{% if doc.doc_type == 'buy' %} <span class="pill pill-warning">Iegāde</span>{% endif %}</td>
+                            <td class="c-client client-cell"><a href="/documents/{{ doc.id }}" class="row-link plain" style="font-weight:400">{{ doc.client_name }}</a>{% if doc.doc_type == 'buy' %} <span class="pill pill-warning">Iegāde</span>{% elif doc.doc_type == 'credit' %} <span class="pill pill-outline">kredītrēķins</span>{% endif %}</td>
                             <td class="c-meta">{{ doc.doc_number }} · {{ ddmm(doc.doc_date) }}{{ doc.doc_date[:4] }}</td>
                             <td class="c-date num">{{ ddmm(doc.doc_date) }}{{ doc.doc_date[:4] }}</td>
                             <td class="c-sum num text-right">{{ doc.total_with_vat | eur }}</td>
                             {% if tracking %}
                             <td class="c-status">
+                                {% if doc.doc_type == 'credit' %}
+                                {% elif doc.status in ('cancelled', 'replaced') %}
+                                <span class="pill pill-outline">{{ 'anulēts' if doc.status == 'cancelled' else 'aizstāts' }}</span>
+                                {% else %}
                                 <button type="button" class="pill badge-status {% if doc.status == 'paid' %}pill-success{% else %}pill-neutral{% endif %}"
                                         style="border:0;cursor:pointer" data-doc-id="{{ doc.id }}" data-status="{{ doc.status or 'issued' }}"
                                         onclick="dashToggleStatus(this)" title="Mainīt statusu">{% if doc.status == 'paid' %}apmaksāts{% else %}gaida{% endif %}</button>
+                                {% endif %}
                             </td>
                             {% endif %}
                             <td class="c-menu text-right">
@@ -308,7 +313,7 @@
                                     </button>
                                     <div class="dash-menu-dropdown">
                                         <a href="/documents/{{ doc.id }}" class="dash-menu-item">Atvērt</a>
-                                        <a href="/documents/{{ doc.id }}/edit" class="dash-menu-item">Rediģēt</a>
+                                        {% if not doc_locked(doc) %}<a href="/documents/{{ doc.id }}/edit" class="dash-menu-item">Rediģēt</a>{% endif %}
                                         <a href="/documents/{{ doc.id }}/pdf" class="dash-menu-item" target="_blank">Lejupielādēt PDF</a>
                                         {% if einvoice_enabled %}
                                         <a href="/documents/{{ doc.id }}/einvoice" class="dash-menu-item" target="_blank">E-rēķins (XML)</a>
@@ -326,13 +331,15 @@
                                         {% else %}
                                         <a href="/pricing" class="dash-menu-item dash-menu-disabled">Padarīt periodisku · {{ plans.starter.label }}</a>
                                         {% endif %}
-                                        {% if tracking %}
+                                        {% if tracking and doc.doc_type == 'sell' and doc.status in ('issued', 'paid') %}
                                         <button type="button" class="dash-menu-item" data-dash-action="status" data-doc-id="{{ doc.id }}">{% if doc.status == 'paid' %}Atzīmēt kā neapmaksātu{% else %}Atzīmēt kā apmaksātu{% endif %}</button>
                                         {% endif %}
+                                        {% if not doc_locked(doc) %}
                                         <div class="dash-menu-divider"></div>
                                         <form method="post" action="/documents/{{ doc.id }}/delete" onsubmit="return confirm('Pārvietot {{ doc.doc_number }} uz papīrgrozu?')">
                                             <button type="submit" class="dash-menu-item dash-menu-danger">Dzēst</button>
                                         </form>
+                                        {% endif %}
                                     </div>
                                 </div>
                             </td>

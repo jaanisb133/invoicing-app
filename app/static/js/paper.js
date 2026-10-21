@@ -3,11 +3,12 @@
    Used by the editor's live preview and the document page; change both together.
 
    vrPaper.render(el, d)  d = {
-     template: 'classic' | 'modern' | 'minimal', kind: 'sell' | 'buy' | 'offer',
+     template: 'classic' | 'modern' | 'minimal', kind: 'sell' | 'credit' | 'buy' | 'offer',
      title, number, date, due,                       (dates already dd.mm.yyyy)
+     ref,                                            ("Kredītrēķins rēķinam Nr. … no …" or '')
      supplier, buyer: { name, reg, vat, addr, bank, account, person },
-     items: [{ name, unit, qty, price, included }],
-     subtotal, vatRate, vat, total, vatPayer, reverseCharge,
+     items: [{ name, unit, qty, price, included, amount }],   (amount: the stored line total, if known)
+     subtotal, vatRate, vat, rounding, total, vatPayer, reverseCharge,
      notes, electronic, accent, logo (url or ''), logoWidth (%), contacts: [], free }
 */
 (function () {
@@ -45,6 +46,15 @@
     var money = function (v) { return window.fmtEur ? fmtEur(v) : Number(v || 0).toFixed(2) + ' €'; };
     var num = function (v) { return window.fmtNum ? fmtNum(v) : Number(v || 0).toFixed(2); };
     var qty = function (v) { return window.fmtQty ? fmtQty(v) : String(v); };
+    var unitPrice = function (v) { return window.fmtPrice ? fmtPrice(v) : num(v); };
+    // A line's amount as stored, else as app/money.py would round it
+    var lineAmount = function (it) {
+        if (it.amount != null) return it.amount;
+        return window.vrLine ? vrLine(it.qty, it.price) : it.qty * it.price;
+    };
+    var amountLabel = function (kind) {
+        return kind === 'sell' ? 'Apmaksai' : kind === 'credit' ? 'Kreditētā summa' : 'Kopā';
+    };
 
     function identity(d) {
         if (d.logo && d.kind !== 'buy') {
@@ -68,7 +78,7 @@
 
     function head(d) {
         if (d.template === 'modern') {
-            var cells = [[d.kind === 'sell' ? 'Apmaksai' : 'Kopā', money(d.total)]];
+            var cells = [[amountLabel(d.kind), money(d.total)]];
             if (d.due) cells.push(['Apmaksāt līdz', esc(d.due)]);
             cells.push(['Datums', esc(d.date || '—')]);
             var light = isLight(d.accent);
@@ -107,7 +117,7 @@
         var rows = d.items.length ? d.items.map(function (it, i) {
             var right = it.included
                 ? '<td class="r m" colspan="2">iekļauts cenā</td>'
-                : '<td class="r">' + num(it.price) + '</td><td class="r">' + num(it.qty * it.price) + '</td>';
+                : '<td class="r">' + unitPrice(it.price) + '</td><td class="r">' + num(lineAmount(it)) + '</td>';
             return '<tr><td class="m">' + (i + 1) + '</td><td>' + nl(it.name) + '</td><td class="r">' + qty(it.qty) +
                 '</td><td class="m u">' + esc(it.unit) + '</td>' + right + '</tr>';
         }).join('') : '<tr><td></td><td class="m">Nav rindu</td><td></td><td></td><td></td><td></td></tr>';
@@ -134,11 +144,12 @@
             var rows = d.reverseCharge
                 ? [['Summa bez PVN', money(d.subtotal)], ['Nodokļa apgrieztā maksāšana', '—']]
                 : [['Summa bez PVN', money(d.subtotal)], ['PVN ' + qty(d.vatRate) + ' %', money(d.vat)]];
+            if (Number(d.rounding)) rows.push(['Noapaļošana', money(d.rounding)]);
             html += '<table class="pp-sums">' + rows.map(function (r) {
                 return '<tr><td>' + esc(r[0]) + '</td><td class="r">' + r[1] + '</td></tr>';
             }).join('') + '</table><div class="pp-sumrule"></div>';
         }
-        return '<div class="pp-totals">' + html + '<div class="pp-amount"><span>' + (d.kind === 'sell' ? 'Apmaksai' : 'Kopā') +
+        return '<div class="pp-totals">' + html + '<div class="pp-amount"><span>' + amountLabel(d.kind) +
             '</span><b>' + money(d.total) + '</b></div></div>';
     }
     function tail(d) {
@@ -175,7 +186,8 @@
         d.template = ['classic', 'modern', 'minimal'].indexOf(d.template) >= 0 ? d.template : 'classic';
         d.accent = /^#[0-9a-f]{6}$/i.test(d.accent || '') ? d.accent : '#09090b';
         el.classList.add('pp-fit');
-        el.innerHTML = '<div class="pp pp-' + d.template + '"><div class="pp-body">' + head(d) + parties(d) + lines(d) + tail(d) +
+        var ref = d.ref ? '<div class="pp-ref">' + esc(d.ref) + '</div>' : '';
+        el.innerHTML = '<div class="pp pp-' + d.template + '"><div class="pp-body">' + head(d) + ref + parties(d) + lines(d) + tail(d) +
             '</div>' + foot(d) + '</div>';
         fit(el);
         var img = el.querySelector('.pp-logo');

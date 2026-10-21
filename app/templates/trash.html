@@ -48,6 +48,7 @@
                                     Atjaunot
                                 </button>
                             </form>
+                            {% if not doc_locked(doc) %}{# a sent invoice that predates the lock only goes back #}
                             <form method="post" action="/trash/{{ doc.id }}/delete"
                                   onsubmit="return confirm('Vai tiešām neatgriezeniski dzēst dokumentu {{ doc.doc_number }}?')">
                                 <button type="submit" class="btn btn-danger btn-sm">
@@ -55,6 +56,7 @@
                                     Dzēst
                                 </button>
                             </form>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>

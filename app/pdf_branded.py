@@ -787,7 +787,7 @@ def _draw_items_table(pg, data):
                               _eur(item["price_per_unit"]))
             c.setFont(pg.font_bold, 9.3)
             c.drawRightString(col_total, cy - 1.4 * mm,
-                              _eur(item["quantity"] * item["price_per_unit"]))
+                              _eur(item["line_amount"]))
         if idx < len(items) - 1:
             c.setStrokeColor(BORDER)
             c.setLineWidth(0.6)

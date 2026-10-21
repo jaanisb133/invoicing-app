@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 
+{% set is_credit = doc_type == 'credit' %}
 {% if edit_mode %}
     {% set form_title = "Rediģēt " ~ doc.doc_number %}
+{% elif is_credit %}
+    {% set form_title = "Kredītrēķins rēķinam " ~ ref_doc.doc_number %}
+{% elif ref_doc %}
+    {% set form_title = "Koriģēt " ~ ref_doc.doc_number %}
 {% elif doc_type == 'buy' %}
     {% set form_title = "Jauns iegādes dokuments" %}
 {% elif doc_type == 'offer' %}
@@ -10,9 +15,11 @@
     {% set form_title = "Jauns rēķins" %}
 {% endif %}
 {% set is_vat_payer = settings.get('is_vat_payer', '1') == '1' %}
-{% set submit_label = "Saglabāt izmaiņas" if edit_mode else ("Izveidot piedāvājumu" if doc_type == 'offer' else ("Saglabāt dokumentu" if doc_type == 'buy' else "Izveidot rēķinu")) %}
+{% set submit_label = "Saglabāt izmaiņas" if edit_mode else ("Izveidot piedāvājumu" if doc_type == 'offer' else ("Saglabāt dokumentu" if doc_type == 'buy' else ("Izrakstīt kredītrēķinu" if is_credit else ("Izrakstīt koriģējošo rēķinu" if ref_doc else "Izveidot rēķinu")))) %}
 {% if edit_mode %}
     {% set cancel_href = "/documents/" ~ doc.id %}
+{% elif ref_doc %}
+    {% set cancel_href = "/documents/" ~ ref_doc.id %}
 {% elif from_offer %}
     {% set cancel_href = "/documents/" ~ from_offer %}
 {% elif doc_type == 'offer' %}
@@ -208,7 +215,7 @@
     <div>
         <div class="page-title-row">
             <h1>{{ form_title }}</h1>
-            {% if doc_type == 'buy' %}<span class="pill pill-warning">Iegāde</span>{% endif %}
+            {% if doc_type == 'buy' %}<span class="pill pill-warning">Iegāde</span>{% elif is_credit %}<span class="pill pill-outline">Kredītrēķins</span>{% endif %}
         </div>
         <div class="page-sub">
             {% if edit_mode %}{{ doc_type_name }} no {{ doc.doc_date[8:10] }}.{{ doc.doc_date[5:7] }}.{{ doc.doc_date[:4] }}
@@ -217,7 +224,7 @@
         </div>
     </div>
     <div class="btn-group">
-        {% if not edit_mode and not from_offer and doc_type != 'offer' and stock_enabled %}
+        {% if not edit_mode and not from_offer and not ref_doc and doc_type != 'offer' and stock_enabled %}
         <div class="segmented" role="group" aria-label="Dokumenta veids">
             <a href="/documents/new?doc_type=sell" class="{% if doc_type == 'sell' %}on{% endif %}">Pārdošana</a>
             <a href="/documents/new?doc_type=buy" class="{% if doc_type == 'buy' %}on{% endif %}">Iegāde</a>
@@ -239,10 +246,24 @@
         Pārbaudiet tos un izveidojiet rēķinu — piedāvājums paliks neizmainīts.
     </div>
     {% endif %}
+    {% if ref_doc %}
+    {% set ref_date = ref_doc.doc_date[8:10] ~ '.' ~ ref_doc.doc_date[5:7] ~ '.' ~ ref_doc.doc_date[:4] %}
+    <div class="alert">
+        {% if is_credit %}
+        Kredītrēķins atņem rindās norādīto no rēķina <a href="/documents/{{ ref_doc.id }}">{{ ref_doc.doc_number }}</a> ({{ ref_date }}).
+        Atstājiet tikai to, ko kreditējat: atgrieztās preces, atlaidi vai visu rēķinu. Summas rakstiet bez mīnusa.
+        {% else %}
+        Koriģējošais rēķins aizstās rēķinu <a href="/documents/{{ ref_doc.id }}">{{ ref_doc.doc_number }}</a> ({{ ref_date }}).
+        Izlabojiet kļūdaino: rēķins saņems jaunu numuru, un {{ ref_doc.doc_number }} tiks atzīmēts kā aizstāts.
+        {% endif %}
+        Klients paliek tas pats.
+    </div>
+    {% endif %}
 
     <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm" novalidate>
         <input type="hidden" name="doc_type" value="{{ doc_type }}">
         {% if from_offer %}<input type="hidden" name="from_offer" value="{{ from_offer }}">{% endif %}
+        {% if ref_doc and not edit_mode %}<input type="hidden" name="ref_doc_id" value="{{ ref_doc.id }}">{% endif %}
         <datalist id="unitList">{% for u in units %}<option value="{{ u }}">{% endfor %}</datalist>
 
         <div class="editor-grid">
@@ -253,7 +274,7 @@
                     <div class="card-body">
                         <div class="section-head">
                             <h2 class="section-title">{{ 'Piegādātājs' if doc_type == 'buy' else 'Klients' }}</h2>
-                            <button type="button" class="btn btn-ghost btn-sm" onclick="showQuickAddClient()">+ Jauns klients</button>
+                            {% if not ref_doc %}<button type="button" class="btn btn-ghost btn-sm" onclick="showQuickAddClient()">+ Jauns klients</button>{% endif %}
                         </div>
                         <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if prefill else (preselect_client_id or '') }}">
                         <div class="combo" id="clientCombo">
@@ -269,7 +290,7 @@
                                 <div class="client-chosen-name" id="clientChosenName"></div>
                                 <div class="client-chosen-meta" id="clientChosenMeta"></div>
                             </div>
-                            <button type="button" class="btn btn-outline btn-sm" onclick="clearClient()">Mainīt</button>
+                            {% if not ref_doc %}<button type="button" class="btn btn-outline btn-sm" onclick="clearClient()">Mainīt</button>{% endif %}
                         </div>
                         <div class="field-error" id="clientError" hidden>Izvēlieties klientu, kam izrakstīt dokumentu.</div>
                     </div>
@@ -284,7 +305,7 @@
                                 <input type="date" name="doc_date" class="form-control" id="docDate"
                                        value="{{ doc.doc_date if edit_mode else (today if today else '') }}">
                             </div>
-                            {% if doc_type != 'offer' %}
+                            {% if doc_type not in ('offer', 'credit') %}
                             <div class="form-group">
                                 <label for="paymentDueDate">Apmaksāt līdz</label>
                                 <input type="date" name="payment_due_date" id="paymentDueDate" class="form-control"
@@ -447,7 +468,7 @@
                 <section class="card rail-cta">
                     <div class="card-body">
                         <div class="rail-total">
-                            <span class="rail-total-label">Kopā apmaksai</span>
+                            <span class="rail-total-label">{{ 'Kreditētā summa' if is_credit else 'Kopā apmaksai' }}</span>
                             <span class="rail-total-value" id="railTotal">0,00 €</span>
                         </div>
                         <button type="submit" class="btn btn-primary btn-block btn-lg js-submit" id="submitBtn">
@@ -460,7 +481,7 @@
         </div>
 
         <div class="editor-bar">
-            <div class="bar-total"><small>Kopā apmaksai</small><strong id="barTotal">0,00 €</strong></div>
+            <div class="bar-total"><small>{{ 'Kreditētā summa' if is_credit else 'Kopā apmaksai' }}</small><strong id="barTotal">0,00 €</strong></div>
             <button type="button" class="btn btn-outline" onclick="openPreview()">Skatīt</button>
             <button type="submit" class="btn btn-primary js-submit">{{ 'Saglabāt' if edit_mode else 'Izveidot' }}</button>
         </div>
@@ -566,6 +587,8 @@ const productPrices = {{ product_prices | tojson }};
 const clientLastBilled = {{ client_last_billed | tojson }};
 const units = {{ units | tojson }};
 const docType = "{{ doc_type }}";
+// A credit note or correction names the invoice it changes, on the paper as in the PDF
+const REF_LINE = {{ ((('Kredītrēķins rēķinam' if doc_type == 'credit' else 'Koriģējošais rēķins, aizstāj rēķinu') ~ ' Nr. ' ~ ref_doc.doc_number ~ ' no ' ~ ref_doc.doc_date[8:10] ~ '.' ~ ref_doc.doc_date[5:7] ~ '.' ~ ref_doc.doc_date[:4]) if ref_doc else '') | tojson }};
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
 const companySettings = {{ settings | tojson }};
 const isVatPayer = companySettings.is_vat_payer !== '0';
@@ -955,23 +978,25 @@ function currentVatRate() {
 }
 
 function recalculate() {
-    let subtotal = 0, named = 0;
+    const amounts = [];
+    let named = 0;
     document.querySelectorAll('.item-row').forEach(row => {
         const v = lineValues(row);
         const cell = document.getElementById('total-' + v.idx);
         if (v.name) named++;
         if (v.included) { cell.textContent = 'iekļauts'; cell.classList.add('muted'); return; }
-        // Same arithmetic as the server and the PDF: lines unrounded, rounded only for display.
-        const line = v.qty * v.price;
-        subtotal += line;
+        // Same arithmetic as the server (app/money.py): each line rounded to the
+        // cent, VAT once on the sum of the rounded lines.
+        const line = vrLine(v.qty, v.price);
+        amounts.push(line);
         cell.textContent = fmtNum(line);
         cell.classList.remove('muted');
     });
     const rc = document.getElementById('reverseCharge');
     const reverse = rc && rc.checked;
     const rate = currentVatRate();
-    const vat = subtotal * (rate / 100);
-    const total = subtotal + vat;
+    const t = vrTotals(amounts, reverse ? 0 : rate);
+    const subtotal = t.subtotal, vat = t.vat, total = t.total;
 
     document.getElementById('subtotalDisplay').textContent = fmtEur(subtotal);
     document.getElementById('vatDisplay').textContent = reverse ? '—' : fmtEur(vat);
@@ -1071,6 +1096,7 @@ function getPreviewData() {
     let title;
     if (docType === 'buy') title = companySettings.buy_doc_name || 'Rēķins';
     else if (docType === 'offer') title = companySettings.offer_doc_name || 'Piedāvājums';
+    else if (docType === 'credit') title = 'Kredītrēķins';
     else title = companySettings.sell_doc_name || 'Rēķins';
 
     const company = {
@@ -1085,25 +1111,25 @@ function getPreviewData() {
         account: clientInfo.bank_account || '', person: clientInfo.client_type === 'individual',
     } : { name: '—', reg: '', vat: '', addr: '', bank: '', account: '', person: false };
 
-    const items = [];
-    let subtotal = 0;
+    const items = [], amounts = [];
     document.querySelectorAll('.item-row').forEach(row => {
         const v = lineValues(row);
-        subtotal += v.included ? 0 : v.qty * v.price;
+        if (!v.included) amounts.push(vrLine(v.qty, v.price));
         if (v.name) items.push({ name: v.name, unit: v.unit, qty: v.qty, price: v.price, included: v.included });
     });
     const rcCb = document.getElementById('reverseCharge');
     const reverse = !!(rcCb && rcCb.checked);
-    const vat = reverse ? 0 : subtotal * (vatRate / 100);
+    const t = vrTotals(amounts, reverse ? 0 : vatRate);
+    const subtotal = t.subtotal, vat = t.vat;
     const dueEl = document.getElementById('paymentDueDate');
     const due = docType === 'sell' && dueEl && dueEl.value ? fmtDate(dueEl.value) : '';
     return {
         template: document.getElementById('templateSelect').value, kind: docType,
         title, number: editMode ? editDocNumber : '(automātiski)',
-        date: fmtDate(dateInput.value), due,
+        date: fmtDate(dateInput.value), due, ref: REF_LINE,
         supplier: docType === 'buy' ? client : company,
         buyer: docType === 'buy' ? company : client,
-        items, subtotal, vatRate, vat, total: subtotal + vat,
+        items, subtotal, vatRate, vat, total: t.total,
         vatPayer: isVatPayer, reverseCharge: reverse,
         notes: document.getElementById('notesInput').value,
         electronic: companySettings.electronic_doc === '1',
