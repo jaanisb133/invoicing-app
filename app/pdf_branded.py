@@ -848,7 +848,7 @@ def _draw_totals(pg, data):
             c.setFillColor(colors.HexColor("#d5d0c8"))
             c.setFont(pg.font, 8.2)
             c.drawString(tx_label, top - 8 * mm,
-                         "PVN 0% — apgrieztā maksāšana (PVN likuma 142. pants)")
+                         "Nodokļa apgrieztā maksāšana (PVN likuma 142. pants)")
         gy = top - band_h / 2 - 2.4 * mm
     c.setFillColor(WHITE)
     c.setFont(pg.font_bold, 12.5)

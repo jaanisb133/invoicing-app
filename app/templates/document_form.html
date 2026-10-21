@@ -233,6 +233,7 @@
 </div>
 
 <div class="page-body editor-body">
+    {% include "_plan_note.html" %}
     {% set err = request.query_params.get('error') %}
     {% if err %}
     <div class="alert alert-danger">{% if err == 'no_items' %}Pievienojiet vismaz vienu rindu ar nosaukumu.{% else %}{{ err }}{% endif %}</div>
@@ -312,7 +313,7 @@
                                 <label class="check" style="margin-top:10px">
                                     <input type="checkbox" name="reverse_charge" id="reverseCharge" value="1"
                                            {% if prefill and doc.reverse_charge %}checked{% endif %} onchange="toggleReverseCharge()">
-                                    Apgrieztā PVN maksāšana (0 %)
+                                    Nodokļa apgrieztā maksāšana (PVN maksā saņēmējs)
                                 </label>
                             </div>
                             {% else %}
@@ -427,7 +428,7 @@
                                 {% if tier_limits.all_templates or key == 'classic' %}
                                 <option value="{{ key }}" {% if key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
                                 {% else %}
-                                <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
+                                <option value="{{ key }}" disabled>{{ label }} ({{ plans.mini.label }})</option>
                                 {% endif %}
                                 {% endfor %}
                             </select>
@@ -976,8 +977,8 @@ function recalculate() {
     const total = subtotal + vat;
 
     document.getElementById('subtotalDisplay').textContent = fmtEur(subtotal);
-    document.getElementById('vatDisplay').textContent = fmtEur(vat);
-    document.getElementById('vatLabel').textContent = reverse ? 'PVN 0 % (reverse charge)' : 'PVN ' + fmtQty(rate) + ' %';
+    document.getElementById('vatDisplay').textContent = reverse ? '—' : fmtEur(vat);
+    document.getElementById('vatLabel').textContent = reverse ? 'Nodokļa apgrieztā maksāšana' : 'PVN ' + fmtQty(rate) + ' %';
     document.getElementById('totalDisplay').textContent = fmtEur(total);
     document.getElementById('railTotal').textContent = fmtEur(total);
     document.getElementById('barTotal').textContent = fmtEur(total);
@@ -1141,12 +1142,18 @@ function itemsTableHtml(items, style) {
 function vatLines(d, muted) {
     if (!d.isVatPayer) return '';
     const c = muted ? '#9ca3af' : '#6b7280';
-    const label = d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + fmtQty(d.vatRate) + '%)';
+    const label = d.reverseCharge ? 'Nodokļa apgrieztā maksāšana' : 'PVN (' + fmtQty(d.vatRate) + '%)';
     return `<div style="color:${c}">Summa bez PVN: <strong style="color:#111827">${fmtEur(d.subtotal)}</strong></div>
-            <div style="color:${c}">${label}: <strong style="color:#111827">${fmtEur(d.vatAmount)}</strong></div>`;
+            <div style="color:${c}">${label}: <strong style="color:#111827">${d.reverseCharge ? '—' : fmtEur(d.vatAmount)}</strong></div>`;
 }
 
+// Free-plan invoices carry one small line at the foot, as the PDF does
+const FREE_PLAN_FOOTER = {{ 'true' if tier == 'free' else 'false' }};
 function previewSignatureHtml(style) {
+    const foot = FREE_PLAN_FOOTER ? '<div style="margin-top:24px;text-align:center;font-size:8px;color:#94a3b8">Sagatavots ar V-Rēķini · v-rekini.lv</div>' : '';
+    return previewSignatureHtmlOnly(style) + foot;
+}
+function previewSignatureHtmlOnly(style) {
     if (companySettings.electronic_doc === '1') {
         const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
         return `<div style="margin-top:20px;font-size:${style === 'minimal' ? '8px' : '9px'};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
@@ -1550,6 +1557,18 @@ if (!document.getElementById('clientSelect').value && !editMode && matchMedia('(
         document.getElementById('offerPresetId').value = existingMeta.preset_id || '';
     }
 })();
+</script>
+{% endif %}
+{% endblock %}
+
+{% block tour %}
+{% if not edit_mode and doc_type == 'sell' and 'editor' not in tours_seen %}
+<script>
+window.VR_TOUR = { key: 'editor', steps: [
+    { sel: '#clientSearchInput', title: 'Klients', text: 'Ierakstiet nosaukumu vai reģistrācijas numuru. Jaunu klientu atradīsiet Uzņēmumu reģistrā.' },
+    { sel: '#product-name-0', title: 'Rindas', text: 'Raksta kā tabulā: Enter pāriet uz nākamo lauku, pēc cenas rodas jauna rinda. Produkta cena ienāk pati.' },
+    { sel: '#railTotal', m: '.editor-bar', title: 'Saglabāt', text: 'Kopsumma un priekšskatījums ir šeit. Saglabā poga „Izveidot” vai Ctrl + Enter.' }
+] };
 </script>
 {% endif %}
 {% endblock %}

@@ -1,70 +1,15 @@
-<!DOCTYPE html>
-<html lang="lv">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Licences aktivizēšana — V-Rēķini</title>
-    <meta name="description" content="Aktivizējiet V-Rēķini mūža licenci ar saņemto kodu.">
-    <meta name="robots" content="noindex,follow">
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
-    <link rel="stylesheet" href="/static/css/style.css?v={{ css_version }}">
-    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})()</script>
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            background: var(--bg);
-        }
-        .license-wrap {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .license-container { width: 100%; max-width: 440px; padding: 20px; }
-        .license-card {
-            background: var(--bg-card);
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--border);
-            padding: 40px 32px;
-            box-shadow: var(--shadow-lg);
-        }
-        .license-card h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; color: var(--primary); }
-        .license-card .subtitle { font-size: 14px; color: var(--text-light); margin-bottom: 28px; }
-        .license-card .btn-primary { width: 100%; padding: 10px 16px; font-size: 14px; margin-top: 8px; }
-        .license-input {
-            font-family: monospace;
-            font-size: 16px;
-            letter-spacing: 1px;
-            text-align: center;
-            text-transform: uppercase;
-        }
-    </style>
-</head>
-<body>
-    <div class="license-wrap">
-    <div class="license-container">
-        <div class="license-card">
-            <h1>V-Rēķini</h1>
-            <p class="subtitle">Ievadiet licences atslēgu, lai turpinātu</p>
-
-            {% if error %}
-            <div class="alert alert-danger">{{ error }}</div>
-            {% endif %}
-
-            <form method="post" action="/license">
-                <div class="form-group">
-                    <label for="license_key">Licences atslēga</label>
-                    <input type="text" id="license_key" name="license_key"
-                           class="form-control license-input"
-                           placeholder="VREK-XXXX-XXXX-XXXX"
-                           required autofocus autocomplete="off">
-                </div>
-                <button type="submit" class="btn btn-primary">Aktivizēt</button>
-            </form>
-        </div>
+{% extends "auth_base.html" %}
+{% block title %}Licences aktivizēšana | V-Rēķini{% endblock %}
+{% block content %}
+<h1>Licences aktivizēšana</h1>
+<p class="sub">Ievadiet licences atslēgu, lai turpinātu.</p>
+{% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/license">
+    <div class="f">
+        <label for="licKey">Licences atslēga</label>
+        <input type="text" id="licKey" name="license_key" class="input license-key" placeholder="VREK-XXXX-XXXX-XXXX"
+               required autofocus autocomplete="off" autocapitalize="characters" spellcheck="false">
     </div>
-    </div>
-</body>
-</html>
+    <button type="submit" class="btn btn-wide">Aktivizēt</button>
+</form>
+{% endblock %}

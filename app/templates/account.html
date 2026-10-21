@@ -23,7 +23,7 @@
     <div class="alert alert-danger">Parolei jābūt vismaz 6 simbolus garai.</div>
     {% endif %}
 
-    <div class="mobile-stack" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="split">
         <div>
             <div class="card">
                 <div class="card-header">Profils</div>
@@ -84,7 +84,7 @@
                 <div class="card-header">Abonements</div>
                 <div class="card-body">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-                        <span class="tier-badge tier-{{ current_user.tier }}">{{ tier_label }}</span>
+                        <span class="tier-badge tier-{{ current_user.plan_tier }}">{{ tier_label }}</span>
                         {% if current_user.subscription_status == 'active' %}
                         <span class="pill pill-success">Aktīvs</span>
                         {% elif current_user.subscription_status == 'past_due' %}
@@ -124,13 +124,13 @@
                     </div>
 
                     <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap">
-                        {% if current_user.tier in ('free', 'mini', 'starter') %}
+                        {% if current_user.plan_tier in ('free', 'mini', 'starter') %}
                         <a href="/pricing" class="btn btn-primary btn-sm">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                             Mans abonements
                         </a>
                         {% endif %}
-                        {% if current_user.tier != 'free' and has_payments %}
+                        {% if current_user.plan_tier != 'free' and has_payments %}
                         <form method="post" action="/billing/cancel" style="display:inline"
                               onsubmit="return confirm('Vai tiešām vēlaties atcelt abonementu?')">
                             <button type="submit" class="btn btn-outline btn-sm" style="color:var(--danger)">
@@ -142,7 +142,7 @@
                     </div>
 
                     <div style="margin-top:16px;padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--text-light)">
-                        {% if current_user.subscription_end and current_user.tier != 'free' %}
+                        {% if current_user.subscription_end and current_user.plan_tier != 'free' %}
                         <div style="margin-bottom:6px">Nākamais apmaksas datums: <strong style="color:var(--text)">{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong></div>
                         {% endif %}
                         Konts izveidots: <strong style="color:var(--text)">{{ current_user.created_at[:10] if current_user.created_at else 'N/A' }}</strong>

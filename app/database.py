@@ -302,6 +302,9 @@ def _run_migrations():
         cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN email_subject TEXT NOT NULL DEFAULT ''")
     if "email_body" not in rec_cols:
         cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN email_body TEXT NOT NULL DEFAULT ''")
+    # Payment term per recurring invoice: NULL = account default, 0 = no due date, N = N days
+    if "payment_due_days" not in rec_cols:
+        cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN payment_due_days INTEGER")
 
     # Add source column to email_log if missing
     email_cols = {row[1] for row in cursor.execute("PRAGMA table_info(email_log)").fetchall()}
@@ -1433,6 +1436,51 @@ _ACCOUNT_FIELDS = ("tier", "subscription_status", "subscription_start",
                    "subscription_end", "billing_cycle")
 
 
+TRIAL_TIER = "starter"
+TRIAL_DAYS = 14
+
+
+def _apply_trial(conn, user):
+    """A free account inside its trial works as Pamata everywhere.
+
+    user["tier"] is the tier every gate reads; user["plan_tier"] stays the plan
+    actually paid for, which is what pricing and billing screens compare against.
+    """
+    user["plan_tier"] = user.get("tier") or "free"
+    user["on_trial"] = False
+    user["trial_until"] = None
+    if user["plan_tier"] != "free":
+        return user
+    row = conn.execute("SELECT value FROM user_settings WHERE user_id = ? AND key = 'trial_until'",
+                       (user["account_id"],)).fetchone()
+    if not row or not row["value"]:
+        return user
+    try:
+        until = datetime.date.fromisoformat(row["value"])
+    except ValueError:
+        return user
+    if until >= datetime.date.today():
+        user["tier"] = TRIAL_TIER
+        user["on_trial"] = True
+        user["trial_until"] = until.isoformat()
+        user["trial_days_left"] = (until - datetime.date.today()).days + 1
+    return user
+
+
+def trial_available(account_id):
+    """Each account can start the trial once."""
+    return get_user_setting(account_id, "trial_until", "") == ""
+
+
+def start_trial(account_id, days=TRIAL_DAYS):
+    """Start the Pamata trial for an account that has never had one. Returns True if started."""
+    if not trial_available(account_id):
+        return False
+    until = (datetime.date.today() + datetime.timedelta(days=days - 1)).isoformat()
+    set_user_setting(account_id, "trial_until", until)
+    return True
+
+
 def _with_account(conn, row):
     """Attach account scope to a user row.
 
@@ -1445,14 +1493,15 @@ def _with_account(conn, row):
     user["is_account_owner"] = owner_id is None
     if owner_id is None:
         user["account_id"] = user["id"]
-        return user
+        return _apply_trial(conn, user)
 
     owner = conn.execute("SELECT * FROM users WHERE id = ?", (owner_id,)).fetchone()
     if not owner:
         # Owner row is gone. Fail closed: no data, no plan.
         user["account_id"] = user["id"]
         user["is_account_owner"] = True
-        user["tier"] = "free"
+        user["tier"] = user["plan_tier"] = "free"
+        user["on_trial"] = False
         return user
     user["account_id"] = owner["id"]
     user["account_owner_name"] = owner["display_name"] or owner["username"]
@@ -1460,7 +1509,7 @@ def _with_account(conn, row):
         user[field] = owner[field]
     # A member never inherits admin rights from the account owner.
     user["is_admin"] = 0
-    return user
+    return _apply_trial(conn, user)
 
 
 def get_user(user_id: int):
@@ -2103,47 +2152,48 @@ UNLIMITED = None
 # tags — four copies, so a price change could show one number and charge another.
 TIER_LIMITS = {
     "free": {
-        "max_documents": 5, "max_clients": 5, "max_products": 5,
-        # A few real sends, so the "invoice sent, done" moment is reachable
-        # before paying — it is the best part of the product.
-        "max_emails_month": 3, "recurring": False, "max_recurring": 0,
-        "all_templates": False,
+        "max_documents": 5, "max_clients": 25, "max_products": UNLIMITED,
+        # Every free invoice can be sent: sending is the moment the product
+        # proves itself, so it is not where the free plan should stop.
+        "max_emails_month": 5, "recurring": False, "max_recurring": 0,
+        "all_templates": True,
         "einvoice": False, "accounting_export": False, "stock": False,
         "max_users": 1,
         "label": "Bezmaksas",
         "price_monthly": 0, "price_yearly": 0,
     },
     "mini": {
-        "max_documents": 50, "max_clients": 25, "max_products": 25,
+        "max_documents": 50, "max_clients": 50, "max_products": UNLIMITED,
         # 50 documents but 10 emails read as an arbitrary punishment.
         "max_emails_month": 30, "recurring": False, "max_recurring": 0,
-        "all_templates": False,
+        "all_templates": True,
         # E-invoice XML costs nothing marginal, and a paid plan that cannot
         # produce one stops being fit for purpose when the mandate lands.
         "einvoice": True, "accounting_export": False, "stock": False,
         "max_users": 1,
         "label": "Mini",
-        "price_monthly": 299, "price_yearly": 2900,
+        # Every paid step sits under Numbero's nearest plan (2 / 6 / 10 € a month)
+        # with more in it. Yearly is ten months' price: "two months free".
+        "price_monthly": 199, "price_yearly": 1990,
     },
     "starter": {
-        "max_documents": 500, "max_clients": 100, "max_products": 200,
+        "max_documents": 500, "max_clients": 100, "max_products": UNLIMITED,
         "max_emails_month": 100, "recurring": True, "max_recurring": 3,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": False,
         "max_users": 1,
         "label": "Pamata",
-        "price_monthly": 599, "price_yearly": 5900,
+        "price_monthly": 499, "price_yearly": 4990,
     },
     "business": {
-        "max_documents": 5000, "max_clients": 500, "max_products": 1000,
+        "max_documents": 5000, "max_clients": 500, "max_products": UNLIMITED,
         "max_emails_month": UNLIMITED, "recurring": True, "max_recurring": UNLIMITED,
         "all_templates": True,
         "einvoice": True, "accounting_export": True, "stock": True,
         "max_users": 5,
         "label": "Bizness",
-        # Was 19.99/199. A 3.3x jump from Pamata bought volume nobody in this
-        # market uses; at 12.99 stock management alone can justify the step.
-        "price_monthly": 1299, "price_yearly": 12900,
+        # Was 19.99, then 12.99; Numbero's unlimited plan is 10 €.
+        "price_monthly": 999, "price_yearly": 9990,
     },
     "lifetime": {
         # Genuinely unlimited — the pricing card says "Neierobežots" and this
@@ -2154,7 +2204,8 @@ TIER_LIMITS = {
         "einvoice": True, "accounting_export": True, "stock": True,
         "max_users": UNLIMITED,
         "label": "Mūža licence",
-        "price_monthly": 0, "price_yearly": 0, "price_lifetime": 49900,
+        # About two years of Bizness: a founding-customer price, ten of them only
+        "price_monthly": 0, "price_yearly": 0, "price_lifetime": 19900,
     },
     "admin": {
         "max_documents": UNLIMITED, "max_clients": UNLIMITED, "max_products": UNLIMITED,
@@ -2170,6 +2221,9 @@ TIER_LIMITS = {
 # users.max_documents/max_clients/max_products are NOT NULL columns kept in sync
 # on subscription changes. Nothing reads them (checks go through TIER_LIMITS),
 # but NULL would raise, so unlimited is stored as a sentinel.
+# The lifetime licence is a limited offer: this many are sold, then it closes
+LIFETIME_CAP = 10
+
 _UNLIMITED_COLUMN_VALUE = 999999999
 
 _PRICE_KEY_BY_CYCLE = {
@@ -2360,6 +2414,19 @@ def get_user_resource_counts(user_id: int) -> dict:
     }
 
 
+def get_onboarding_state(user_id: int) -> dict:
+    """What a new account has done so far, for the dashboard's first-steps list."""
+    conn = get_connection()
+    one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
+    state = {
+        "has_invoice": one("SELECT COUNT(*) FROM documents WHERE user_id = ? AND doc_type = 'sell' AND deleted_at IS NULL", user_id) > 0,
+        "has_sent": one("SELECT COUNT(*) FROM email_log WHERE user_id = ?", user_id) > 0,
+        "first_invoice_id": (conn.execute("SELECT id FROM documents WHERE user_id = ? AND doc_type = 'sell' AND deleted_at IS NULL ORDER BY id LIMIT 1", (user_id,)).fetchone() or [None])[0],
+    }
+    conn.close()
+    return state
+
+
 def get_emails_sent_this_month(user_id: int) -> int:
     """Count emails sent by user in the current calendar month."""
     conn = get_connection()
@@ -2471,15 +2538,15 @@ def get_recent_events(user_id: int, limit: int = 10) -> list:
 
 def create_recurring_invoice(user_id, doc_type, client_id, vat_rate, notes, template,
                              frequency, next_run, send_email, items_json,
-                             email_subject="", email_body=""):
+                             email_subject="", email_body="", payment_due_days=None):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO recurring_invoices
            (user_id, doc_type, client_id, vat_rate, notes, template, frequency,
-            next_run, send_email, email_subject, email_body, items_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            next_run, send_email, email_subject, email_body, items_json, payment_due_days)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (user_id, doc_type, client_id, vat_rate, notes, template, frequency, next_run,
-         1 if send_email else 0, email_subject, email_body, items_json)
+         1 if send_email else 0, email_subject, email_body, items_json, payment_due_days)
     )
     rid = cursor.lastrowid
     conn.commit()
@@ -2489,16 +2556,16 @@ def create_recurring_invoice(user_id, doc_type, client_id, vat_rate, notes, temp
 
 def update_recurring_invoice(user_id, recurring_id, doc_type, client_id, vat_rate, notes,
                              template, frequency, next_run, send_email, items_json,
-                             email_subject="", email_body=""):
+                             email_subject="", email_body="", payment_due_days=None):
     conn = get_connection()
     conn.execute(
         """UPDATE recurring_invoices
            SET doc_type = ?, client_id = ?, vat_rate = ?, notes = ?, template = ?,
                frequency = ?, next_run = ?, send_email = ?, email_subject = ?,
-               email_body = ?, items_json = ?
+               email_body = ?, items_json = ?, payment_due_days = ?
            WHERE id = ? AND user_id = ?""",
         (doc_type, client_id, vat_rate, notes, template, frequency, next_run,
-         1 if send_email else 0, email_subject, email_body, items_json,
+         1 if send_email else 0, email_subject, email_body, items_json, payment_due_days,
          recurring_id, user_id)
     )
     conn.commit()
@@ -2546,6 +2613,52 @@ def toggle_recurring_invoice(user_id, recurring_id):
     )
     conn.commit()
     conn.close()
+
+
+DEFAULT_PAYMENT_DUE_DAYS = 14
+
+
+def recurring_due_days(rec):
+    """Days until payment for an invoice a recurring template generates.
+    The template's own term wins; NULL falls back to the account's default
+    (Iestatījumi → apmaksas termiņš), then to 14 days. 0 means no due date."""
+    days = rec.get("payment_due_days")
+    if days is None:
+        raw = get_user_setting(rec["user_id"], "payment_due_days", "")
+        try:
+            days = int(raw) if str(raw).strip() else DEFAULT_PAYMENT_DUE_DAYS
+        except ValueError:
+            days = DEFAULT_PAYMENT_DUE_DAYS
+    return max(0, int(days))
+
+
+def backfill_recurring_due_dates():
+    """One-time fix: recurring invoices used to be created without a due date,
+    so they could never show as overdue. Give each one its account's default
+    term (or 14 days). Runs once; marked done in the settings table."""
+    if get_setting("migr_recurring_due_dates") == "1":
+        return 0
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT d.id, d.user_id, d.doc_date FROM documents d
+           WHERE d.doc_type = 'sell' AND (d.payment_due_date IS NULL OR d.payment_due_date = '')
+             AND d.id IN (SELECT document_id FROM events
+                          WHERE event_type = 'document_created' AND meta LIKE '%"source": "recurring"%')"""
+    ).fetchall()
+    conn.close()
+    fixed = 0
+    for r in rows:
+        days = recurring_due_days({"payment_due_days": None, "user_id": r["user_id"]})
+        if not days:
+            continue
+        due = (datetime.date.fromisoformat(str(r["doc_date"])[:10]) + datetime.timedelta(days=days)).isoformat()
+        conn = get_connection()
+        conn.execute("UPDATE documents SET payment_due_date = ? WHERE id = ?", (due, r["id"]))
+        conn.commit()
+        conn.close()
+        fixed += 1
+    set_setting("migr_recurring_due_dates", "1")
+    return fixed
 
 
 def get_due_recurring_invoices(today_str):

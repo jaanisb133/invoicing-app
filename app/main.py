@@ -9,6 +9,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env
 import json
 import re
 import secrets
+import urllib.parse
 import datetime
 import asyncio
 import logging
@@ -25,6 +26,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSON
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Match
 from itsdangerous import URLSafeTimedSerializer
 
 logger = logging.getLogger("vrekini")
@@ -51,18 +54,38 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# Cache-busting version for style.css. Bump this on every CSS change.
+# Cache-busting version for app.css and site.css. Bump this on every CSS change.
 # Exposed as a Jinja global so the standalone templates (landing, login,
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "40"
+CSS_VERSION = "50"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
 # template — the pricing page used to hardcode every figure twice.
 templates.env.globals["tiers"] = db.TIER_LIMITS
 templates.env.filters["price"] = db.format_price
+templates.env.globals["plans"] = db.TIER_LIMITS
+templates.env.globals["lifetime_cap"] = db.LIFETIME_CAP
+templates.env.globals["current_year"] = lambda: datetime.date.today().year
+# Latvian count agreement: 1, 21, 31 … take the singular (1 diena, 21 rēķins; 11 dienas)
+templates.env.filters["plural"] = lambda n, one, many: one if int(n) % 10 == 1 and int(n) % 100 != 11 else many
+
+
+_CHECK_NOTE = re.compile(r"<!--\s*PĀRBAUDĪT:\s*(.*?)\s*-->", re.S)
+
+
+def _guide_checks(body, show):
+    """Guide drafts mark unverified claims with <!-- PĀRBAUDĪT: … --> comments. Show them
+    on drafts so a proofreader sees them on the page; strip them from published pages."""
+    from markupsafe import Markup, escape
+    if show:
+        return Markup(_CHECK_NOTE.sub(lambda m: f'<span class="check-note" role="note">Pārbaudīt: {escape(m.group(1))}</span>', str(body)))
+    return Markup(_CHECK_NOTE.sub("", str(body)))
+
+
+templates.env.filters["guide_checks"] = _guide_checks
 templates.env.filters["eur"] = fmt.eur
 templates.env.filters["num"] = fmt.num
 templates.env.filters["qty"] = fmt.qty
@@ -85,8 +108,8 @@ templates.env.globals["payment_logos"] = payment_logos.footer_logos()
 _missing_logos = payment_logos.missing_logos()
 if _missing_logos:
     logger.warning(
-        "Payment logos still hotlinked from a third-party host: %s. "
-        "Run scripts/fetch_payment_logos.py and restart to self-host them.",
+        "Payment logos missing, shown as text: %s. Copy the official files into "
+        "app/static/img/payments/ (see the README there) and restart.",
         ", ".join(_missing_logos),
     )
 
@@ -370,8 +393,14 @@ def _base_context(request):
         "current_user": user,
         "stock_enabled": _stock_enabled(user["account_id"]),
         "tier": tier,
-        "tier_label": db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
+        "tier_label": (db.TIER_LIMITS[tier]["label"] + " · izmēģinājums") if user.get("on_trial")
+                      else db.TIER_LIMITS.get(tier, {}).get("label", "Bezmaksas"),
         "tier_limits": db.get_tier_limits(tier),
+        "trial_available": user.get("plan_tier") == "free" and db.trial_available(user["account_id"]),
+        # Free plan: how many of this month's invoices are left (None on paid plans and trials)
+        "docs_left": _docs_left(user),
+        # Short guided tours already seen by this person (not the account: each teammate gets their own)
+        "tours_seen": set(filter(None, db.get_user_setting(user["id"], "tours_seen", "").split(","))),
         "needs_setup": not db.get_user_setting(user["account_id"], "company_name"),
         "company_name": db.get_user_setting(user["account_id"], "company_name"),
         "offline_mode": OFFLINE_MODE,
@@ -381,6 +410,18 @@ def _base_context(request):
         # account by an admin, not tied to a tier.
         "branded_offers": _branded_offers_enabled(user["account_id"]),
     }
+
+
+def _docs_left(user):
+    if user.get("tier", "free") != "free":
+        return None
+    allowed, used, maximum = _check_tier_limit(user, "documents")
+    return None if maximum is None else max(0, maximum - used)
+
+
+def _email_enabled(user):
+    """Sending by e-mail is part of every plan (the free one has a monthly cap)."""
+    return not OFFLINE_MODE and db.get_tier_limits(user.get("tier", "free")).get("max_emails_month") != 0
 
 
 def _with_document_client(clients, uid, doc):
@@ -575,11 +616,29 @@ def _ensure_offline_user():
     return user
 
 
+def _route_exists(scope):
+    """True when some route matches this path (with any method)."""
+    return any(route.matches(scope)[0] != Match.NONE for route in app.router.routes)
+
+
+def _not_found_page(request):
+    return templates.TemplateResponse("404.html", {"request": request, "current_user": None}, status_code=404)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_page(request: Request, exc: StarletteHTTPException):
+    """Browsers get a Latvian 404 page; API clients keep the JSON error."""
+    wants_html = "text/html" in request.headers.get("accept", "") and not request.url.path.startswith("/api/")
+    if exc.status_code == 404 and wants_html:
+        return _not_found_page(request)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=getattr(exc, "headers", None))
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        if (path.startswith("/static") or path in ("/login", "/register", "/pricing", "/contacts", "/terms", "/license",
+        if (path.startswith("/static") or path.startswith("/celvedis") or path in ("/login", "/register", "/forgot", "/reset", "/pricing", "/contacts", "/terms", "/license",
                                                     "/robots.txt", "/sitemap.xml")
                 or path == "/everypay/callback" or path == "/api/registry/search"):
             return await call_next(request)
@@ -609,6 +668,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             if path.startswith("/api/"):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            # A URL no route answers is a 404 for guests too; sending it to the
+            # login page made every mistyped or spammed link a soft 404.
+            if not _route_exists(request.scope):
+                return _not_found_page(request)
             return RedirectResponse("/login", status_code=303)
 
         if user["must_change_password"] and path != "/set-password" and path != "/logout":
@@ -625,6 +688,47 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AuthMiddleware)
+
+
+class HeadAndSecurityHeaders:
+    """Answer HEAD like GET without a body (FastAPI routes are GET-only, so link
+    checkers and uptime monitors got 405), and add the standard security headers
+    to every response. HSTS is sent only when the request came in over HTTPS."""
+
+    _HEADERS = [
+        (b"x-content-type-options", b"nosniff"),
+        (b"referrer-policy", b"strict-origin-when-cross-origin"),
+        (b"x-frame-options", b"SAMEORIGIN"),
+        (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+    ]
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        is_head = scope["method"] == "HEAD"
+        if is_head:
+            scope = dict(scope, method="GET")
+        req_headers = dict(scope.get("headers") or [])
+        https = scope.get("scheme") == "https" or req_headers.get(b"x-forwarded-proto", b"") == b"https"
+
+        async def wrapped(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                present = {k.lower() for k, _ in headers}
+                extra = self._HEADERS + ([(b"strict-transport-security", b"max-age=31536000")] if https else [])
+                headers += [(k, v) for k, v in extra if k not in present]
+                message = dict(message, headers=headers)
+            elif is_head and message["type"] == "http.response.body":
+                message = dict(message, body=b"")
+            await send(message)
+
+        await self.app(scope, receive, wrapped)
+
+
+app.add_middleware(HeadAndSecurityHeaders)
 
 
 def _calc_next_run(current_date, frequency):
@@ -728,13 +832,20 @@ async def _process_recurring_invoices():
                     # Check monthly document limit before creating
                     rec_user = db.get_user(rec["user_id"])
                     if rec_user:
+                        # Schedules made during a trial pause when it ends rather than run free
+                        if not _check_tier_feature(rec_user, "recurring"):
+                            continue
                         allowed, _, _ = _check_tier_limit(rec_user, "documents")
                         if not allowed:
                             continue
 
+                    due_days = db.recurring_due_days(rec)
+                    due_date = ((datetime.date.today() + datetime.timedelta(days=due_days)).isoformat()
+                                if due_days and rec["doc_type"] == "sell" else None)
                     doc_id, doc_number = db.create_document(
                         rec["user_id"], rec["doc_type"], rec["client_id"],
-                        today, items, rec["vat_rate"], rec["notes"]
+                        today, items, rec["vat_rate"], rec["notes"],
+                        payment_due_date=due_date or "",
                     )
 
                     # Log document_created event (recurring source)
@@ -950,6 +1061,9 @@ async def startup():
     print(f"[STARTUP] Database exists: {db_exists}, size: {db_size} bytes")
 
     db.init_db()
+    fixed = db.backfill_recurring_due_dates()
+    if fixed:
+        logger.info("[STARTUP] Gave %d recurring invoices their missing due date", fixed)
 
     user_ct = db.user_count()
     print(f"[STARTUP] Users in database: {user_ct}")
@@ -1048,7 +1162,11 @@ async def login(request: Request, username: str = Form(...), password: str = For
 
 
 @app.get("/register", response_class=HTMLResponse)
-async def register_page(request: Request, error: str = "", plan: str = "", cycle: str = "monthly"):
+async def register_page(request: Request, error: str = "", plan: str = "", cycle: str = "monthly",
+                        entity_type: str = "business", display_name: str = "", reg_number: str = "",
+                        legal_address: str = "", first_name: str = "", last_name: str = ""):
+    """Sign-up form. The landing page's "Jūsu uzņēmums" dialog prefills it with
+    the company the visitor already picked from the registry there."""
     user = _get_current_user(request)
     if user:
         return RedirectResponse("/", status_code=303)
@@ -1058,7 +1176,12 @@ async def register_page(request: Request, error: str = "", plan: str = "", cycle
         "page": "register",
         "plan": plan,
         "cycle": cycle,
-        "entity_type": "business",
+        "entity_type": "individual" if entity_type == "individual" else "business",
+        "display_name": display_name[:200],
+        "reg_number": re.sub(r"\D", "", reg_number)[:20],
+        "legal_address": legal_address[:300],
+        "first_name": first_name[:100],
+        "last_name": last_name[:100],
     })
 
 
@@ -1070,7 +1193,7 @@ async def register(request: Request,
                    last_name: str = Form(""),
                    phone: str = Form(""),
                    password: str = Form(...),
-                   confirm_password: str = Form(...),
+                   confirm_password: str = Form(""),
                    plan: str = Form(""),
                    cycle: str = Form("monthly"),
                    entity_type: str = Form("business"),
@@ -1104,7 +1227,9 @@ async def register(request: Request,
         err = "Lūdzu norādiet vārdu un uzvārdu." if entity_type == "individual" else "Lūdzu norādiet uzņēmuma nosaukumu."
         return templates.TemplateResponse("register.html", {**error_ctx, "error": err})
 
-    if password != confirm_password:
+    # The form has one password field with a show/hide toggle; a second field
+    # is only compared when a client still sends one.
+    if confirm_password and password != confirm_password:
         return templates.TemplateResponse("register.html", {**error_ctx, "error": "Paroles nesakrīt."})
 
     if len(password) < 6:
@@ -1154,15 +1279,86 @@ async def register(request: Request,
     })
 
     # Store pending plan selection (if any) — checkout happens after onboarding
-    if plan in ("starter", "business"):
+    if plan in ("mini", "starter", "business", "lifetime"):
         db.save_all_user_settings(user_id, {
             "_pending_plan": plan,
             "_pending_plan_cycle": cycle,
         })
 
+    # Every new account tries the paid features first, then keeps the free plan
+    if not OFFLINE_MODE:
+        db.start_trial(user_id)
+
     # Always redirect to dashboard → onboarding gate will send to /setup
     response = RedirectResponse("/", status_code=303)
     return _set_session_cookie(response, user_id)
+
+
+# ---------- Password reset ----------
+# A signed link valid for an hour. It carries the tail of the current password
+# hash, so it stops working as soon as the password changes (used once).
+RESET_MAX_AGE = 3600
+
+
+def _reset_token(user):
+    return _get_serializer().dumps({"u": user["id"], "h": user["password_hash"][-16:]}, salt="pw-reset")
+
+
+def _reset_user(token):
+    try:
+        data = _get_serializer().loads(token, salt="pw-reset", max_age=RESET_MAX_AGE)
+    except Exception:
+        return None
+    user = db.get_user(int(data.get("u", 0)))
+    if not user or user["password_hash"][-16:] != data.get("h"):
+        return None
+    return user
+
+
+@app.get("/forgot", response_class=HTMLResponse)
+async def forgot_page(request: Request):
+    return templates.TemplateResponse("forgot.html", {"request": request, "sent": False, "email": ""})
+
+
+@app.post("/forgot", response_class=HTMLResponse)
+async def forgot_send(request: Request, email: str = Form("")):
+    ip = _get_client_ip(request)
+    email = email.strip().lower()
+    if _rate_limiter.is_allowed(f"forgot:{ip}", 5, 3600) and email:
+        user = db.get_user_by_email(email)
+        if user and (SMTP_PASS or BREVO_API_KEY):
+            link = f"{SITE_URL}/reset?token={_reset_token(user)}"
+            try:
+                _send_email(
+                    to_email=user["email"],
+                    subject="Paroles maiņa — V-Rēķini",
+                    body=("Labdien!\n\nLai iestatītu jaunu V-Rēķini paroli, atveriet šo saiti "
+                          f"(derīga vienu stundu):\n\n{link}\n\n"
+                          "Ja paroli nemainījāt Jūs, šo e-pastu var droši ignorēt.\n\nV-Rēķini\n"),
+                    sender_name="V-Rēķini",
+                )
+            except Exception:
+                logger.exception("Password reset e-mail failed")
+    # Same answer whether or not the address has an account
+    return templates.TemplateResponse("forgot.html", {"request": request, "sent": True, "email": email})
+
+
+@app.get("/reset", response_class=HTMLResponse)
+async def reset_page(request: Request, token: str = ""):
+    user = _reset_user(token)
+    return templates.TemplateResponse("reset.html", {"request": request, "token": token, "valid": bool(user), "error": ""})
+
+
+@app.post("/reset", response_class=HTMLResponse)
+async def reset_save(request: Request, token: str = Form(""), new_password: str = Form("")):
+    user = _reset_user(token)
+    if not user:
+        return templates.TemplateResponse("reset.html", {"request": request, "token": token, "valid": False, "error": ""})
+    if len(new_password) < 6:
+        return templates.TemplateResponse("reset.html", {"request": request, "token": token, "valid": True,
+                                                         "error": "Parolei jābūt vismaz 6 simbolus garai."})
+    db.update_user_password(user["id"], new_password)
+    return RedirectResponse("/login?message=" + urllib.parse.quote("Parole nomainīta. Ienāciet ar jauno paroli."), status_code=303)
 
 
 @app.get("/set-password", response_class=HTMLResponse)
@@ -1180,12 +1376,13 @@ async def set_password_page(request: Request, error: str = ""):
 @app.post("/set-password")
 async def set_password(request: Request,
                        new_password: str = Form(...),
-                       confirm_password: str = Form(...)):
+                       confirm_password: str = Form("")):
     user = _get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    if new_password != confirm_password:
+    # The form has one field with show/hide; a confirm field is checked if one is sent
+    if confirm_password and new_password != confirm_password:
         return templates.TemplateResponse("set_password.html", {
             "request": request,
             "display_name": user["display_name"] or user["username"],
@@ -1214,6 +1411,53 @@ async def logout(request: Request):
 # =============================================================================
 # Initial Setup (simplified onboarding)
 # =============================================================================
+
+TOURS = {"dashboard", "editor"}
+
+
+@app.post("/api/tour-seen")
+async def tour_seen(request: Request):
+    """Remember that this person has finished or skipped a tour."""
+    user = request.state.user
+    try:
+        key = (await request.json()).get("tour", "")
+    except Exception:
+        key = ""
+    if key in TOURS:
+        seen = set(filter(None, db.get_user_setting(user["id"], "tours_seen", "").split(",")))
+        seen.add(key)
+        db.set_user_setting(user["id"], "tours_seen", ",".join(sorted(seen)))
+    return JSONResponse({"ok": True})
+
+
+@app.post("/onboarding/dismiss")
+async def onboarding_dismiss(request: Request):
+    db.set_user_setting(request.state.user["account_id"], "onboarding_hidden", "1")
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/palidziba", response_class=HTMLResponse)
+async def help_page(request: Request):
+    ctx = _base_context(request)
+    ctx["page"] = "help"
+    return templates.TemplateResponse("help.html", ctx)
+
+
+@app.post("/trial/start")
+async def trial_start(request: Request):
+    """Start the one-time Pamata trial (offered on locked features to free accounts)."""
+    user = request.state.user
+    gate = _owner_only(user)
+    if gate:
+        return gate
+    if user.get("plan_tier") == "free":
+        db.start_trial(user["account_id"])
+    form = await request.form()
+    nxt = str(form.get("next") or "/")
+    if not nxt.startswith("/") or nxt.startswith("//"):
+        nxt = "/"
+    return RedirectResponse(nxt, status_code=303)
+
 
 @app.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
@@ -1287,7 +1531,7 @@ async def save_setup(
     pending_plan = all_settings.get("_pending_plan", "")
     pending_cycle = all_settings.get("_pending_plan_cycle", "monthly")
 
-    if pending_plan in ("starter", "business"):
+    if pending_plan in ("mini", "starter", "business", "lifetime"):
         # Clear the pending plan and redirect to checkout
         db.save_all_user_settings(user["account_id"], {
             "_pending_plan": "",
@@ -1366,15 +1610,16 @@ SITE_URL = os.getenv("VREKINI_SITE_URL", "https://v-rekini.lv")
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots_txt():
-    """Allow indexing of public pages, block private/utility routes."""
+    """Allow indexing of public pages, block private/utility routes.
+
+    /login and /register stay crawlable on purpose: they carry noindex, which a
+    crawler can only read if robots.txt lets it fetch the page."""
     return PlainTextResponse(
         "User-agent: *\n"
         "Allow: /$\n"
         "Allow: /pricing\n"
         "Allow: /contacts\n"
         "Allow: /terms\n"
-        "Disallow: /login\n"
-        "Disallow: /register\n"
         "Disallow: /set-password\n"
         "Disallow: /setup\n"
         "Disallow: /account\n"
@@ -1396,28 +1641,65 @@ async def robots_txt():
     )
 
 
+# Public, indexable pages and when their content last really changed. Update the
+# date when a page's content changes; a lastmod that moves on every fetch is ignored.
+SITEMAP_PAGES = [
+    ("/", "2026-10-21"),
+    ("/pricing", "2026-10-21"),
+    ("/contacts", "2026-10-21"),
+    ("/terms", "2026-10-21"),
+]
+
+
+def _guides(published_only=False):
+    """Guides from app/guides.py; drafts are left out where published_only."""
+    try:
+        from app import guides as guides_mod
+        items = list(guides_mod.GUIDES)
+    except ImportError:
+        items = []
+    return [g for g in items if g.get("published")] if published_only else items
+
+
 @app.get("/sitemap.xml")
 async def sitemap_xml():
     """Sitemap listing public, indexable pages."""
-    today = datetime.date.today().isoformat()
-    urls = [
-        ("/",         "1.0", "weekly"),
-        ("/pricing",  "0.9", "weekly"),
-        ("/contacts", "0.5", "monthly"),
-        ("/terms",    "0.3", "yearly"),
-    ]
     body = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    for path, prio, freq in urls:
-        body += (
-            "  <url>\n"
-            f"    <loc>{SITE_URL}{path}</loc>\n"
-            f"    <lastmod>{today}</lastmod>\n"
-            f"    <changefreq>{freq}</changefreq>\n"
-            f"    <priority>{prio}</priority>\n"
-            "  </url>\n"
-        )
+    pages = list(SITEMAP_PAGES)
+    published = _guides(published_only=True)
+    if published:
+        pages.append(("/celvedis", max(g["updated"] for g in published)))
+        pages += [(f"/celvedis/{g['slug']}", g["updated"]) for g in published]
+    for path, lastmod in pages:
+        body += f"  <url>\n    <loc>{SITE_URL}{path}</loc>\n    <lastmod>{lastmod}</lastmod>\n  </url>\n"
     body += "</urlset>\n"
     return Response(content=body, media_type="application/xml")
+
+
+@app.get("/celvedis", response_class=HTMLResponse)
+async def guides_index(request: Request):
+    published = _guides(published_only=True)
+    if not published:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse("guides_index.html", {
+        "request": request, "current_user": None, "page": "guides",
+        "guides": published, "site_url": SITE_URL,
+    })
+
+
+@app.get("/celvedis/{slug}", response_class=HTMLResponse)
+async def guide_page(request: Request, slug: str):
+    guides = _guides()
+    guide = next((g for g in guides if g["slug"] == slug), None)
+    if not guide or not re.fullmatch(r"[a-z0-9-]+", slug):
+        raise HTTPException(status_code=404)
+    related = [g for g in guides if g["published"] and g["slug"] != slug][:3]
+    sample_pdf = f"/static/guides/{slug}.pdf" if os.path.exists(
+        os.path.join(BASE_DIR, "static", "guides", f"{slug}.pdf")) else None
+    return templates.TemplateResponse("guide.html", {
+        "request": request, "current_user": None, "page": "guides",
+        "guide": guide, "related": related, "sample_pdf": sample_pdf, "site_url": SITE_URL,
+    })
 
 
 @app.get("/contacts", response_class=HTMLResponse)
@@ -1480,10 +1762,10 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
     if tier not in ("mini", "starter", "business", "lifetime") or cycle not in ("monthly", "yearly", "lifetime"):
         return RedirectResponse("/pricing?error=invalid", status_code=303)
 
-    # Enforce 30-user cap for lifetime plan
+    # The lifetime licence closes once LIFETIME_CAP have been sold
     if tier == "lifetime":
         lifetime_count = db.count_lifetime_users()
-        if lifetime_count >= 10:
+        if lifetime_count >= db.LIFETIME_CAP:
             return RedirectResponse("/pricing?error=lifetime_sold_out", status_code=303)
 
     amount = db.get_plan_price(tier, cycle)
@@ -1548,23 +1830,26 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
         admin_id = admin["id"]
         today = datetime.date.today().isoformat()
 
-        # Ensure a subscription product exists for the admin
-        admin_products = db.get_all_products(admin_id)
-        sub_product = next(
-            (p for p in admin_products if p["name"] == "V-Rēķini abonements"), None
-        )
-        if not sub_product:
-            sub_product_id = db.add_product(admin_id, "V-Rēķini abonements", "gab")
-        else:
-            sub_product_id = sub_product["id"]
+        # Renewals pass a raw users row, which has no account_id; only owners pay
+        account_id = paying_user.get("account_id") or paying_user["id"]
 
-        # Ensure paying user exists as a client in admin's account
-        paying_settings = db.get_all_user_settings(paying_user["account_id"])
+        # The paying account as a client of the admin account, with its details as
+        # they are today: a company gets its name, reg. and VAT numbers and address,
+        # a person their name (and personal code, if they entered one)
+        paying_settings = db.get_all_user_settings(account_id)
         client_name = (paying_settings.get("company_name", "")
                        or paying_user.get("display_name", "")
                        or paying_user["username"])
         client_reg = paying_settings.get("reg_number", "")
-        client_vat = paying_settings.get("vat_number", "")
+        client_vat = paying_settings.get("vat_number", "") if paying_settings.get("is_vat_payer", "0") == "1" else ""
+        client_fields = {
+            "reg_number": client_reg,
+            "vat_number": client_vat,
+            "vat_payer": 1 if client_vat else 0,
+            "legal_address": paying_settings.get("legal_address", ""),
+            "email": paying_user.get("email", ""),
+            "client_type": "individual" if paying_settings.get("entity_type") == "individual" else "business",
+        }
 
         existing_client = None
         if client_reg:
@@ -1577,25 +1862,34 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
 
         if existing_client:
             client_id = existing_client["id"]
+            db.update_client(admin_id, client_id, name=client_name, **client_fields)
         else:
-            client_id = db.add_client(
-                admin_id, client_name,
-                reg_number=client_reg,
-                vat_number=client_vat,
-                vat_payer=1 if client_vat else 0,
-                legal_address=paying_settings.get("legal_address", ""),
-                bank_name=paying_settings.get("bank_name", ""),
-                bank_account=paying_settings.get("bank_account", ""),
-                email=paying_user.get("email", ""),
-            )
+            client_id = db.add_client(admin_id, client_name, **client_fields)
 
         tier_labels = {"mini": "Mini", "starter": "Pamata", "business": "Bizness", "lifetime": "Mūža licence"}
         cycle_labels = {"monthly": "mēnesī", "yearly": "gadā", "lifetime": "vienreizējs"}
         plan_desc = f"V-Rēķini — {tier_labels.get(tier, tier)} ({cycle_labels.get(cycle, cycle)})"
 
+        # The line says what was bought and for which period
+        if cycle == "lifetime":
+            line_desc, unit = "V-Rēķini mūža licence", "gab."
+        else:
+            line_desc = f"V-Rēķini {tier_labels.get(tier, tier)} plāns"
+            unit = "gads" if cycle == "yearly" else "mēn."
+            fresh = db.get_user(account_id) or {}
+            try:
+                end = datetime.date.fromisoformat(fresh.get("subscription_end") or "")
+                start = end - datetime.timedelta(days=365 if cycle == "yearly" else 30)
+                line_desc += f", {start:%d.%m.%Y}–{end - datetime.timedelta(days=1):%d.%m.%Y}"
+            except ValueError:
+                pass
+
         admin_settings = db.get_all_user_settings(admin_id)
         vat_rate = float(admin_settings.get("default_vat_rate", "21"))
-        net_price = round(amount / (1 + vat_rate / 100), 2)
+        # Prices include VAT. A two-decimal net can't always reach them (1,64 € + 21 %
+        # is 1,98 €, 1,65 € is 2,00 €, never 1,99 €), so the net keeps four decimals
+        # and the invoice total is exactly what the card was charged.
+        net_price = round(amount / (1 + vat_rate / 100), 4)
 
         notes = (
             f"Maksājuma ref.: {payment_reference}\n"
@@ -1603,9 +1897,10 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
         )
 
         items = [{
-            "product_id": sub_product_id,
+            "product_id": None,
+            "description": line_desc,
             "quantity": 1,
-            "unit": "gab",
+            "unit": unit,
             "price_per_unit": net_price,
         }]
 
@@ -1843,7 +2138,7 @@ async def billing_cancel(request: Request):
     gate = _owner_only(user)
     if gate:
         return gate
-    if user.get("tier", "free") == "free":
+    if user.get("plan_tier", user.get("tier", "free")) == "free":
         return RedirectResponse("/account?error=no_subscription", status_code=303)
 
     # Deactivate the stored card token so no more recurring charges
@@ -1966,10 +2261,17 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
     user = getattr(request.state, "user", None)
     # Guest visitor — serve public landing page (good for SEO)
     if not user:
+        today = datetime.date.today()
         return templates.TemplateResponse("landing.html", {
             "request": request,
             "current_user": None,
             "page": "landing",
+            "site_url": SITE_URL,
+            "tiers": db.TIER_LIMITS,
+            "today": today,
+            "due": today + datetime.timedelta(days=14),
+            # Sample dates on the landing page stay true relative to the visit
+            "day": lambda n: (today + datetime.timedelta(days=n)).strftime("%d.%m.%Y"),
         })
     ctx = _base_context(request)
     uid = user["account_id"]
@@ -1997,7 +2299,24 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
         except ValueError:
             inv["days_to_due"] = None
 
+    # First steps for a new account, until done or hidden
+    onboarding = None
+    if db.get_user_setting(uid, "onboarding_hidden", "") != "1":
+        ob = db.get_onboarding_state(uid)
+        acct = db.get_all_user_settings(uid)
+        steps = [
+            {"done": True, "title": "Konts izveidots", "href": None},
+            {"done": bool(acct.get("bank_account")), "title": "Pievienot bankas kontu", "text": "Lai klients zina, kur maksāt.", "href": "/settings"},
+            {"done": ob["has_invoice"], "title": "Izrakstīt pirmo rēķinu", "text": "Klients, rindas, un PDF ir gatavs.", "href": "/documents/new?doc_type=sell"},
+            {"done": ob["has_sent"], "title": "Nosūtīt rēķinu klientam", "text": "E-pastā ar PDF pielikumu no Jūsu vārda.",
+             "href": f"/documents/{ob['first_invoice_id']}" if ob["first_invoice_id"] else "/documents/new?doc_type=sell"},
+            {"done": bool(_get_logo_path(uid)), "title": "Pievienot logotipu", "text": "Neobligāti, bet rēķins izskatīsies pēc Jums.", "href": "/settings"},
+        ]
+        if not all(st["done"] for st in steps):
+            onboarding = {"steps": steps, "done": sum(st["done"] for st in steps), "first": not ob["has_invoice"]}
+
     ctx.update({
+        "onboarding": onboarding,
         "recent_docs": recent_docs,
         "unpaid": unpaid,
         "today": today.isoformat(),
@@ -2012,7 +2331,7 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
         "range_stats_json": _json.dumps(range_stats, default=str),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "email_enabled": _email_enabled(user),
         "page": "dashboard",
     })
     return templates.TemplateResponse("dashboard.html", ctx)
@@ -2592,7 +2911,7 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
         "limits": limits,
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "email_enabled": _email_enabled(user),
         "filters": {"doc_type": doc_type, "client_id": client_id,
                      "date_from": date_from, "date_to": date_to,
                      "status": status},
@@ -2623,7 +2942,7 @@ async def offers_page(request: Request, client_id: str = "",
         "documents": docs,
         "clients": clients,
         "settings": settings,
-        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "email_enabled": _email_enabled(user),
         "filters": {"client_id": client_id, "date_from": date_from,
                     "date_to": date_to, "status": status},
         "converted_offer_ids": db.get_converted_offer_ids(user["account_id"]),
@@ -2650,6 +2969,16 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
             raise HTTPException(status_code=404, detail="Piedāvājums nav atrasts")
         prefill_doc, prefill_items = offer, offer_items
         doc_type = "sell"
+
+    # Out of this month's invoices: say so before the form, not after it was filled in
+    if doc_type != "offer":
+        allowed, used, maximum = _check_tier_limit(user, "documents")
+        if not allowed:
+            today = datetime.date.today()
+            next_month = (today.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+            ctx.update({"page": "documents", "limit_used": used, "limit_max": maximum,
+                        "next_month": next_month})
+            return templates.TemplateResponse("doc_limit.html", ctx)
 
     clients = _with_document_client(db.get_all_clients(uid), uid, prefill_doc)
     products = db.get_all_products(uid)
@@ -2736,10 +3065,7 @@ async def create_document(request: Request):
     if doc_type != "offer":
         allowed, current, maximum = _check_tier_limit(user, "documents")
         if not allowed:
-            return RedirectResponse(
-                f"/documents?error=Ikmēneša dokumentu limits sasniegts ({current}/{maximum}). "
-                f"<a href='/pricing'>Uzlabojiet plānu</a>, lai turpinātu.",
-                status_code=303)
+            return RedirectResponse(f"/documents/new?doc_type={doc_type}", status_code=303)
 
     # Block buy doc creation if stock management is off
     if doc_type == "buy" and not _stock_enabled(user["account_id"]):
@@ -2928,7 +3254,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "all_templates": _check_tier_feature(user, "all_templates"),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
-        "email_enabled": not OFFLINE_MODE and user.get("tier", "free") != "free",
+        "email_enabled": _email_enabled(user),
         "page": "offers" if doc["doc_type"] == "offer" else "documents",
         # An offer shows the invoices it produced; an invoice shows its source offer.
         "offer_invoices": (db.get_invoices_from_offer(user["account_id"], doc_id)
@@ -3100,6 +3426,8 @@ async def delete_document(request: Request, doc_id: int):
     doc, _ = db.get_document(doc_id)
     is_offer = bool(doc) and doc.get("user_id") == user["account_id"] and doc.get("doc_type") == "offer"
     db.delete_document(user["account_id"], doc_id)
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"ok": True})  # a swipe on a phone list, which offers undo
     return RedirectResponse("/offers" if is_offer else "/documents", status_code=303)
 
 
@@ -3204,6 +3532,8 @@ async def trash_page(request: Request):
 async def restore_document(request: Request, doc_id: int):
     user = request.state.user
     db.restore_document(user["account_id"], doc_id)
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"ok": True})
     return RedirectResponse("/trash", status_code=303)
 
 
@@ -3410,6 +3740,14 @@ def _sync_client_email(user_id: int, client_id: int, email: str):
 _RECURRING_ITEM_KEY = re.compile(r"^items\[(\d+)\]\[product_id\]$")
 
 
+def _parse_due_days(raw):
+    """Payment term from a form: '' keeps the account default (None), 0 = no due date."""
+    try:
+        return max(0, min(365, int(str(raw).strip()))) if str(raw or "").strip() else None
+    except ValueError:
+        return None
+
+
 def _parse_recurring_form(form):
     """Parse and validate the recurring form. Returns dict or raises ValueError."""
     try:
@@ -3490,6 +3828,7 @@ def _parse_recurring_form(form):
         "email_body": email_body,
         "client_email": client_email,
         "items": items,
+        "payment_due_days": _parse_due_days(form.get("payment_due_days")),
     }
 
 
@@ -3519,6 +3858,7 @@ async def create_recurring(request: Request):
         data["notes"], data["template"], data["frequency"], data["next_run"],
         data["send_email"], json.dumps(data["items"]),
         email_subject=data["email_subject"], email_body=data["email_body"],
+        payment_due_days=data["payment_due_days"],
     )
 
     return RedirectResponse("/recurring?created=1", status_code=303)
@@ -3546,6 +3886,7 @@ async def update_recurring(request: Request, recurring_id: int):
         data["vat_rate"], data["notes"], data["template"], data["frequency"],
         data["next_run"], data["send_email"], json.dumps(data["items"]),
         email_subject=data["email_subject"], email_body=data["email_body"],
+        payment_due_days=data["payment_due_days"],
     )
 
     return RedirectResponse("/recurring?updated=1", status_code=303)
@@ -3587,10 +3928,20 @@ async def create_recurring_from_document(request: Request, doc_id: int):
         for item in items
     ]
 
+    # Keep the source invoice's payment term; one without a due date keeps the account default
+    due_days = None
+    try:
+        if doc.get("payment_due_date"):
+            due_days = (datetime.date.fromisoformat(str(doc["payment_due_date"])[:10])
+                        - datetime.date.fromisoformat(str(doc["doc_date"])[:10])).days
+            due_days = max(0, due_days)
+    except ValueError:
+        due_days = None
+
     db.create_recurring_invoice(
         user["account_id"], doc["doc_type"], doc["client_id"], doc["vat_rate"],
         doc.get("notes", ""), template, frequency, next_run, send_email,
-        json.dumps(items_data)
+        json.dumps(items_data), payment_due_days=due_days
     )
 
     return RedirectResponse(f"/documents/{doc_id}?scheduled=1&template={template}", status_code=303)

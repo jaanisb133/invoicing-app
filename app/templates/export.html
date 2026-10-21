@@ -12,6 +12,7 @@
     {% if not tier_limits.einvoice %}
     {% set gate_feature = "Dokumentu eksports" %}
     {% set gate_description = "Eksportējiet dokumentus PDF, e-rēķinu un grāmatvedības formātos. Pieejams visos maksas plānos." %}
+    {% set gate_plan = "mini" %}
     {% include "_upgrade_gate.html" %}
     {% endif %}
     {% if request.query_params.get('error') == 'no_docs' %}

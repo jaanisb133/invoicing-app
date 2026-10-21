@@ -1,338 +1,688 @@
 <!DOCTYPE html>
 <html lang="lv">
 <head>
+{%- set t_free = tiers['free'] -%}
+{%- set t_mini = tiers['mini'] -%}
+{%- set t_main = tiers['starter'] -%}
+{%- set t_biz = tiers['business'] -%}
+{%- set faq = [
+    ("Vai der, ja neesmu PVN maksātājs?",
+     "Jā. Iestatījumos atzīmējiet, ka neesat PVN maksātājs, un rēķinos PVN rindu nebūs. Der arī individuālajiem komersantiem un pašnodarbinātajiem."),
+    ("Kas ir e-rēķins, un vai man tas vajadzīgs?",
+     "E-rēķins ir rēķins mašīnlasāmā PEPPOL BIS 3.0 formātā. Valsts iestādēm tādi jāsūta jau kopš 2025. gada, un no 2028. gada 1. janvāra tie būs obligāti arī darījumos starp uzņēmumiem. V-Rēķini tos sagatavo, sākot ar Mini plānu."),
+    ("Vai varu turpināt savu numerāciju?",
+     "Jā. Izvēlieties numerācijas veidu un priedēkli un norādiet, no kura numura sākt, lai numerācija turpinās bez pārrāvuma."),
+    ("Vai var strādāt telefonā?",
+     "Jā, jebkurā pārlūkā. Lietotni var pievienot telefona sākuma ekrānam un izrakstīt rēķinu uzreiz pēc darba."),
+    ("Kur glabājas mani dati?",
+     "Serveros Eiropas Savienībā, ar automātiskām rezerves kopijām katru dienu. Jūsu klienti un rēķini nav redzami nevienam citam kontam."),
+    ("Vai grāmatvedis var saņemt datus?",
+     "Jā, sākot ar Pamata plānu: perioda dokumenti Excel failā ar Jūsu izvēlētām kolonnām vai visi rēķini vienā ZIP arhīvā kā PDF vai XML."),
+    ("Vai var strādāt vairāki cilvēki?",
+     "Bizness plānā līdz " ~ t_biz.max_users ~ " lietotājiem ar vienu klientu sarakstu un vienu numerāciju. Uzņēmuma iestatījumus un abonementu pārvalda konta īpašnieks."),
+    ("Vai varu uzskaitīt preces?",
+     "Jā, Bizness plānā. Iegādes dokumenti atlikumu palielina, pārdošanas dokumenti to samazina, un rēķinā nevar pārdot vairāk, nekā ir noliktavā."),
+    ("Kas notiek, kad beidzas bezmaksas limits?",
+     "Pirmās 14 dienas jaunam kontam ir visas Pamata plāna iespējas. Pēc tam bezmaksas plānā var izrakstīt " ~ t_free.max_documents ~ " rēķinus mēnesī; kad tie izlietoti, nākamos var izrakstīt nākamajā mēnesī vai pēc plāna maiņas. Visi jau izrakstītie rēķini, klienti un produkti paliek pieejami."),
+    ("Kā var samaksāt?",
+     "Ar Visa, Mastercard, Google Pay vai Apple Pay; maksājumus apstrādā EveryPay un SEB. Cenas ir ar PVN, un, maksājot par gadu, divi mēneši ir bez maksas."),
+] -%}
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>V-Rēķini — Rēķinu izrakstīšana Latvijā | Vienkārši un ātri</title>
-    <meta name="description" content="V-Rēķini ir vienkārša rēķinu izrakstīšanas platforma uzņēmējiem Latvijā. PVN, e-rēķini (PEPPOL XML), klientu un produktu pārvaldība, periodiskie rēķini, eksports grāmatvedim un vairāki lietotāji vienā kontā. Sāciet bez maksas.">
-    <meta name="keywords" content="rēķinu izrakstīšana, rēķinu programma, e-rēķini, PVN rēķini, Latvija, online rēķini, grāmatvedības programma, PEPPOL, periodiskie rēķini, mazajiem uzņēmumiem, piedāvājumi, eksports grāmatvedim, vairāki lietotāji">
-    <link rel="canonical" href="https://v-rekini.lv/">
-    <meta name="robots" content="index,follow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rēķinu programma Latvijas uzņēmējiem | V-Rēķini</title>
+    <meta name="description" content="Izrakstiet PVN rēķinu minūtē: rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini, periodiskie rēķini un eksports grāmatvedim. Sāciet bez maksas.">
+    <link rel="canonical" href="{{ site_url }}/">
+    <meta name="robots" content="index,follow,max-image-preview:large">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="V-Rēķini">
-    <meta property="og:title" content="V-Rēķini — Rēķinu izrakstīšana Latvijā">
-    <meta property="og:description" content="Vienkārša rēķinu izrakstīšanas platforma uzņēmējiem Latvijā. Sāciet bez maksas.">
-    <meta property="og:url" content="https://v-rekini.lv/">
-    <meta property="og:image" content="https://v-rekini.lv/static/icons/icon-512.png">
+    <meta property="og:title" content="Rēķinu programma Latvijas uzņēmējiem">
+    <meta property="og:description" content="PVN rēķins minūtē, rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini. Sāciet bez maksas.">
+    <meta property="og:url" content="{{ site_url }}/">
+    <meta property="og:image" content="{{ site_url }}/static/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="V-Rēķini rēķins ar PVN 21 % un kopsummu 1 488,30 €">
     <meta property="og:locale" content="lv_LV">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="V-Rēķini — Rēķinu izrakstīšana Latvijā">
-    <meta name="twitter:description" content="PVN, e-rēķini, klienti, PDF — vienkārša rēķinu programma latviešu uzņēmējiem.">
+    <meta name="twitter:title" content="Rēķinu programma Latvijas uzņēmējiem">
+    <meta name="twitter:description" content="PVN rēķins minūtē, rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini.">
+    <meta name="twitter:image" content="{{ site_url }}/static/og-image.png">
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#07080B" media="(prefers-color-scheme: dark)">
-    <meta name="theme-color" content="#3B82F6" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0c0d0f" media="(prefers-color-scheme: dark)">
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&subset=latin-ext&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v={{ css_version }}">
-    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})()</script>
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            background: var(--bg);
-            position: relative;
-            overflow-x: hidden;
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/site.css?v={{ css_version }}">
+    <script>
+    (function () {
+        var d = document.documentElement;
+        d.classList.add('js');
+        try { var t = localStorage.getItem('vrekini-theme'); if (t === 'light' || t === 'dark') d.setAttribute('data-theme', t); } catch (e) {}
+    })();
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "{{ site_url }}/#org",
+          "name": "SIA \"VN Media\"",
+          "url": "{{ site_url }}/",
+          "logo": "{{ site_url }}/static/icons/icon-512.png",
+          "identifier": "40203511357",
+          "address": { "@type": "PostalAddress", "addressCountry": "LV" }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "{{ site_url }}/#site",
+          "url": "{{ site_url }}/",
+          "name": "V-Rēķini",
+          "inLanguage": "lv",
+          "publisher": { "@id": "{{ site_url }}/#org" }
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "V-Rēķini",
+          "url": "{{ site_url }}/",
+          "applicationCategory": "BusinessApplication",
+          "applicationSubCategory": "Rēķinu izrakstīšana",
+          "operatingSystem": "Web, Android, iOS",
+          "inLanguage": "lv",
+          "description": "Rēķinu programma Latvijas uzņēmējiem: PVN rēķini, rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini, piedāvājumi, periodiskie rēķini un eksports grāmatvedim.",
+          "publisher": { "@id": "{{ site_url }}/#org" },
+          "offers": {
+            "@type": "AggregateOffer",
+            "priceCurrency": "EUR",
+            "lowPrice": "0",
+            "highPrice": "{{ '%.2f' | format(t_biz.price_monthly / 100) }}",
+            "offerCount": "4"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {%- for q, a in faq %}
+            { "@type": "Question", "name": {{ q | tojson }}, "acceptedAnswer": { "@type": "Answer", "text": {{ a | tojson }} } }{{ "," if not loop.last }}
+            {%- endfor %}
+          ]
         }
-        body::before {
-            content: '';
-            position: fixed;
-            top: -25%;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 1100px;
-            height: 1100px;
-            background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, rgba(59, 130, 246, 0) 60%);
-            pointer-events: none;
-            z-index: 0;
-        }
-        .landing-main { position: relative; z-index: 1; flex: 1; }
-        .hero {
-            max-width: 920px;
-            margin: 0 auto;
-            padding: 80px 24px 56px;
-            text-align: center;
-        }
-        .hero-brand {
-            display: inline-flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 28px;
-        }
-        .hero-brand-logo {
-            width: 64px;
-            height: 64px;
-            border-radius: 18px;
-            background: linear-gradient(135deg, var(--brand) 0%, #2563EB 100%);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 24px;
-            letter-spacing: -0.6px;
-            box-shadow: 0 14px 36px rgba(59, 130, 246, 0.4);
-        }
-        .hero-brand-name { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -0.6px; }
-        .hero h1 {
-            font-size: 52px;
-            font-weight: 700;
-            letter-spacing: -1.4px;
-            line-height: 1.08;
-            margin: 0 0 20px;
-            color: var(--text);
-        }
-        .hero h1 .accent { color: var(--brand); }
-        .hero p.lead {
-            font-size: 18px;
-            color: var(--text-light);
-            line-height: 1.55;
-            max-width: 640px;
-            margin: 0 auto 36px;
-        }
-        .hero-cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-        .hero-cta .btn-primary {
-            padding: 14px 28px;
-            font-size: 15px;
-            border-radius: 12px;
-        }
-        .hero-cta .btn-outline {
-            padding: 14px 28px;
-            font-size: 15px;
-            border-radius: 12px;
-        }
-        .hero-trust {
-            margin-top: 28px;
-            font-size: 13px;
-            color: var(--text-lighter);
-        }
-
-        .section { max-width: 1080px; margin: 0 auto; padding: 56px 24px; }
-        .section h2 {
-            font-size: 32px;
-            font-weight: 700;
-            letter-spacing: -0.8px;
-            text-align: center;
-            margin: 0 0 12px;
-            color: var(--text);
-        }
-        .section .section-sub {
-            text-align: center;
-            color: var(--text-light);
-            font-size: 16px;
-            margin: 0 auto 48px;
-            max-width: 580px;
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 18px;
-        }
-        /* An odd card count leaves one alone on the last row — centre it so it
-           reads as deliberate instead of a gap. */
-        .feature-card:last-child:nth-child(3n + 1) {
-            grid-column: 2;
-        }
-        .feature-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 28px 24px;
-            transition: border-color .15s, transform .15s;
-        }
-        .feature-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
-        .feature-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 16px;
-        }
-        .feature-card h3 {
-            font-size: 16px;
-            font-weight: 600;
-            margin: 0 0 8px;
-            color: var(--text);
-            letter-spacing: -0.2px;
-        }
-        .feature-card p {
-            font-size: 14px;
-            color: var(--text-light);
-            line-height: 1.55;
-            margin: 0;
-        }
-
-        .cta-band {
-            margin: 56px auto;
-            max-width: 1080px;
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(37, 99, 235, 0.06) 100%);
-            border: 1px solid rgba(59, 130, 246, 0.28);
-            border-radius: 20px;
-            padding: 44px 32px;
-            text-align: center;
-        }
-        .cta-band h2 {
-            font-size: 28px;
-            font-weight: 700;
-            letter-spacing: -0.6px;
-            margin: 0 0 10px;
-            color: var(--text);
-        }
-        .cta-band p {
-            font-size: 15px;
-            color: var(--text-light);
-            margin: 0 0 22px;
-        }
-
-        @media (max-width: 768px) {
-            .hero { padding: 56px 20px 40px; }
-            .hero h1 { font-size: 34px; letter-spacing: -0.8px; }
-            .hero p.lead { font-size: 15.5px; }
-            .hero-cta .btn-primary,
-            .hero-cta .btn-outline { padding: 12px 22px; font-size: 14.5px; }
-            .section { padding: 40px 20px; }
-            .section h2 { font-size: 26px; }
-            .features-grid { grid-template-columns: 1fr; }
-            .feature-card:last-child:nth-child(3n + 1) { grid-column: auto; }
-            .cta-band { margin: 32px 16px; padding: 32px 22px; }
-            .cta-band h2 { font-size: 22px; }
-        }
-    </style>
+      ]
+    }
+    </script>
 </head>
 <body>
-    {% include "_public_navbar.html" %}
-    <main class="landing-main">
-        <section class="hero">
-            <div class="hero-brand">
-                <div class="hero-brand-logo">VR</div>
-                <div class="hero-brand-name">V-Rēķini</div>
+{%- set mark -%}
+<svg viewBox="0 0 28 28" aria-hidden="true"><path d="M6 3.5h16a1 1 0 0 1 1 1V24l-2.5-1.8L18 24l-2.5-1.8L13 24l-2.5-1.8L8 24l-2.5-1.8L5 22.6V4.5a1 1 0 0 1 1-1z" fill="currentColor"/><path class="v" d="M10 9.5l4 7.5 4-7.5" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- endset %}
+<main>
+
+<div class="stage">
+    <div class="read">
+        <section class="card" aria-labelledby="h-hero">
+            <div class="tear" aria-hidden="true"></div>
+            <div class="card-body">
+                <a href="/" class="wordmark" data-rise style="--i:0">{{ mark }}<span>V-Rēķini</span></a>
+                <h1 id="h-hero" class="hero-h1" data-rise style="--i:1">Rēķinu programma Latvijas uzņēmējiem</h1>
+                <p class="lede" data-rise style="--i:2">Izrakstiet PVN rēķinu minūtē. Rekvizītus atrod Uzņēmumu reģistrā, summas un PVN aprēķina pati, un klients saņem PDF vai e-rēķinu uzreiz.</p>
+                <div class="hero-actions" data-rise style="--i:3">
+                    <a href="/register" class="btn">Sākt bez maksas</a>
+                    <span class="hero-note">14 dienas visas Pamata iespējas, pēc tam {{ t_free.max_documents }} rēķini mēnesī bez maksas. Bez kartes.</span>
+                </div>
             </div>
-            <h1>Rēķinu izrakstīšana, kas vienkārši <span class="accent">strādā</span></h1>
-            <p class="lead">
-                Vienkārša platforma rēķinu izrakstīšanai un klientu pārvaldībai Latvijas uzņēmējiem.
-                PVN rēķini, e-rēķini (PEPPOL XML), periodiskie rēķini, PDF lejupielāde un nosūtīšana pa e-pastu — viss vienuviet.
-            </p>
-            <div class="hero-cta">
-                <a href="/register" class="btn btn-primary">Sākt bez maksas</a>
-                <a href="/pricing" class="btn btn-outline">Skatīt cenas</a>
-            </div>
-            <p class="hero-trust">Bez kredītkartes • Latviešu valodā • Atbilst PVN prasībām</p>
+            <nav class="card-links" aria-label="Lapas sadaļas">
+                <a href="#cenas">Cenas</a>
+                <a href="#jautajumi">Jautājumi</a>
+                <a href="/login">Ienākt</a>
+            </nav>
         </section>
 
-        <section class="section">
-            <h2>Viss nepieciešamais vienuviet</h2>
-            <p class="section-sub">Aizmirstiet Excel veidnes, rēķinu rakstīšanu ar roku un neskaidrības par PVN. V-Rēķini palīdz pārskatāmi sakārtot rēķinu izrakstīšanu un uzņēmuma ikdienas darbus.</p>
-            <div class="features-grid">
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-violet-bg);color:var(--tint-violet-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    </span>
-                    <h3>Profesionāli rēķini dažu minūšu laikā</h3>
-                    <p>Izvēlieties klientu, pievienojiet pakalpojumus vai produktus, un sistēma sagatavos profesionālu rēķinu PDF formātā. PVN aprēķinus, numerāciju un noformējumu sistēma sakārto pati.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-blue-bg);color:var(--tint-blue-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                    </span>
-                    <h3>Nosūtiet rēķinus e-pastā PDF vai PEPPOL XML formātā</h3>
-                    <p>Nosūtiet rēķinu klientam tieši no platformas e-pastā vai eksportējiet to kā PDF vai PEPPOL BIS 3.0 e-rēķinu, kas atbilst valsts iestāžu prasībām.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-rose-bg);color:var(--tint-rose-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-                    </span>
-                    <h3>No piedāvājuma līdz rēķinam</h3>
-                    <p>Sagatavojiet klientam cenu piedāvājumu un nosūtiet to pa e-pastu. Atzīmējiet, vai klients to ir pieņēmis vai noraidījis, un, kad darījums notiek, izveidojiet rēķinu ar vienu klikšķi — dati pārceļas paši.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-green-bg);color:var(--tint-green-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                    </span>
-                    <h3>Automātiski periodiskie rēķini</h3>
-                    <p>Iestatiet rēķina nosūtīšanas biežumu vienreiz, un V-Rēķini automātiski izveidos un nosūtīs rēķinus katru mēnesi vai citā Jūsu izvēlētā intervālā.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-pink-bg);color:var(--tint-pink-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    </span>
-                    <h3>Ērta klientu pārvaldība</h3>
-                    <p>Saglabājiet klientu informāciju vienuviet — uzņēmuma rekvizītus, reģistrācijas numurus un PVN datus. Meklēšana Uzņēmumu reģistrā palīdz automātiski aizpildīt nepieciešamo informāciju.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-violet-bg);color:var(--tint-violet-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><path d="M12 22a10 10 0 1 1 0-20c1.7 0 2 1.5 1 2.5-1.2 1.2-.4 3 1.3 3H18a4 4 0 0 1 0 8h-2c-2 0-3 1.5-2.3 3 .5 1.2 0 3-1.7 3z"/></svg>
-                    </span>
-                    <h3>Rēķini Jūsu uzņēmuma stilā</h3>
-                    <p>Izvēlieties vienu no trim rēķina šabloniem, pievienojiet savu logotipu un akcenta krāsu. Rēķins izskatās pēc Jūsu uzņēmuma, nevis pēc standarta veidnes.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-amber-bg);color:var(--tint-amber-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 12l4-4 3 3 5-6"/></svg>
-                    </span>
-                    <h3>Uzņēmuma pārskats</h3>
-                    <p>Sekojiet līdzi apgrozījumam, neapmaksātajiem rēķiniem un kavētajiem maksājumiem. Uzskatāmi pārskati ļauj salīdzināt rezultātus dažādos periodos un redzēt izaugsmi.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-emerald-bg);color:var(--tint-emerald-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    </span>
-                    <h3>Eksports grāmatvedim</h3>
-                    <p>Perioda dokumenti Excel failā vai vairāki rēķini uzreiz vienā ZIP arhīvā — PDF vai PEPPOL XML. Excel kolonnas varat salikt tieši tā, kā tās gaida Jūsu grāmatvedis, un saglabāt kā savu izkārtojumu.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-rose-bg);color:var(--tint-rose-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    </span>
-                    <h3>Vairāki lietotāji vienā kontā</h3>
-                    <p>Pievienojiet kolēģus, kas izraksta rēķinus Jūsu uzņēmuma vārdā. Visi strādā ar vieniem un tiem pašiem klientiem un vienu numerāciju, bet uzņēmuma iestatījumus un abonementu pārvaldāt tikai Jūs.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-blue-bg);color:var(--tint-blue-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5"/><line x1="10.5" y1="18" x2="13.5" y2="18"/></svg>
-                    </span>
-                    <h3>Strādā arī telefonā</h3>
-                    <p>V-Rēķini darbojas jebkurā pārlūkprogrammā, arī telefonā. Lietotni var pievienot sākuma ekrānam un izrakstīt rēķinu uzreiz pēc darba — nav jāgaida, līdz nokļūstat pie datora.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-pink-bg);color:var(--tint-pink-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.3 7 12 12 20.7 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg>
-                    </span>
-                    <h3>Preču atlikumu uzskaite</h3>
-                    <p>Ja pārdodat preces, nevis tikai pakalpojumus, V-Rēķini seko līdzi atlikumiem — pirkuma dokumenti krājumus palielina, pārdošanas dokumenti samazina.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-cyan-bg);color:var(--tint-cyan-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    </span>
-                    <h3>Dati droši glabāti Latvijā</h3>
-                    <p>Jūsu dati tiek glabāti drošos serveros Latvijā. Automātiskas ikdienas rezerves kopijas nodrošina, ka Jūsu rēķini un informācija netiek pazaudēti.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon" style="background:var(--tint-green-bg);color:var(--tint-green-fg)">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
-                    </span>
-                    <h3>Numerācija pēc Jūsu ieraduma</h3>
-                    <p>Trīs numerācijas veidi, savi priedēkļi un iespēja sākt no konkrēta numura. Ja pārejat no citas sistēmas, rēķinu numerācija var turpināties bez pārrāvuma.</p>
-                </div>
-            </div>
-        </section>
+        <section class="try" id="izmeginat" aria-labelledby="h-try">
+            <h2 id="h-try" data-rise>Izmēģiniet uz sava rēķina</h2>
 
-        <section class="cta-band">
-            <h2>Sāciet bez maksas jau šodien</h2>
-            <p>Bezmaksas plānā iekļauti 5 dokumenti mēnesī, 5 klienti un 5 produkti. Bez kredītkartes. Bez saistībām.</p>
-            <div class="hero-cta">
-                <a href="/register" class="btn btn-primary">Izveidot kontu</a>
-                <a href="/pricing" class="btn btn-outline">Salīdzināt plānus</a>
+            <div class="block" data-focus="parties">
+                <h3 data-rise>Rekvizīti no Uzņēmumu reģistra</h3>
+                <p data-rise style="--i:1">Ierakstiet sava uzņēmuma nosaukumu vai reģistrācijas numuru. Nosaukums, numurs un adrese aizpildās paši, un tieši tāpat atrod arī klientus.</p>
+                <div class="field" data-rise style="--i:2">
+                    <label for="coSearch" class="sr-only">Uzņēmuma nosaukums vai reģistrācijas numurs</label>
+                    <input id="coSearch" class="input" type="text" autocomplete="off" spellcheck="false"
+                           placeholder="Uzņēmuma nosaukums vai reģ. Nr."
+                           role="combobox" aria-expanded="false" aria-controls="coList" aria-autocomplete="list">
+                    <ul id="coList" class="suggest" role="listbox" hidden></ul>
+                    <div class="hint" id="coHint">Meklē Uzņēmumu reģistra atvērtajos datos.</div>
+                </div>
+            </div>
+
+            <div class="block" data-focus="lines">
+                <h3 data-rise>Rindas kā tabulā</h3>
+                <p data-rise style="--i:1">Enter pārvieto uz nākamo lauku, un jauna rinda rodas pati. Produkta mērvienība un pēdējā cena ienāk no iepriekšējā rēķina. Skaitļus raksta kā ierasts: <strong>8,50</strong>, nevis 8.50.</p>
+                <div class="pair" data-rise style="--i:2">
+                    <div><label for="qtyIn">Daudzums, gab.</label><input id="qtyIn" class="input num" type="text" inputmode="decimal" value="120"></div>
+                    <div><label for="priceIn">Cena, €</label><input id="priceIn" class="input num" type="text" inputmode="decimal" value="8,50"></div>
+                </div>
+            </div>
+
+            <div class="block" data-focus="totals">
+                <h3 data-rise>PVN aprēķina pati</h3>
+                <p data-rise style="--i:1">Pamata likme 21 %, samazinātā 12 % vai nodokļa apgrieztā maksāšana ar pareizo norādi rēķinā. Ja neesat PVN maksātājs, PVN rindu nav vispār.</p>
+                <div class="seg" role="group" aria-label="PVN likme" data-rise style="--i:2" id="vatSeg">
+                    <button type="button" data-vat="21" aria-pressed="true">21 %</button>
+                    <button type="button" data-vat="12" aria-pressed="false">12 %</button>
+                    <button type="button" data-vat="0" aria-pressed="false">Apgrieztā</button>
+                    <button type="button" data-vat="none" aria-pressed="false">Bez PVN</button>
+                </div>
+            </div>
+
+            <div class="block" data-focus="all">
+                <h3 data-rise>Izskatās pēc Jūsu uzņēmuma</h3>
+                <p data-rise style="--i:1">Trīs veidnes, Jūsu logotips un krāsa. Numerācija turpinās no iepriekšējās sistēmas ar Jūsu priedēkli, bez pārrāvuma.</p>
+                <div class="seg" role="group" aria-label="Rēķina veidne" data-rise style="--i:2" id="tplSeg">
+                    <button type="button" data-tpl="modern" aria-pressed="true">Moderna</button>
+                    <button type="button" data-tpl="classic" aria-pressed="false">Klasiskā</button>
+                    <button type="button" data-tpl="minimal" aria-pressed="false">Minimālā</button>
+                </div>
+            </div>
+
+            <div class="block" data-focus="xml">
+                <h3 data-rise>E-rēķins jau tagad</h3>
+                <p data-rise style="--i:1">No <strong>2028. gada 1. janvāra</strong> PVN maksātājiem Latvijā rēķini savā starpā būs jāsūta kā e-rēķini, bet valsts iestādēm tas ir obligāti jau kopš 2025. gada. Katrs rēķins šeit ir arī PEPPOL BIS 3.0 failā.</p>
+                <div class="seg" role="group" aria-label="Rēķina formāts" data-rise style="--i:2" id="viewSeg">
+                    <button type="button" data-view="pdf" aria-pressed="true">PDF</button>
+                    <button type="button" data-view="xml" aria-pressed="false">E-rēķins (XML)</button>
+                </div>
             </div>
         </section>
-    </main>
-    {% include "_public_footer.html" %}
+    </div>
+
+    <aside class="pin" aria-label="Rēķina priekšskatījums">
+        <div class="paper-wrap" id="paperWrap">
+            <div class="paper t-modern" id="paper" data-ui>
+                <div class="p-head" data-region="head">
+                    <div class="p-title">Rēķins</div>
+                    <div class="p-meta">
+                        <div>Nr. <b>26-041</b></div>
+                        <div>Datums <b>{{ today.strftime('%d.%m.%Y') }}</b></div>
+                        <div>Apmaksāt līdz <b>{{ due.strftime('%d.%m.%Y') }}</b></div>
+                    </div>
+                </div>
+                <div class="p-parties" data-region="parties">
+                    <div>
+                        <div class="p-label">Piegādātājs</div>
+                        <div class="p-name" id="supName">Jūsu uzņēmums</div>
+                        <div class="p-sub empty" id="supReg">Reģ. Nr. —</div>
+                        <div class="p-sub empty" id="supAddr">Adrese —</div>
+                    </div>
+                    <div>
+                        <div class="p-label">Saņēmējs</div>
+                        <div class="p-name">SIA „Bērzu Darbnīca”</div>
+                        <div class="p-sub">Reģ. Nr. 40203999901</div>
+                        <div class="p-sub">PVN Nr. LV40203999901</div>
+                        <div class="p-sub">Rīga, LV-1010</div>
+                    </div>
+                </div>
+                <table data-region="lines">
+                    <thead><tr><th>Nosaukums</th><th class="r">Daudz.</th><th>Mērv.</th><th class="r">Cena</th><th class="r">Summa</th></tr></thead>
+                    <tbody>
+                        <tr><td>Produktu fotografēšana</td><td class="r" id="l1q">120</td><td>gab.</td><td class="r" id="l1p">8,50</td><td class="r" id="l1s">1&nbsp;020,00</td></tr>
+                        <tr><td>Attēlu apstrāde</td><td class="r">6</td><td>st.</td><td class="r">35,00</td><td class="r">210,00</td></tr>
+                    </tbody>
+                </table>
+                <div class="p-totals" data-region="totals">
+                    <div id="rowNet"><span>Summa bez PVN</span><b id="tNet">1&nbsp;230,00</b></div>
+                    <div id="rowVat"><span id="tVatLabel">PVN 21 %</span><b id="tVat">258,30</b></div>
+                    <div class="grand"><span>Kopā apmaksai</span><b id="tTotal">1&nbsp;488,30&nbsp;€</b></div>
+                </div>
+                <div class="p-foot"><span>Rēķins sagatavots elektroniski un derīgs bez paraksta.</span></div>
+                <div class="xml" aria-hidden="true" id="xmlView"><code id="xmlCode"></code></div>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<section class="film" aria-labelledby="h-film">
+    <div class="film-head">
+        <h2 id="h-film" data-rise>Bez paātrinājuma</h2>
+        <p data-rise style="--i:1">Īstais rēķinu redaktors reālā laikā: klients no saraksta, divas rindas ar pēdējām cenām, PVN un saglabāšana. Vienpadsmit sekundes, tikai ar tastatūru.</p>
+    </div>
+    <div class="film-field">
+        <video class="film-video" id="filmVideo" src="/static/media/editor.mp4" poster="/static/media/editor-poster.jpg"
+               width="1280" height="800" muted loop playsinline preload="none" controls
+               data-phone-src="/static/media/editor-phone.mp4" data-phone-poster="/static/media/editor-phone-poster.jpg"
+               aria-label="Ekrāna ieraksts: rēķina izveide V-Rēķini redaktorā, kopsumma 1 488,30 €"></video>
+    </div>
+</section>
+
+<section class="owes" aria-labelledby="h-owes">
+    <div class="owes-raw">
+        <ul class="notes" data-rise aria-label="Piezīmes, kā tās izskatās bez programmas">
+            <li>Bērzu Darbnīca 1 488,30 līdz {{ day(14)[:5] }}?</li>
+            <li><s>Ziemeļu Apdare 936,66</s> vai samaksāja??</li>
+            <li>Ozols IK, atgādināt piektdien</li>
+            <li>Lejas Nami 3 806,90 kavē?</li>
+        </ul>
+        <p class="owes-copy" data-rise style="--i:1">Pārskatā redzams, kuri rēķini kavējas un par cik dienām, un kuriem termiņš tuvojas. Apmaksu atzīmē ar vienu klikšķi, arī telefonā.</p>
+        <h2 id="h-owes" class="h-left">Kurš vēl<span class="sr-only"> nav samaksājis?</span></h2>
+    </div>
+    <div class="owes-tidy">
+        <div class="dash" data-ui data-rise>
+            <div class="d-kpi">
+                <div><small>Neapmaksāti</small><b>6&nbsp;231,86&nbsp;€</b><i>2 kavēti</i></div>
+                <div><small>Izrakstīti, 30 dienas</small><b>6&nbsp;280,86&nbsp;€</b><span class="pill">4 rēķini</span></div>
+            </div>
+            <div class="d-list">
+                <div class="d-head">Termiņi <span>nesamaksātie, pēc termiņa</span></div>
+                <div class="d-row"><b>SIA „Lejas Nami”</b><span class="amt">3&nbsp;806,90&nbsp;€</span><span class="meta">26-029 · termiņš {{ day(-4) }}</span><span class="pill neg">kavēts 4 d.</span></div>
+                <div class="d-row"><b>SIA „Ziemeļu Apdare”</b><span class="amt">936,66&nbsp;€</span><span class="meta">26-031 · termiņš {{ day(-2) }}</span><span class="pill neg">kavēts 2 d.</span></div>
+                <div class="d-row"><b>SIA „Bērzu Darbnīca”</b><span class="amt">1&nbsp;488,30&nbsp;€</span><span class="meta">26-041 · termiņš {{ day(14) }}</span><span class="pill">pēc 14 d.</span></div>
+                <div class="d-row"><b>IK „J. Ozols”</b><span class="amt">49,00&nbsp;€</span><span class="meta">26-038 · samaksāts {{ day(-1) }}</span><span class="pill pos">apmaksāts</span></div>
+            </div>
+        </div>
+        <div class="h-right" aria-hidden="true">nav samaksājis?</div>
+    </div>
+</section>
+
+<section class="month" aria-labelledby="h-month">
+    <div class="month-col">
+        <h2 id="h-month" data-rise>No piedāvājuma līdz grāmatvedim</h2>
+
+        <p class="stage-p" data-rise><strong>Vispirms</strong> klients saņem cenu piedāvājumu. Kad viņš piekrīt, atzīmējiet to kā pieņemtu, un rēķins izveidojas ar vienu klikšķi, ar tām pašām rindām un cenām.</p>
+        <div class="evidence" data-ui data-rise style="--i:1">
+            <div class="ev-row"><div class="grow"><b>P-26-014</b> <span class="meta">SIA „Bērzu Darbnīca” · 1&nbsp;488,30&nbsp;€</span></div><span class="pill pos">pieņemts</span><span class="ev-btn">Izveidot rēķinu</span></div>
+        </div>
+
+        <p class="stage-p" data-rise><strong>Kad darbs padarīts,</strong> rēķins aiziet klientam e-pastā kā PDF no Jūsu uzņēmuma vārda, un tas, kad tas nosūtīts, paliek dokumenta vēsturē.</p>
+        <div class="evidence" data-ui data-rise style="--i:1">
+            <div class="ev-row"><div class="grow"><b>Nosūtīts klientam</b><span class="meta">26-041 · SIA „Bērzu Darbnīca” · gramatvediba@berzudarbnica.lv</span></div><span class="amt">{{ today.strftime('%d.%m.%Y') }} 14:02</span></div>
+        </div>
+
+        <p class="stage-p" data-rise><strong>Katru mēnesi</strong> abonēšanas, nomas un apkalpošanas rēķinus izraksta periodiskie rēķini. Iestatiet vienreiz, un tie tiek izveidoti un nosūtīti paši.</p>
+        <div class="evidence" data-ui data-rise style="--i:1">
+            <div class="ev-row"><div class="grow"><b>Mājaslapas uzturēšana</b><span class="meta">IK „J. Ozols” · katru mēnesi · nākamais {{ day(21) }}</span></div><span class="amt">49,00&nbsp;€</span></div>
+        </div>
+
+        <p class="stage-p" data-rise><strong>Mēneša beigās</strong> grāmatvedis saņem visu periodu vienā Excel failā ar tām kolonnām, kuras viņš gaida, vai visus rēķinus vienā ZIP arhīvā.</p>
+        <div class="evidence sheet" data-ui data-rise style="--i:1">
+            <div class="ev-file"><span>eksports_{{ today.strftime("%Y-%m-%d") }}.xlsx</span><span>Excel, kolonnas pēc Jūsu izvēles</span></div>
+            <table>
+                <thead><tr><th>Datums</th><th>Numurs</th><th>Klients</th><th class="r net">Bez PVN</th><th class="r vat">PVN</th><th class="r">Kopā</th></tr></thead>
+                <tbody>
+                    <tr><td>{{ day(-18) }}</td><td>26-029</td><td>SIA „Lejas Nami”</td><td class="r net">3&nbsp;146,20</td><td class="r vat">660,70</td><td class="r">3&nbsp;806,90</td></tr>
+                    <tr><td>{{ day(-16) }}</td><td>26-031</td><td>SIA „Ziemeļu Apdare”</td><td class="r net">774,10</td><td class="r vat">162,56</td><td class="r">936,66</td></tr>
+                    <tr><td>{{ day(-9) }}</td><td>26-038</td><td>IK „J. Ozols”</td><td class="r net">40,50</td><td class="r vat">8,50</td><td class="r">49,00</td></tr>
+                    <tr><td>{{ day(0) }}</td><td>26-041</td><td>SIA „Bērzu Darbnīca”</td><td class="r net">1&nbsp;230,00</td><td class="r vat">258,30</td><td class="r">1&nbsp;488,30</td></tr>
+                    <tr><td colspan="3">Kopā, 4 dokumenti</td><td class="r net">5&nbsp;190,80</td><td class="r vat">1&nbsp;090,06</td><td class="r">6&nbsp;280,86</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="price" id="cenas" aria-labelledby="h-price">
+    <h2 id="h-price" data-rise>Cenas</h2>
+    <div class="plans">
+        <div class="plan free">
+            <h3 data-rise>{{ t_free.label }}</h3>
+            <p class="for" data-rise style="--i:1">Lai izmēģinātu uz īstiem klientiem.</p>
+            <p class="inc" data-rise style="--i:2">{{ t_free.max_documents }} rēķini mēnesī, līdz {{ t_free.max_clients }} klientiem un neierobežoti produkti. Visas trīs veidnes, nosūtīšana e-pastā. Pirmās 14 dienas ar visām Pamata iespējām. Bez kartes un bez termiņa.</p>
+            <div class="foot">
+                <div class="amount num">0&nbsp;€<small>mēnesī</small></div>
+                <a href="/register" class="btn">Sākt bez maksas</a>
+            </div>
+        </div>
+        <div class="plan main">
+            <h3 data-rise>{{ t_main.label }}</h3>
+            <p class="for" data-rise style="--i:1">Maziem uzņēmumiem un individuālajiem komersantiem.</p>
+            <p class="inc" data-rise style="--i:2">{{ t_main.max_documents }} rēķini mēnesī, {{ t_main.max_clients }} klienti, e-rēķini, periodiskie rēķini un eksports grāmatvedim. Cena ar PVN; maksājot par gadu, {{ t_main.price_yearly | price }}&nbsp;€.</p>
+            <div class="foot">
+                <div class="amount num">{{ t_main.price_monthly | price }}&nbsp;€<small>mēnesī</small></div>
+                <a href="/register?plan=starter" class="btn btn-light">Izvēlēties {{ t_main.label }}</a>
+            </div>
+        </div>
+    </div>
+    <p class="others" data-rise>Ir arī {{ t_mini.label }} par {{ t_mini.price_monthly | price }}&nbsp;€ mēnesī ar {{ t_mini.max_documents }} dokumentiem un e-rēķiniem, un {{ t_biz.label }} par {{ t_biz.price_monthly | price }}&nbsp;€ ar noliktavu, periodiskajiem rēķiniem un {{ t_biz.max_users }} lietotājiem. <a href="/pricing" class="link">Salīdzināt visus plānus</a></p>
+</section>
+
+<section class="faq" id="jautajumi" aria-labelledby="h-faq">
+    <h2 id="h-faq" data-rise>Bieži jautājumi</h2>
+    <div class="faq-text">
+        {%- for q, a in faq %}
+        <p data-rise style="--i:{{ loop.index0 % 3 }}"><strong>{{ q }}</strong> {{ a }}</p>
+        {%- endfor %}
+    </div>
+</section>
+
+<section class="start" aria-labelledby="h-start">
+    <div class="start-copy">
+        <h2 id="h-start" data-rise>Pirmais rēķins<br> šodien</h2>
+        <p data-rise style="--i:1">Pēc reģistrācijas rekvizīti jau būs vietā. Atliek pievienot klientu un izrakstīt pirmo rēķinu.</p>
+    </div>
+    <form class="dialog" data-ui action="/register" method="get" id="startForm" data-rise style="--i:2">
+        <h3>Jūsu uzņēmums</h3>
+        <p class="sub">Pirmais solis reģistrācijā.</p>
+        <div class="seg" role="group" aria-label="Kas izraksta rēķinus" id="entitySeg">
+            <button type="button" data-entity="business" aria-pressed="true">Uzņēmums</button>
+            <button type="button" data-entity="individual" aria-pressed="false">Privātpersona</button>
+        </div>
+        <input type="hidden" name="entity_type" id="fEntity" value="business">
+        <input type="hidden" name="reg_number" id="fReg" value="">
+        <input type="hidden" name="legal_address" id="fAddr" value="">
+        <input type="hidden" name="first_name" id="fFirst" value="" disabled>
+        <input type="hidden" name="last_name" id="fLast" value="" disabled>
+        <label class="lbl" for="fName" id="fNameLabel">Uzņēmuma nosaukums</label>
+        <input class="input" id="fName" name="display_name" type="text" autocomplete="organization" placeholder="SIA „…”">
+        <div class="found" id="fFound"></div>
+        <button class="btn" type="submit">Izveidot kontu</button>
+    </form>
+</section>
+
+</main>
+
+<footer>
+    <div class="foot-line">
+        <span>Rēķinu programma Latvijai</span>
+        <nav aria-label="Kājene">
+            <a href="/pricing">Cenas</a>
+            <a href="/terms">Noteikumi</a>
+            <a href="/contacts">Kontakti</a>
+            <a href="/login">Ienākt</a>
+        </nav>
+        <span class="right">© {{ today.year }} SIA „VN Media”, reģ. Nr. 40203511357</span>
+    </div>
+    <div class="pay">
+        {% for logo in payment_logos %}
+            {% if loop.changed(logo.group) and not loop.first %}<span class="footer-sep" aria-hidden="true"></span>{% endif %}
+            {% if logo.url %}
+            <img src="{{ logo.url }}" alt="{{ logo.alt }}" height="{{ logo.height }}" class="{% if logo.mono %}pay-mono{% endif %}" loading="lazy" decoding="async">
+            {% else %}
+            <span class="footer-logo-text">{{ logo.alt }}</span>
+            {% endif %}
+        {% endfor %}
+    </div>
+</footer>
+
+<script>
+(function () {
+    'use strict';
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var NBSP = ' ';
+
+    function fmt(n, dec) {
+        dec = dec == null ? 2 : dec;
+        var neg = n < 0; n = Math.abs(n);
+        var s = n.toFixed(dec), parts = s.split('.');
+        var whole = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
+        return (neg ? '-' : '') + whole + (dec ? ',' + parts[1] : '');
+    }
+    function fmtQty(n) { var s = fmt(n, 2); return s.indexOf(',') > -1 ? s.replace(/0+$/, '').replace(/,$/, '') : s; }
+    function parse(raw) {
+        var s = String(raw || '').replace(/[\s €]/g, '');
+        if (!s) return NaN;
+        if (s.indexOf(',') > -1 && s.indexOf('.') > -1) {
+            s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+        } else s = s.replace(',', '.');
+        return parseFloat(s);
+    }
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function $(id) { return document.getElementById(id); }
+
+    /* ---------------------------------------------------- the invoice */
+    var state = { co: null, typed: '', qty: 120, price: 8.5, vat: '21', tpl: 'modern', view: 'pdf' };
+    var paper = $('paper'), wrap = $('paperWrap'), pin = document.querySelector('.pin');
+
+    function setText(el, txt, flash) {
+        if (!el || el.textContent === txt) return;
+        el.textContent = txt;
+        if (flash && !reduce) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+    }
+
+    function totals() {
+        var l1 = state.qty * state.price, net = l1 + 6 * 35;
+        var rate = state.vat === '21' ? 0.21 : state.vat === '12' ? 0.12 : 0;
+        var vat = net * rate;
+        return { l1: l1, net: net, vat: vat, total: net + vat };
+    }
+
+    function render(flash) {
+        var t = totals();
+        var name = state.co ? state.co.name : (state.typed || 'Jūsu uzņēmums');
+        setText($('supName'), name, flash);
+        var reg = $('supReg'), addr = $('supAddr');
+        setText(reg, state.co && state.co.regcode ? 'Reģ. Nr. ' + state.co.regcode : 'Reģ. Nr. —', flash);
+        setText(addr, state.co && state.co.address ? state.co.address : 'Adrese —', flash);
+        reg.classList.toggle('empty', !(state.co && state.co.regcode));
+        addr.classList.toggle('empty', !(state.co && state.co.address));
+
+        setText($('l1q'), fmtQty(state.qty), flash);
+        setText($('l1p'), fmt(state.price), flash);
+        setText($('l1s'), fmt(t.l1), flash);
+        setText($('tNet'), fmt(t.net), flash);
+        var noVat = state.vat === 'none';
+        $('rowNet').hidden = noVat;
+        $('rowVat').hidden = noVat;
+        setText($('tVatLabel'), state.vat === '0' ? 'Nodokļa apgrieztā maksāšana' : 'PVN ' + state.vat + ' %', flash);
+        setText($('tVat'), state.vat === '0' ? '—' : fmt(t.vat), flash);
+        setText($('tTotal'), fmt(t.total) + NBSP + '€', flash);
+
+        paper.className = 'paper t-' + state.tpl + (state.view === 'xml' ? ' as-xml' : '');
+        $('xmlCode').innerHTML = xml(t, name);
+    }
+
+    function xml(t, name) {
+        function tag(n, v, attr) { return '<span class="t">&lt;' + n + (attr || '') + '&gt;</span><span class="v">' + esc(v) + '</span><span class="t">&lt;/' + n + '&gt;</span>'; }
+        var cat = state.vat === '21' || state.vat === '12' ? 'S' : state.vat === '0' ? 'AE' : 'O';
+        var lines = [
+            '<span class="t">&lt;Invoice&gt;</span>',
+            '  ' + tag('cbc:CustomizationID', 'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0'),
+            '  ' + tag('cbc:ID', '26-041'),
+            '  ' + tag('cbc:IssueDate', '{{ today.isoformat() }}'),
+            '  ' + tag('cbc:DueDate', '{{ due.isoformat() }}'),
+            '  ' + tag('cbc:InvoiceTypeCode', '380'),
+            '  ' + tag('cbc:DocumentCurrencyCode', 'EUR'),
+            '  <span class="t">&lt;cac:AccountingSupplierParty&gt;</span>',
+            '    ' + tag('cbc:RegistrationName', name),
+            state.co && state.co.regcode ? '    ' + tag('cbc:CompanyID', state.co.regcode) : null,
+            '  <span class="t">&lt;/cac:AccountingSupplierParty&gt;</span>',
+            '  <span class="t">&lt;cac:AccountingCustomerParty&gt;</span>',
+            '    ' + tag('cbc:RegistrationName', 'SIA "Bērzu Darbnīca"'),
+            '    ' + tag('cbc:CompanyID', '40203999901'),
+            '  <span class="t">&lt;/cac:AccountingCustomerParty&gt;</span>',
+            '  <span class="t">&lt;cac:TaxTotal&gt;</span>',
+            '    ' + tag('cbc:TaxAmount', t.vat.toFixed(2), ' currencyID="EUR"'),
+            '    ' + tag('cbc:ID', cat),
+            '  <span class="t">&lt;/cac:TaxTotal&gt;</span>',
+            '  <span class="t">&lt;cac:LegalMonetaryTotal&gt;</span>',
+            '    ' + tag('cbc:TaxExclusiveAmount', t.net.toFixed(2), ' currencyID="EUR"'),
+            '    ' + tag('cbc:PayableAmount', t.total.toFixed(2), ' currencyID="EUR"'),
+            '  <span class="t">&lt;/cac:LegalMonetaryTotal&gt;</span>',
+            '  <span class="t">&lt;cac:InvoiceLine&gt;</span>',
+            '    ' + tag('cbc:InvoicedQuantity', String(state.qty), ' unitCode="MTK"'),
+            '    ' + tag('cbc:LineExtensionAmount', t.l1.toFixed(2), ' currencyID="EUR"'),
+            '  <span class="t">&lt;/cac:InvoiceLine&gt;</span>',
+            '<span class="t">&lt;/Invoice&gt;</span>'
+        ];
+        return lines.filter(Boolean).join('\n');
+    }
+
+    /* Point the pinned invoice at the part the reader is working on */
+    var regionFor = { parties: 'parties', lines: 'lines', totals: 'totals', all: null, xml: null };
+    var focus = null;
+    function setFocus(f) {
+        focus = f;
+        paper.querySelectorAll('.hl').forEach(function (el) { el.classList.remove('hl'); });
+        var key = regionFor[f], region = key ? paper.querySelector('[data-region="' + key + '"]') : null;
+        if (region) region.classList.add('hl');
+        pan(region);
+    }
+    function pan(region) {
+        var pad = pin.clientHeight < 300 ? 12 : 24;
+        var avail = pin.clientHeight - 2 * pad, h = paper.offsetHeight, y = 0;
+        if (h > avail) y = region ? Math.max(0, Math.min(region.offsetTop - pad, h - avail)) : 0;
+        wrap.style.transform = y ? 'translateY(' + (-y) + 'px)' : '';
+    }
+    window.addEventListener('resize', function () { pan(regionFor[focus] ? paper.querySelector('[data-region="' + regionFor[focus] + '"]') : null); });
+
+    if ('IntersectionObserver' in window) {
+        var blocks = document.querySelectorAll('.block[data-focus]');
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) { if (e.isIntersecting) setFocus(e.target.dataset.focus); });
+        }, { rootMargin: '-45% 0px -45% 0px' });
+        blocks.forEach(function (b) { io.observe(b); });
+        // Leaving the try-it section upwards returns the invoice to rest
+        new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) { if (e.isIntersecting && e.boundingClientRect.top >= 0) setFocus(null); });
+        }, { threshold: 0.6 }).observe(document.querySelector('.card'));
+    }
+
+    /* ---------------------------------------------------- controls */
+    function segment(id, key, onPick) {
+        var group = $(id);
+        group.addEventListener('click', function (e) {
+            var b = e.target.closest('button'); if (!b) return;
+            group.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+            onPick(b.dataset[key]);
+        });
+    }
+    segment('vatSeg', 'vat', function (v) { state.vat = v; render(true); });
+    segment('tplSeg', 'tpl', function (v) { state.tpl = v; render(false); });
+    segment('viewSeg', 'view', function (v) { state.view = v; render(false); });
+
+    function numInput(id, key) {
+        $(id).addEventListener('input', function () {
+            var v = parse(this.value);
+            if (!isNaN(v) && v >= 0 && v < 1e7) { state[key] = v; render(true); }
+        });
+        $(id).addEventListener('blur', function () { this.value = key === 'qty' ? fmtQty(state[key]) : fmt(state[key]); });
+        $(id).addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (id === 'qtyIn') $('priceIn').focus(); else this.blur();
+        });
+    }
+    numInput('qtyIn', 'qty');
+    numInput('priceIn', 'price');
+
+    /* ---------------------------------------------------- registry search */
+    function registry(input, list, onPick, onType) {
+        var timer = null, items = [], hl = -1, seq = 0;
+        function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); hl = -1; }
+        function paint() {
+            Array.prototype.forEach.call(list.children, function (li, i) { li.setAttribute('aria-selected', i === hl ? 'true' : 'false'); });
+        }
+        function show() {
+            if (!items.length) { close(); return; }
+            list.innerHTML = items.map(function (r, i) {
+                return '<li role="option" id="' + list.id + '-' + i + '" data-i="' + i + '">' + esc(r.name)
+                    + '<small>' + esc(r.regcode) + (r.address ? ' · ' + esc(r.address) : '') + '</small></li>';
+            }).join('');
+            list.hidden = false; input.setAttribute('aria-expanded', 'true'); hl = 0; paint();
+        }
+        function pick(i) { var r = items[i]; if (!r) return; input.value = r.name; close(); onPick(r); }
+        input.addEventListener('input', function () {
+            var q = input.value.trim();
+            onType(q);
+            clearTimeout(timer);
+            if (q.length < 2) { items = []; close(); return; }
+            var mine = ++seq;
+            timer = setTimeout(function () {
+                fetch('/api/registry/search?q=' + encodeURIComponent(q))
+                    .then(function (r) { return r.ok ? r.json() : []; })
+                    .then(function (rows) { if (mine !== seq) return; items = Array.isArray(rows) ? rows.slice(0, 6) : []; show(); })
+                    .catch(function () { items = []; close(); });
+            }, 220);
+        });
+        input.addEventListener('keydown', function (e) {
+            if (list.hidden) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); hl = Math.min(hl + 1, items.length - 1); paint(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); hl = Math.max(hl - 1, 0); paint(); }
+            else if (e.key === 'Enter') { e.preventDefault(); pick(hl); }
+            else if (e.key === 'Escape') close();
+        });
+        list.addEventListener('mousedown', function (e) { var li = e.target.closest('li'); if (li) { e.preventDefault(); pick(+li.dataset.i); } });
+        input.addEventListener('blur', function () { setTimeout(close, 120); });
+    }
+
+    var fName = $('fName'), fReg = $('fReg'), fAddr = $('fAddr'), fFound = $('fFound');
+    function carry(co, typed) {
+        // What the visitor gave us above becomes the first field of sign-up
+        fName.value = co ? co.name : typed;
+        fReg.value = co ? co.regcode : '';
+        fAddr.value = co ? (co.address || '') : '';
+        fFound.textContent = co ? 'Reģ. Nr. ' + co.regcode + (co.address ? ' · ' + co.address : '') : '';
+    }
+    registry($('coSearch'), $('coList'), function (co) {
+        state.co = co; state.typed = co.name; render(true); carry(co, co.name);
+        $('coHint').textContent = 'Atrasts Uzņēmumu reģistrā.';
+    }, function (q) {
+        state.co = null; state.typed = q; render(true); carry(null, q);
+    });
+
+    /* the sign-up dialog keeps its own search for visitors who start there */
+    var dlgList = document.createElement('ul');
+    dlgList.id = 'fList'; dlgList.className = 'suggest'; dlgList.setAttribute('role', 'listbox'); dlgList.hidden = true;
+    fName.parentNode.insertBefore(dlgList, fName.nextSibling);
+    fName.setAttribute('role', 'combobox'); fName.setAttribute('aria-controls', 'fList'); fName.setAttribute('aria-expanded', 'false');
+    var wrapField = document.createElement('div'); wrapField.className = 'field';
+    fName.parentNode.insertBefore(wrapField, fName); wrapField.appendChild(fName); wrapField.appendChild(dlgList);
+    var entity = 'business';
+    registry(fName, dlgList, function (co) { carry(co, co.name); }, function (q) { if (entity === 'business') { fReg.value = ''; fAddr.value = ''; fFound.textContent = ''; } });
+
+    segment('entitySeg', 'entity', function (v) {
+        entity = v;
+        $('fEntity').value = v;
+        var person = v === 'individual';
+        $('fNameLabel').textContent = person ? 'Vārds un uzvārds' : 'Uzņēmuma nosaukums';
+        fName.placeholder = person ? 'Jānis Bērziņš' : 'SIA „…”';
+        fName.autocomplete = person ? 'name' : 'organization';
+        fFound.textContent = '';
+        if (person) { fReg.value = ''; fAddr.value = ''; }
+    });
+    $('startForm').addEventListener('submit', function () {
+        var person = entity === 'individual';
+        var parts = fName.value.trim().split(/\s+/);
+        $('fFirst').disabled = $('fLast').disabled = !person;
+        fName.disabled = person;
+        if (person) { $('fFirst').value = parts.shift() || ''; $('fLast').value = parts.join(' '); }
+        [fReg, fAddr].forEach(function (el) { el.disabled = !el.value; });
+    });
+
+    /* ---------------------------------------------------- the footage: plays only while seen */
+    var film = $('filmVideo');
+    if (film && window.matchMedia('(max-width: 860px)').matches) {
+        // phones get the phone recording: the same invoice made in the mobile editor
+        film.poster = film.dataset.phonePoster; film.src = film.dataset.phoneSrc;
+        film.width = 780; film.height = 1688; film.classList.add('is-phone');
+    }
+    if (film && 'IntersectionObserver' in window && !reduce) {
+        film.controls = false;
+        new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) {
+                if (e.isIntersecting) { var p = film.play(); if (p && p.catch) p.catch(function () {}); }
+                else film.pause();
+            });
+        }, { threshold: 0.35 }).observe(film);
+    }
+
+    /* ---------------------------------------------------- motion */
+    var rows = paper.querySelectorAll('tbody tr');
+    if (!reduce) {
+        rows.forEach(function (r) { r.classList.add('pending'); });
+        setTimeout(function () { rows.forEach(function (r, i) { setTimeout(function () { r.classList.remove('pending'); }, 220 * i); }); }, 500);
+    }
+    if ('IntersectionObserver' in window && !reduce) {
+        var riser = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); riser.unobserve(e.target); } });
+        }, { rootMargin: '0px 0px -8% 0px' });
+        document.querySelectorAll('[data-rise]').forEach(function (el) { riser.observe(el); });
+    } else {
+        document.querySelectorAll('[data-rise]').forEach(function (el) { el.classList.add('in'); });
+    }
+
+    render(false);
+})();
+</script>
 </body>
 </html>

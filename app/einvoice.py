@@ -299,7 +299,7 @@ def generate_einvoice_xml(doc_id):
         reason_code = SubElement(tax_category, f"{{{NS_CBC}}}TaxExemptionReasonCode")
         reason_code.text = "vatex-eu-ae"
         reason = SubElement(tax_category, f"{{{NS_CBC}}}TaxExemptionReason")
-        reason.text = "Reverse Charge"
+        reason.text = "Nodokļa apgrieztā maksāšana"
     tax_scheme = SubElement(tax_category, f"{{{NS_CAC}}}TaxScheme")
     tax_scheme_id = SubElement(tax_scheme, f"{{{NS_CBC}}}ID")
     tax_scheme_id.text = "VAT"

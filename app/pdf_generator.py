@@ -243,6 +243,25 @@ def _get_doc_data(doc_id):
     }
 
 
+FREE_PLAN_FOOTER = "Sagatavots ar V-Rēķini · v-rekini.lv"
+
+
+def _plan_footer(data, font):
+    """Page callback: invoices made on the free plan carry one small line at the
+    foot of the page. Paid plans and trials print nothing."""
+    owner = db.get_user(data["doc"]["user_id"])
+    if not owner or owner.get("tier", "free") != "free":
+        return lambda canvas, doc: None
+
+    def draw(canvas, doc):
+        canvas.saveState()
+        canvas.setFont(font, 7)
+        canvas.setFillColor(colors.HexColor("#94A3B8"))
+        canvas.drawCentredString(A4[0] / 2, 7 * mm, FREE_PLAN_FOOTER)
+        canvas.restoreState()
+    return draw
+
+
 def generate_invoice_pdf(doc_id, template="minimal"):
     if template not in TEMPLATES:
         template = "minimal"
@@ -416,13 +435,14 @@ def _generate_classic(doc_id):
                                textColor=C_BLACK, alignment=TA_RIGHT)
 
     if data["is_vat_payer"]:
-        vat_label = "PVN (0% - Reverse Charge):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
+        vat_label = "Nodokļa apgrieztā maksāšana:" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
+        vat_value = "—" if data["reverse_charge"] else fmt.eur(data['vat_amount'])
         totals_data = [
             [Paragraph("Summa bez PVN:", total_label),
              Paragraph(fmt.eur(data['subtotal']), total_val)],
             [Paragraph(vat_label, total_label),
-             Paragraph(fmt.eur(data['vat_amount']), total_val)],
-            [Paragraph("Kopā ar PVN:", grand_label),
+             Paragraph(vat_value, total_val)],
+            [Paragraph("Kopā apmaksai:" if data["reverse_charge"] else "Kopā ar PVN:", grand_label),
              Paragraph(fmt.eur(data['total']), grand_val)],
         ]
         totals_table = Table(totals_data, colWidths=[128 * mm, 42 * mm])
@@ -461,7 +481,8 @@ def _generate_classic(doc_id):
         ]]
         elements.append(Table(sig_data, colWidths=[85 * mm, 85 * mm]))
 
-    pdf.build(elements)
+    on_page = _plan_footer(data, FONT)
+    pdf.build(elements, onFirstPage=on_page, onLaterPages=on_page)
     return filepath
 
 
@@ -621,13 +642,14 @@ def _generate_modern(doc_id):
 
     # Totals
     if data["is_vat_payer"]:
-        vat_label = "PVN (0% - Reverse Charge):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
+        vat_label = "Nodokļa apgrieztā maksāšana:" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
+        vat_value = "—" if data["reverse_charge"] else fmt.eur(data['vat_amount'])
         totals_data = [
             [Paragraph("Summa bez PVN:", styles["total_label"]),
              Paragraph(fmt.eur(data['subtotal']), styles["total_value"])],
             [Paragraph(vat_label, styles["total_label"]),
-             Paragraph(fmt.eur(data['vat_amount']), styles["total_value"])],
-            [Paragraph("KOPĀ AR PVN:", styles["grand_label"]),
+             Paragraph(vat_value, styles["total_value"])],
+            [Paragraph("KOPĀ APMAKSAI:" if data["reverse_charge"] else "KOPĀ AR PVN:", styles["grand_label"]),
              Paragraph(fmt.eur(data['total']), styles["grand_value"])],
         ]
         totals_table = Table(totals_data, colWidths=[128 * mm, 40 * mm])
@@ -670,7 +692,8 @@ def _generate_modern(doc_id):
         sig_table = Table(sig_data, colWidths=[85 * mm, 85 * mm])
         elements.append(sig_table)
 
-    pdf.build(elements)
+    on_page = _plan_footer(data, FONT)
+    pdf.build(elements, onFirstPage=on_page, onLaterPages=on_page)
     return filepath
 
 
@@ -825,11 +848,12 @@ def _generate_minimal(doc_id):
                              textColor=C_BLACK, alignment=TA_RIGHT)
 
     if data["is_vat_payer"]:
-        vat_label = "PVN 0% - Reverse Charge" if data["reverse_charge"] else f"PVN {data['vat_rate']:.0f}%"
+        vat_label = "Nodokļa apgrieztā maksāšana" if data["reverse_charge"] else f"PVN {data['vat_rate']:.0f}%"
+        vat_value = "—" if data["reverse_charge"] else fmt.eur(data['vat_amount'])
         totals_data = [
             [Paragraph("Bez PVN", tr), Paragraph(fmt.eur(data['subtotal']), tr)],
             [Paragraph(vat_label, tr),
-             Paragraph(fmt.eur(data['vat_amount']), tr)],
+             Paragraph(vat_value, tr)],
             [Paragraph("Kopā", tr_bold), Paragraph(fmt.eur(data['total']), tr_bold)],
         ]
         totals_table = Table(totals_data, colWidths=[118 * mm, 36 * mm])
@@ -869,5 +893,6 @@ def _generate_minimal(doc_id):
         ]]
         elements.append(Table(sig_data, colWidths=[77 * mm, 77 * mm]))
 
-    pdf.build(elements)
+    on_page = _plan_footer(data, FONT)
+    pdf.build(elements, onFirstPage=on_page, onLaterPages=on_page)
     return filepath

@@ -10,8 +10,10 @@ genuinely modern UX patterns, not generic "AI dashboard" defaults.
 - **Templates:** Jinja2, located in `app/templates/`
 - **Frontend:** Vanilla JS, Chart.js 4.4.4, flatpickr for date pickers
 - **Styling:** `app/static/css/app.css` for every signed-in screen (loaded by `base.html`);
-  `app/static/css/style.css` only for the public pages (landing, pricing, login, legal).
-  Both versioned through `CSS_VERSION` (see Gotchas)
+  `app/static/css/site.css` for every public page: landing, pricing, login, register, setup,
+  guides, contacts, terms, license, set-password, 404 (same tokens, public composition;
+  `auth_base.html` for forms, `_site_*.html` partials for the rest). The old `style.css`
+  is gone. All versioned through `CSS_VERSION` (see Gotchas)
 - **Number format:** `app/fmt.py` — `eur` / `num` / `qty` Jinja filters and JS `fmtEur` /
   `fmtNum` / `fmtQty` / `parseNum` / `fmtDate` in `base.html`
 - **Fonts:** Geist (app UI) + DM Sans (paper previews, public pages) from Google Fonts, with system fallbacks
@@ -135,17 +137,83 @@ the app to feel **"alive" and "cool"**, not just minimal-but-empty.
   offers list badges converted offers, and a second conversion asks for confirmation.
   A forged `from_offer` pointing at another user's document is ignored.
 
+### Public site — landing (`landing.html` + `site.css`, 2026-10-21)
+Dealt by design-taste-frontend (direction `split-stage`, seed 1015495166, palette/type kept
+from the app). Idea: a real Latvian invoice stays pinned while the page reads, and fills in.
+- **Live thing:** typing a company searches `/api/registry/search` (public, rate-limited)
+  and sets the supplier; qty/price, VAT (21/12/apgrieztā/bez PVN), template and PDF↔PEPPOL
+  XML controls re-render the pinned invoice. On phones the pin is a 172px strip cropped to
+  the part being changed (taller sticky panels fail the inspector's covered-text check).
+- **The sign-up dialog** carries the chosen company into `/register?display_name=&reg_number=
+  &legal_address=&entity_type=` — `register_page()` accepts these as prefill.
+- **Footage:** `app/static/media/editor{,-phone}.mp4` are real, not-sped-up recordings of
+  the editor ("Bez paātrinājuma" claims it). Regenerate after editor UI changes with
+  `scripts/footage/seed.py` + `scripts/footage/record.py` (fictional photo studio SIA "Ziemeļu
+  Kadrs"; pass `--vendor` with local flatpickr/Chart.js where jsdelivr is blocked, or the
+  date fields record in the browser's US format). The sample lines (product photos, image
+  editing) are deliberately not construction: facade painting between two VAT payers is
+  reverse charge, so a 21 % sample would teach the wrong thing.
+- **Sample content** (client "Bērzu Darbnīca", due list, export rows) is fictional; dates are
+  relative to today via the `day(n)` helper so "kavēts 4 d." stays true. Prices come from
+  `TIER_LIMITS`; FAQ items are one Jinja list rendered as text and as FAQPage JSON-LD.
+- `app/static/og-image.png` is a 1200×630 render of the hero; re-render if the hero changes.
+
+### SEO state (2026-10-21)
+- Indexable: `/`, `/pricing`, `/contacts`, `/terms` — listed in `SITEMAP_PAGES` with real
+  lastmod dates (update the date when a page's content changes). `/login`, `/register` are
+  crawlable but `noindex` (robots.txt must not block them, or the noindex is never read).
+- Unknown URLs return a real 404 (`404.html`); guests used to be 303'd to /login (soft 404).
+- `HeadAndSecurityHeaders` middleware: HEAD works on every GET route; nosniff, Referrer-Policy,
+  X-Frame-Options SAMEORIGIN, Permissions-Policy; HSTS only over HTTPS. No CSP yet (inline
+  scripts everywhere — needs nonces first).
+
+### Plans, trial and paywalls (2026-10-21)
+- `TIER_LIMITS` is the single source: free = 5 invoices/month, 25 clients, unlimited products,
+  5 e-mails, all templates; Mini 50/50; nothing caps products. Pricing pages, the landing
+  page and gates render from it (`plans` Jinja global). `LIFETIME_CAP` = 10.
+- Prices (2026-10-21): Mini 1,99 €, Pamata 4,99 €, Bizness 9,99 €; yearly = ten months
+  ("2 mēn. bez maksas"); lifetime 199 €. Set against Numbero (free 1 doc, 2 € / 6 docs,
+  6 € / 100, 10 € unlimited): each step costs less and holds more. Renewals read the
+  current price, so a change applies to existing subscribers at their next charge.
+- A locked feature names the plan that unlocks it (`plans.<tier>.label`), never "PRO".
+- **Trial:** every new account gets 14 days of Pamata (`trial_until` user setting on the
+  account). `_apply_trial()` in `_with_account` sets `user["tier"]` (effective, what gates
+  read) and keeps `user["plan_tier"]` (what was paid for; billing/pricing screens compare
+  this). Free accounts without a trial can start it once (`POST /trial/start`, offered on
+  gates the trial would unlock). Renewal reads raw rows, so trials are never charged.
+- Free-plan PDFs and previews print "Sagatavots ar V-Rēķini · v-rekini.lv" (`_plan_footer`).
+- The monthly invoice limit is shown on `/documents/new` before the editor (`doc_limit.html`);
+  free users can send e-mail (`_email_enabled`). `_plan_note.html` warns at ≤ 2 invoices left
+  and in a trial's last 5 days.
+
+### Sign-up and first run (2026-10-21)
+- Register: company via registry search (or name for a person), e-mail, one password with
+  show/hide. Picked plan (`?plan=mini|starter|business|lifetime`) carries through setup to
+  checkout. Setup is one screen; payment term defaults to 14 days.
+- Dashboard "Pirmie soļi" (`_first_steps.html`, `get_onboarding_state`) until done or hidden.
+- Guided tours: page sets `window.VR_TOUR` in `{% block tour %}`; engine in `base.html`;
+  seen keys per person in user setting `tours_seen` (`POST /api/tour-seen`). Tours:
+  `dashboard`, `editor`. Help page `/palidziba` (`help.html`).
+
+### Guides (`/celvedis`, drafts 2026-10-21)
+- `app/guides.py` (`GUIDES` list) + body files `app/templates/guides/<slug>.html`, rendered by
+  `guide.html`. `published: False` → reachable by URL, `noindex`, not in sitemap/index.
+  Publishing = set True and bump `updated`; sitemap and `/celvedis` pick it up.
+- `/static/guides/rekina-paraugs.pdf` is a real app PDF of the article's sample invoice
+  (`scripts/footage/sample_pdf.py` on the footage account; change article and PDF together).
+- Drafts carry `<!-- PĀRBAUDĪT: … -->` comments: claims researched only through search
+  snippets, because likumi.lv / vid.gov.lv are blocked from cloud sessions. Each must be
+  checked against the source text, then the comment removed, before `published: True`.
+  Drafts render them as visible "Pārbaudīt:" boxes (`guide_checks` filter); published pages
+  strip any left over.
+
 ### Still open
-1. **Public pages redesign** — landing / pricing still on `style.css` and the old look.
-   Next up: design-taste-frontend page run + high-end-visual-design, then claude-seo.
-2. **List actions on mobile** — swipe for mark-paid/delete
-3. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
+1. **Per-line rounding** — totals are computed unrounded (line = q×p, VAT on the sum);
    the preview mirrors the server exactly, but a printed line can differ by a cent from
    its rounded parts. Pre-existing accounting behaviour; change only deliberately
-4. **Self-host the footer payment logos** — `_public_footer.html` hotlinks all Visa /
-   Mastercard / Google Pay / Apple Pay / EveryPay / bank logos from
-   `vnmedia.lv/wp-content/uploads/2026/03/...`. A WordPress media reshuffle silently
-   breaks the card logos SEB compliance requires, on every public page.
+2. **Self-host the last payment logos** — card marks are committed; EveryPay, SEB, Citadele
+   and LHV are still hotlinked from `vnmedia.lv` (startup logs a warning). Run
+   `scripts/fetch_payment_logos.py` once from a machine that can reach that host.
 
 ### Branded tāmes (custom offer PDF design, per-account)
 Built for the TT Konstrukcijas client: a premium dark/gold offer PDF
@@ -190,6 +258,10 @@ can't kill the main form logic.
   skips it — keyboard tests must branch on that.
 - **`[hidden]` is `display:none !important`** in `app.css`; component display rules
   used to override the attribute.
+- **Phone lists act by swipe** (`static/js/swipe.js`): the ⋯ menu is hidden ≤ 768px, so rows
+  carry `data-swipe` and the page passes their actions to `vrSwipe.attach`. Delete and
+  restore answer JSON when asked (`Accept: application/json`) so the swipe can offer undo.
+  Rows need `touch-action: pan-y`, or the browser takes the horizontal drag.
 
 ## Critical files to know
 - `app/main.py` — `_base_context()`, `_parse_doc_items()`, `_doc_list_rows()`,
@@ -207,6 +279,9 @@ can't kill the main form logic.
 - **Test before reporting done:** Use `from app.main import app; from fastapi.testclient import TestClient` to smoke-test pages
 - **Login flow for testing:** Fresh DB creates admin with printed password; first login requires `/set-password` then `/setup`
 - **Latvian language only** — all user-facing strings are in Latvian. Don't add English.
+  Reverse charge prints as "nodokļa apgrieztā maksāšana" (PVN likums wording), not "Reverse Charge",
+  and in place of the VAT rate and amount (shown as "—"): never "PVN 0 %", which is a different
+  rate. The e-invoice keeps category AE with 0 % because PEPPOL requires it.
 - **Premium = restraint:** When in doubt, remove decoration. The user explicitly rejected colorful "AI default" looks. Chrome stays achromatic; `--data` blue is for data only.
 - **Mobile-first:** User's primary feedback is mobile UX. Always test mobile viewport (≤768px).
 - **No new deps without asking** — keep the dependency footprint small.

@@ -68,6 +68,21 @@
                     {% else %}
                     <input type="hidden" name="vat_rate" value="0">
                     {% endif %}
+                    {% set cur_due = recurring.payment_due_days if edit_mode else none %}
+                    {% set acct_due = settings.get('payment_due_days', '') or '14' %}
+                    <div class="form-group">
+                        <label for="recDueDays">Apmaksas termiņš</label>
+                        <select name="payment_due_days" id="recDueDays" class="form-control">
+                            <option value="" {% if cur_due is none %}selected{% endif %}>Kā iestatījumos ({{ acct_due }} d.)</option>
+                            {% for d in [7, 14, 21, 30, 45, 60] %}
+                            <option value="{{ d }}" {% if cur_due == d %}selected{% endif %}>{{ d }} dienas</option>
+                            {% endfor %}
+                            {% if cur_due is not none and cur_due not in [0, 7, 14, 21, 30, 45, 60] %}
+                            <option value="{{ cur_due }}" selected>{{ cur_due }} dienas</option>
+                            {% endif %}
+                            <option value="0" {% if cur_due == 0 %}selected{% endif %}>Bez termiņa</option>
+                        </select>
+                    </div>
                     <div class="form-group">
                         <label>PDF veidne</label>
                         <select name="template" class="form-control">
@@ -77,7 +92,7 @@
                                 {% if edit_mode and recurring.template == key %}selected
                                 {% elif not edit_mode and key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
                             {% else %}
-                            <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
+                            <option value="{{ key }}" disabled>{{ label }} ({{ plans.mini.label }})</option>
                             {% endif %}
                             {% endfor %}
                         </select>

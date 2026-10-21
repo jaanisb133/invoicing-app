@@ -1,0 +1,19 @@
+{% extends "auth_base.html" %}
+{% block title %}Aizmirsta parole | V-Rēķini{% endblock %}
+{% block bar_link %}<a href="/login">Ienākt</a>{% endblock %}
+{% block content %}
+<h1>Aizmirsta parole</h1>
+{% if sent %}
+<p class="sub">Ja ar adresi {{ email }} ir V-Rēķini konts, tajā tikko nosūtījām saiti paroles maiņai. Saite derīga vienu stundu.</p>
+<p class="fine">Nav e-pasta? Pārbaudiet surogātpasta mapi vai <a href="/forgot">mēģiniet vēlreiz</a>.</p>
+{% else %}
+<p class="sub">Ierakstiet konta e-pastu, un mēs nosūtīsim saiti jaunas paroles iestatīšanai.</p>
+<form method="post" action="/forgot">
+    <div class="f">
+        <label for="fEmail">E-pasts</label>
+        <input type="email" id="fEmail" name="email" class="input" required autofocus autocomplete="email">
+    </div>
+    <button type="submit" class="btn btn-wide">Nosūtīt saiti</button>
+</form>
+{% endif %}
+{% endblock %}

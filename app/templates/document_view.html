@@ -78,18 +78,18 @@
                 {% if is_offer and email_enabled %}
                 <button type="button" class="view-menu-item" onclick="closeAllMenus();showSendModal()">Nosūtīt klientam</button>
                 {% elif not email_enabled %}
-                <a href="/pricing" class="view-menu-item view-menu-disabled">Nosūtīt klientam · PRO</a>
+                <a href="/pricing" class="view-menu-item view-menu-disabled">Nosūtīt klientam · {{ plans.mini.label }}</a>
                 {% endif %}
                 {% if not is_offer %}
                     {% if einvoice_enabled %}
                     <a href="/documents/{{ doc.id }}/einvoice" class="view-menu-item" target="_blank">E-rēķins (XML)</a>
                     {% else %}
-                    <a href="/pricing" class="view-menu-item view-menu-disabled">E-rēķins (XML) · PRO</a>
+                    <a href="/pricing" class="view-menu-item view-menu-disabled">E-rēķins (XML) · {{ plans.mini.label }}</a>
                     {% endif %}
                     {% if recurring_enabled %}
                     <button type="button" class="view-menu-item" onclick="closeAllMenus();showRecurringModal()">Padarīt periodisku</button>
                     {% else %}
-                    <a href="/pricing" class="view-menu-item view-menu-disabled">Padarīt periodisku · PRO</a>
+                    <a href="/pricing" class="view-menu-item view-menu-disabled">Padarīt periodisku · {{ plans.starter.label }}</a>
                     {% endif %}
                     <div class="view-menu-divider"></div>
                     <form method="post" action="/documents/{{ doc.id }}/toggle-stats" style="margin:0">
@@ -127,7 +127,7 @@
                 <div class="segmented tpl-switch" role="group" aria-label="PDF veidne">
                     {% for key, label in templates.items() %}
                     <button type="button" class="template-tab {% if key == selected_template %}on{% endif %}" data-tpl="{{ key }}"
-                            onclick="selectTemplate('{{ key }}', this)">{{ label }}{% if key != 'classic' and not all_templates %}<span class="pro">PRO</span>{% endif %}</button>
+                            onclick="selectTemplate('{{ key }}', this)">{{ label }}{% if key != 'classic' and not all_templates %}<span class="pro">{{ plans.mini.label }}</span>{% endif %}</button>
                     {% endfor %}
                 </div>
                 {% endif %}
@@ -158,7 +158,7 @@
                         <dd class="num {% if is_late %}late{% endif %}">{{ dmy(due) }}{% if is_late %} · kavēts{% endif %}</dd>
                         {% endif %}
                         {% if doc.reverse_charge %}
-                        <dt>PVN</dt><dd>reverse charge</dd>
+                        <dt>PVN</dt><dd>apgrieztā maksāšana</dd>
                         {% endif %}
                         {% if client.email %}
                         <dt>E-pasts</dt><dd>{{ client.email }}</dd>
@@ -235,7 +235,7 @@
                 <label for="sendFormat">Pielikums</label>
                 <select name="attachment_format" id="sendFormat" class="form-control" onchange="updateSendAttachmentHint()">
                     <option value="pdf" selected>PDF</option>
-                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · PRO{% endif %}</option>
+                    <option value="xml" {% if not einvoice_enabled %}disabled{% endif %}>E-rēķins (PEPPOL XML){% if not einvoice_enabled %} · {{ plans.mini.label }}{% endif %}</option>
                 </select>
             </div>
             {% endif %}
@@ -360,7 +360,13 @@ function partyLines(info) {
     if (info.account) html += '<br>Konts: ' + esc(info.account);
     return html;
 }
+// Free-plan invoices carry one small line at the foot, as the PDF does
+const FREE_PLAN_FOOTER = {{ 'true' if tier == 'free' else 'false' }};
 function signatureHtml(style) {
+    const foot = FREE_PLAN_FOOTER ? '<div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8">Sagatavots ar V-Rēķini · v-rekini.lv</div>' : '';
+    return signatureHtmlOnly(style) + foot;
+}
+function signatureHtmlOnly(style) {
     const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
     if (docData.electronicDoc) {
         return `<div style="margin-top:32px;font-size:${style === 'minimal' ? '11px' : '12px'};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
@@ -388,11 +394,11 @@ function itemsTableHtml(items, style) {
 }
 function totalsHtml(d, style) {
     const muted = style === 'minimal' ? '#9ca3af' : '#6b7280';
-    const vatLabel = d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + fmtQty(d.vatRate) + '%)';
+    const vatLabel = d.reverseCharge ? 'Nodokļa apgrieztā maksāšana' : 'PVN (' + fmtQty(d.vatRate) + '%)';
     const big = { classic: ['16px', '0.75px solid #1f2937', 'Kopā'], modern: ['17px', '1px solid #111827', 'KOPĀ'], minimal: ['15px', '0.5px solid #111827', 'Kopā'] }[style];
     return `<div style="text-align:right;font-size:13px">
         ${d.isVatPayer ? `<div style="color:${muted}">Summa bez PVN: <strong style="color:#111827">${fmtEur(d.subtotal)}</strong></div>
-        <div style="color:${muted}">${vatLabel}: <strong style="color:#111827">${fmtEur(d.vatAmount)}</strong></div>` : ''}
+        <div style="color:${muted}">${vatLabel}: <strong style="color:#111827">${d.reverseCharge ? '—' : fmtEur(d.vatAmount)}</strong></div>` : ''}
         <div style="font-size:${big[0]};font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:${big[1]};display:inline-block">${big[2]}: ${fmtEur(d.total)}</div>
     </div>`;
 }
@@ -476,7 +482,7 @@ function selectTemplate(key, btn) {
     if (key !== 'classic' && !allTemplatesEnabled) {
         dl.href = '/pricing';
         dl.removeAttribute('target');
-        dl.textContent = 'Veidne pieejama PRO';
+        dl.textContent = 'Veidne pieejama {{ plans.mini.label }} plānā';
     } else {
         dl.href = '/documents/' + docId + '/pdf?template=' + key;
         dl.setAttribute('target', '_blank');

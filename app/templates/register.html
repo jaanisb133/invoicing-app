@@ -1,334 +1,170 @@
-<!DOCTYPE html>
-<html lang="lv">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Reģistrēties — V-Rēķini | Sāciet bez maksas</title>
-    <meta name="description" content="Izveidojiet V-Rēķini kontu un sāciet izrakstīt rēķinus bez maksas. Reģistrācija aizņem mazāk nekā minūti.">
-    <meta name="robots" content="index,follow">
+{% extends "auth_base.html" %}
+{% block title %}Izveidot kontu | V-Rēķini{% endblock %}
+{% block meta %}
+    <meta name="description" content="Izveidojiet V-Rēķini kontu: 14 dienas visas Pamata iespējas, pēc tam bezmaksas plāns. Bez kartes.">
+    <meta name="robots" content="noindex,follow">
     <link rel="canonical" href="https://v-rekini.lv/register">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="V-Rēķini">
-    <meta property="og:title" content="Reģistrēties — V-Rēķini">
-    <meta property="og:description" content="Sāciet izrakstīt rēķinus bez maksas. Reģistrācija aizņem minūti.">
-    <meta property="og:url" content="https://v-rekini.lv/register">
-    <meta property="og:image" content="https://v-rekini.lv/static/icons/icon-512.png">
-    <meta property="og:locale" content="lv_LV">
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
-    <link rel="stylesheet" href="/static/css/style.css?v={{ css_version }}">
-    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})()</script>
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            background: var(--bg);
-            position: relative;
-            overflow-x: hidden;
-        }
-        body::before {
-            content: '';
-            position: fixed;
-            top: -20%;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 800px;
-            height: 800px;
-            background: radial-gradient(circle, rgba(59, 130, 246, 0.10) 0%, rgba(59, 130, 246, 0) 60%);
-            pointer-events: none;
-            z-index: 0;
-        }
-        .login-wrap {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            z-index: 1;
-        }
-        .login-container { width: 100%; max-width: 520px; padding: 20px; }
-        .login-brand {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 24px;
-        }
-        .login-brand-logo {
-            width: 56px;
-            height: 56px;
-            border-radius: 16px;
-            background: linear-gradient(135deg, var(--brand) 0%, #2563EB 100%);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 20px;
-            letter-spacing: -0.5px;
-            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4);
-        }
-        .login-brand-name { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
-        .login-card {
-            background: var(--bg-card);
-            border-radius: 20px;
-            border: 1px solid var(--border);
-            padding: 32px 28px;
-            box-shadow: var(--shadow-lg);
-        }
-        .login-card h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; color: var(--text); letter-spacing: -0.4px; text-align: center; }
-        .login-card .subtitle { font-size: 14px; color: var(--text-light); margin: 0 0 24px; text-align: center; }
-        .login-card .btn-primary { width: 100%; padding: 12px 16px; font-size: 14px; margin-top: 8px; }
-        .login-footer { text-align: center; margin-top: 20px; font-size: 14px; color: var(--text-light); }
-        .login-footer a { color: var(--brand); text-decoration: none; font-weight: 600; }
-        .login-footer a:hover { text-decoration: underline; }
-        .entity-toggle { display: flex; gap: 6px; margin-bottom: 16px; background: var(--bg-input); padding: 4px; border-radius: 12px; border: 1px solid var(--border); }
-        .entity-toggle label {
-            flex: 1; margin: 0; cursor: pointer;
-            border: none; border-radius: 9px;
-            padding: 9px 14px; text-align: center; font-weight: 600; font-size: 13.5px;
-            background: transparent; color: var(--text-light); transition: all .15s;
-            letter-spacing: -0.1px;
-        }
-        .entity-toggle label:hover:not(.selected) { color: var(--text); }
-        .entity-toggle label.selected { background: var(--brand); color: #fff; box-shadow: 0 2px 6px rgba(59,130,246,0.32); }
-        .entity-toggle input[type="radio"] { display: none; }
-        .registry-hint { font-size: 12px; color: var(--text-lighter); margin-top: 4px; }
-    </style>
-</head>
-<body>
-    {% include "_public_navbar.html" %}
-    <div class="login-wrap">
-    <div class="login-container">
-        <div class="login-brand">
-            <div class="login-brand-logo">VR</div>
-            <div class="login-brand-name">V-Rēķini</div>
+{% endblock %}
+{% block bar_link %}Jau ir konts? <a href="/login">Ienākt</a>{% endblock %}
+{% block content %}
+{% set et = entity_type or 'business' %}
+{% set plan_names = {'mini': 'Mini', 'starter': 'Pamata', 'business': 'Bizness', 'lifetime': 'Mūža licence'} %}
+<h1>Izveidot kontu</h1>
+<p class="sub">{% if plan in plan_names %}Pēc reģistrācijas turpināsiet ar {{ plan_names[plan] }} plāna apmaksu.{% else %}14 dienas visas Pamata iespējas, pēc tam bezmaksas plāns. Bez kartes.{% endif %}</p>
+
+{% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
+
+<form method="post" action="/register" id="regForm" novalidate>
+    <input type="hidden" name="plan" value="{{ plan or '' }}">
+    <input type="hidden" name="cycle" value="{{ cycle or 'monthly' }}">
+
+    <div class="seg" role="radiogroup" aria-label="Kas izraksta rēķinus">
+        <label><input type="radio" name="entity_type" value="business" {% if et == 'business' %}checked{% endif %}>Uzņēmums</label>
+        <label><input type="radio" name="entity_type" value="individual" {% if et == 'individual' %}checked{% endif %}>Privātpersona</label>
+    </div>
+
+    <div id="bizFields" {% if et == 'individual' %}hidden{% endif %}>
+        <div class="f field">
+            <label for="regName">Uzņēmums</label>
+            <input type="text" id="regName" name="display_name" class="input" value="{{ display_name or '' }}"
+                   placeholder="Nosaukums vai reģistrācijas numurs" autocomplete="organization"
+                   role="combobox" aria-expanded="false" aria-controls="regList" aria-autocomplete="list">
+            <ul id="regList" class="suggest" role="listbox" hidden></ul>
+            <div class="hint" id="regHint">Rekvizītus atradīsim Uzņēmumu reģistrā.</div>
         </div>
-        <div class="login-card">
-            <h1>Izveidot kontu</h1>
-            {% if plan == 'starter' %}
-            <p class="subtitle">Reģistrējieties, lai aktivizētu <strong>Pamata</strong> plānu</p>
-            {% elif plan == 'business' %}
-            <p class="subtitle">Reģistrējieties, lai aktivizētu <strong>Bizness</strong> plānu</p>
-            {% else %}
-            <p class="subtitle">Sāciet pārvaldīt savus rēķinus</p>
-            {% endif %}
-
-            {% if error %}
-            <div class="alert alert-danger">{{ error }}</div>
-            {% endif %}
-
-            <form method="post" action="/register">
-                <input type="hidden" name="plan" value="{{ plan or '' }}">
-                <input type="hidden" name="cycle" value="{{ cycle or 'monthly' }}">
-
-                <!-- Entity type selector -->
-                <div class="entity-toggle">
-                    <label id="regTypeBusiness" class="{% if (entity_type or 'business') == 'business' %}selected{% endif %}">
-                        <input type="radio" name="entity_type" value="business"
-                               {% if (entity_type or 'business') == 'business' %}checked{% endif %}
-                               onchange="toggleRegEntityType()">
-                        Uzņēmums
-                    </label>
-                    <label id="regTypeIndividual" class="{% if entity_type == 'individual' %}selected{% endif %}">
-                        <input type="radio" name="entity_type" value="individual"
-                               {% if entity_type == 'individual' %}checked{% endif %}
-                               onchange="toggleRegEntityType()">
-                        Privātpersona
-                    </label>
-                </div>
-
-                <!-- Business name with registry search -->
-                <div id="regBusinessFields">
-                    <div class="form-group">
-                        <label for="reg_business_name">Uzņēmuma nosaukums *</label>
-                        <div class="registry-wrapper">
-                            <input type="text" id="reg_business_name" name="display_name" class="form-control"
-                                   value="{{ display_name or '' }}" required autocomplete="off"
-                                   placeholder="Sāciet rakstīt uzņēmuma nosaukumu...">
-                            <div class="registry-dropdown" id="reg_registry_dropdown"></div>
-                        </div>
-                        <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="reg_reg_number">Reģistrācijas Nr.</label>
-                            <input type="text" id="reg_reg_number" name="reg_number" class="form-control"
-                                   value="{{ reg_number or '' }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="reg_legal_address">Juridiskā adrese</label>
-                            <input type="text" id="reg_legal_address" name="legal_address" class="form-control"
-                                   value="{{ legal_address or '' }}">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                            <input type="hidden" name="is_vat_payer" value="0">
-                            <input type="checkbox" name="is_vat_payer" id="reg_vat_payer" value="1"
-                                   {% if (is_vat_payer or '1') == '1' %}checked{% endif %}
-                                   style="width:18px;height:18px;cursor:pointer"
-                                   onchange="document.getElementById('reg_vat_group').style.display=this.checked?'':'none'">
-                            Esmu PVN maksātājs
-                        </label>
-                    </div>
-                    <div class="form-group" id="reg_vat_group" style="{% if (is_vat_payer or '1') != '1' %}display:none{% endif %}">
-                        <label for="reg_vat_number">PVN Nr.</label>
-                        <input type="text" id="reg_vat_number" name="vat_number" class="form-control"
-                               value="{{ vat_number or '' }}">
-                    </div>
-                </div>
-
-                <!-- Individual name fields -->
-                <div id="regIndividualFields" style="display:none">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="reg_first_name">Vārds *</label>
-                            <input type="text" id="reg_first_name" class="form-control"
-                                   value="{{ first_name or '' }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="reg_last_name">Uzvārds *</label>
-                            <input type="text" id="reg_last_name" class="form-control"
-                                   value="{{ last_name or '' }}">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="email">E-pasts</label>
-                    <input type="email" id="email" name="email" class="form-control"
-                           value="{{ email or '' }}" required>
-                </div>
-                <div class="form-group">
-                    <label for="phone">Tālrunis</label>
-                    <input type="tel" id="phone" name="phone" class="form-control"
-                           value="{{ phone or '' }}" placeholder="+371 20000000">
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="password">Parole</label>
-                        <input type="password" id="password" name="password" class="form-control"
-                               required minlength="6" autocomplete="new-password">
-                    </div>
-                    <div class="form-group">
-                        <label for="confirm_password">Apstiprināt paroli</label>
-                        <input type="password" id="confirm_password" name="confirm_password" class="form-control"
-                               required minlength="6" autocomplete="new-password">
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-primary">Reģistrēties</button>
-            </form>
-            <div class="login-footer">
-                Jau ir konts? <a href="/login">Pieslēgties</a>
+        <div class="found-card" id="regFound" {% if not reg_number %}hidden{% endif %}>
+            <b id="regFoundName">{{ display_name or '' }}</b>
+            <span id="regFoundMeta">{% if reg_number %}Reģ. Nr. {{ reg_number }}{% if legal_address %} · {{ legal_address }}{% endif %}{% endif %}</span>
+        </div>
+        <details class="more" id="regManual">
+            <summary>Ievadīt rekvizītus pašam</summary>
+            <div class="f-row">
+                <div class="f"><label for="regNumber">Reģistrācijas Nr.</label><input type="text" id="regNumber" name="reg_number" class="input num" inputmode="numeric" value="{{ reg_number or '' }}"></div>
+                <div class="f"><label for="regVat">PVN Nr.</label><input type="text" id="regVat" name="vat_number" class="input" value="{{ vat_number or '' }}" placeholder="LV…"></div>
             </div>
+            <div class="f"><label for="regAddress">Juridiskā adrese</label><input type="text" id="regAddress" name="legal_address" class="input" value="{{ legal_address or '' }}" autocomplete="street-address"></div>
+        </details>
+        <div class="f">
+            <input type="hidden" name="is_vat_payer" value="0">
+            <label class="check"><input type="checkbox" name="is_vat_payer" id="regVatPayer" value="1" {% if (is_vat_payer or '1') == '1' %}checked{% endif %}>
+                <span>Uzņēmums ir PVN maksātājs</span></label>
         </div>
     </div>
-    </div>
-    {% include "_public_footer.html" %}
 
+    <div id="personFields" {% if et != 'individual' %}hidden{% endif %}>
+        <div class="f-row">
+            <div class="f"><label for="regFirst">Vārds</label><input type="text" id="regFirst" name="first_name" class="input" value="{{ first_name or '' }}" autocomplete="given-name"></div>
+            <div class="f"><label for="regLast">Uzvārds</label><input type="text" id="regLast" name="last_name" class="input" value="{{ last_name or '' }}" autocomplete="family-name"></div>
+        </div>
+    </div>
+
+    <div class="f">
+        <label for="regEmail">E-pasts</label>
+        <input type="email" id="regEmail" name="email" class="input" value="{{ email or '' }}" autocomplete="email" required>
+    </div>
+    <div class="f">
+        <label for="regPass">Parole</label>
+        <div class="f-pass">
+            <input type="password" id="regPass" name="password" class="input" minlength="6" autocomplete="new-password" required>
+            <button type="button" data-reveal="regPass" aria-pressed="false" aria-label="Rādīt paroli">Rādīt</button>
+        </div>
+        <div class="hint">Vismaz 6 simboli.</div>
+    </div>
+
+    <button type="submit" class="btn btn-wide">Izveidot kontu</button>
+    <p class="fine">Reģistrējoties Jūs piekrītat <a href="/terms">lietošanas noteikumiem</a>.</p>
+</form>
+{% endblock %}
+
+{% block scripts %}
 <script>
-function toggleRegEntityType() {
-    const isBusiness = document.querySelector('input[name="entity_type"]:checked').value === 'business';
-    document.getElementById('regBusinessFields').style.display = isBusiness ? '' : 'none';
-    document.getElementById('regIndividualFields').style.display = isBusiness ? 'none' : '';
-    document.getElementById('regTypeBusiness').classList.toggle('selected', isBusiness);
-    document.getElementById('regTypeIndividual').classList.toggle('selected', !isBusiness);
+(function () {
+    'use strict';
+    var form = document.getElementById('regForm');
+    var biz = document.getElementById('bizFields'), person = document.getElementById('personFields');
+    var nameIn = document.getElementById('regName'), list = document.getElementById('regList');
+    var regNo = document.getElementById('regNumber'), addr = document.getElementById('regAddress'), vat = document.getElementById('regVat');
+    var vatPayer = document.getElementById('regVatPayer'), found = document.getElementById('regFound');
 
-    // Toggle required attributes and name attributes
-    const bizName = document.getElementById('reg_business_name');
-    const firstName = document.getElementById('reg_first_name');
-    const lastName = document.getElementById('reg_last_name');
-
-    if (isBusiness) {
-        bizName.required = true;
-        bizName.name = 'display_name';
-        firstName.removeAttribute('name');
-        lastName.removeAttribute('name');
-        firstName.required = false;
-        lastName.required = false;
-    } else {
-        bizName.required = false;
-        bizName.removeAttribute('name');
-        firstName.name = 'first_name';
-        lastName.name = 'last_name';
-        firstName.required = true;
-        lastName.required = true;
+    function entity() { return form.querySelector('input[name="entity_type"]:checked').value; }
+    function syncEntity() {
+        var isBiz = entity() === 'business';
+        biz.hidden = !isBiz; person.hidden = isBiz;
+        // only the visible group is sent
+        biz.querySelectorAll('input').forEach(function (i) { i.disabled = !isBiz; });
+        person.querySelectorAll('input').forEach(function (i) { i.disabled = isBiz; });
     }
-}
+    form.querySelectorAll('input[name="entity_type"]').forEach(function (r) { r.addEventListener('change', syncEntity); });
+    syncEntity();
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    toggleRegEntityType();
-});
-
-/* --- Registry Autocomplete for Registration --- */
-let _regRegTimer = null;
-let _regRegIdx = -1;
-const regNameInput = document.getElementById('reg_business_name');
-const regDropdown = document.getElementById('reg_registry_dropdown');
-
-regNameInput.addEventListener('input', function() {
-    clearTimeout(_regRegTimer);
-    const q = this.value.trim();
-    if (q.length < 2) { regDropdown.classList.remove('active'); return; }
-    _regRegTimer = setTimeout(() => regRegistrySearch(q), 250);
-});
-
-regNameInput.addEventListener('keydown', function(e) {
-    const items = regDropdown.querySelectorAll('.registry-item');
-    if (!regDropdown.classList.contains('active') || !items.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); _regRegIdx = Math.min(_regRegIdx + 1, items.length - 1); regHighlight(items); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); _regRegIdx = Math.max(_regRegIdx - 1, 0); regHighlight(items); }
-    else if (e.key === 'Enter' && _regRegIdx >= 0) { e.preventDefault(); items[_regRegIdx].click(); }
-    else if (e.key === 'Escape') { regDropdown.classList.remove('active'); }
-});
-
-function regHighlight(items) {
-    items.forEach((el, i) => el.classList.toggle('selected', i === _regRegIdx));
-    if (_regRegIdx >= 0 && items[_regRegIdx]) items[_regRegIdx].scrollIntoView({block: 'nearest'});
-}
-
-async function regRegistrySearch(q) {
-    try {
-        const resp = await fetch('/api/registry/search?q=' + encodeURIComponent(q));
-        const data = await resp.json();
-        if (!data.length) { regDropdown.classList.remove('active'); return; }
-        regDropdown.innerHTML = data.map(b => `
-            <div class="registry-item" data-regcode="${b.regcode}" data-name="${b.name.replace(/"/g, '&quot;')}"
-                 data-address="${(b.address||'').replace(/"/g, '&quot;')}" data-type="${(b.type_text||'').replace(/"/g, '&quot;')}">
-                <div class="registry-item-name">${b.name}</div>
-                <div class="registry-item-details"><span class="registry-item-regcode">${b.regcode}</span> <span class="registry-item-type">${b.type_text || ''}</span></div>
-                ${b.address ? '<div class="registry-item-details">' + b.address + '</div>' : ''}
-            </div>
-        `).join('');
-        regDropdown.querySelectorAll('.registry-item').forEach(el => {
-            el.addEventListener('click', () => selectRegRegistryItem(el));
+    // Registry search: picking a company fills its number and address
+    var timer = null, items = [], hl = -1, seq = 0;
+    function close() { list.hidden = true; nameIn.setAttribute('aria-expanded', 'false'); hl = -1; }
+    function paint() { Array.prototype.forEach.call(list.children, function (li, i) { li.setAttribute('aria-selected', i === hl ? 'true' : 'false'); }); }
+    function show() {
+        list.textContent = '';
+        if (!items.length) { close(); return; }
+        items.forEach(function (r, i) {
+            var li = document.createElement('li'); li.setAttribute('role', 'option'); li.dataset.i = i;
+            li.textContent = r.name;
+            var small = document.createElement('small'); small.textContent = r.regcode + (r.address ? ' · ' + r.address : '');
+            li.appendChild(small); list.appendChild(li);
         });
-        _regRegIdx = -1;
-        regDropdown.classList.add('active');
-    } catch(e) { regDropdown.classList.remove('active'); }
-}
-
-function selectRegRegistryItem(el) {
-    document.getElementById('reg_business_name').value = el.dataset.name;
-    document.getElementById('reg_reg_number').value = el.dataset.regcode;
-    document.getElementById('reg_legal_address').value = el.dataset.address;
-    // Auto-set VAT payer status based on entity type
-    const type = (el.dataset.type || '').toLowerCase();
-    const isBiz = type.includes('sabiedr') || type.includes('akciju') || type.includes('komersants');
-    document.getElementById('reg_vat_payer').checked = isBiz;
-    document.getElementById('reg_vat_group').style.display = isBiz ? '' : 'none';
-    document.getElementById('reg_vat_number').value = isBiz ? 'LV' + el.dataset.regcode : '';
-    regDropdown.classList.remove('active');
-}
-
-// Close dropdown when clicking outside
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('.registry-wrapper')) {
-        regDropdown.classList.remove('active');
+        list.hidden = false; nameIn.setAttribute('aria-expanded', 'true'); hl = 0; paint();
     }
-});
+    function pick(i) {
+        var r = items[i]; if (!r) return;
+        nameIn.value = r.name; regNo.value = r.regcode; addr.value = r.address || '';
+        if (vatPayer.checked && !vat.value) vat.value = 'LV' + r.regcode;
+        document.getElementById('regFoundName').textContent = r.name;
+        document.getElementById('regFoundMeta').textContent = 'Reģ. Nr. ' + r.regcode + (r.address ? ' · ' + r.address : '');
+        found.hidden = false; close();
+    }
+    nameIn.addEventListener('input', function () {
+        var q = nameIn.value.trim(); clearTimeout(timer);
+        found.hidden = true;
+        if (q.length < 2) { items = []; close(); return; }
+        var mine = ++seq;
+        timer = setTimeout(function () {
+            fetch('/api/registry/search?q=' + encodeURIComponent(q))
+                .then(function (r) { return r.ok ? r.json() : []; })
+                .then(function (rows) { if (mine === seq) { items = Array.isArray(rows) ? rows.slice(0, 6) : []; show(); } })
+                .catch(function () { items = []; close(); });
+        }, 220);
+    });
+    nameIn.addEventListener('keydown', function (e) {
+        if (list.hidden) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); hl = Math.min(hl + 1, items.length - 1); paint(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); hl = Math.max(hl - 1, 0); paint(); }
+        else if (e.key === 'Enter') { e.preventDefault(); pick(hl); }
+        else if (e.key === 'Escape') close();
+    });
+    list.addEventListener('mousedown', function (e) { var li = e.target.closest('li'); if (li) { e.preventDefault(); pick(+li.dataset.i); } });
+    nameIn.addEventListener('blur', function () { setTimeout(close, 120); });
+    vatPayer.addEventListener('change', function () {
+        if (vatPayer.checked && !vat.value && regNo.value) vat.value = 'LV' + regNo.value;
+        if (!vatPayer.checked) vat.value = '';
+    });
+
+    // Say what is missing next to the field, not in a browser bubble
+    form.addEventListener('submit', function (e) {
+        var bad = null;
+        form.querySelectorAll('.f .err').forEach(function (n) { n.remove(); });
+        function need(input, msg) {
+            if (!bad && !input.disabled && !input.value.trim()) {
+                bad = input;
+                var p = document.createElement('div'); p.className = 'hint err'; p.style.color = 'var(--negative)'; p.textContent = msg;
+                input.closest('.f').appendChild(p);
+            }
+        }
+        if (entity() === 'business') need(nameIn, 'Ierakstiet uzņēmuma nosaukumu.');
+        else { need(document.getElementById('regFirst'), 'Ierakstiet vārdu.'); need(document.getElementById('regLast'), 'Ierakstiet uzvārdu.'); }
+        var email = document.getElementById('regEmail');
+        if (!bad && !/^\S+@\S+\.\S+$/.test(email.value.trim())) { need({ value: '', disabled: false, closest: function () { return email.closest('.f'); } }, 'Pārbaudiet e-pasta adresi.'); bad = email; }
+        var pass = document.getElementById('regPass');
+        if (!bad && pass.value.length < 6) { need({ value: '', disabled: false, closest: function () { return pass.closest('.f'); } }, 'Parolei jābūt vismaz 6 simbolus garai.'); bad = pass; }
+        if (bad) { e.preventDefault(); bad.focus(); }
+    });
+})();
 </script>
-</body>
-</html>
+{% endblock %}

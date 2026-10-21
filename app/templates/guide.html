@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ guide.title }} | V-Rēķini</title>
+    <meta name="description" content="{{ guide.description }}">
+    <link rel="canonical" href="{{ site_url }}/celvedis/{{ guide.slug }}">
+    <meta name="robots" content="{{ 'index,follow,max-image-preview:large' if guide.published else 'noindex,nofollow' }}">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="V-Rēķini">
+    <meta property="og:title" content="{{ guide.title }}">
+    <meta property="og:description" content="{{ guide.description }}">
+    <meta property="og:url" content="{{ site_url }}/celvedis/{{ guide.slug }}">
+    <meta property="og:image" content="{{ site_url }}/static/og-image.png">
+    <meta property="og:locale" content="lv_LV">
+    <meta name="twitter:card" content="summary_large_image">
+{% include "_site_head.html" %}
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Article",
+          "headline": {{ guide.title | tojson }},
+          "description": {{ guide.description | tojson }},
+          "inLanguage": "lv",
+          "dateModified": "{{ guide.updated }}",
+          "mainEntityOfPage": "{{ site_url }}/celvedis/{{ guide.slug }}",
+          "image": "{{ site_url }}/static/og-image.png",
+          "author": { "@type": "Organization", "@id": "{{ site_url }}/#org", "name": "SIA \"VN Media\"", "url": "{{ site_url }}/" },
+          "publisher": { "@id": "{{ site_url }}/#org" }
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "V-Rēķini", "item": "{{ site_url }}/" },
+            { "@type": "ListItem", "position": 2, "name": "Ceļvedis", "item": "{{ site_url }}/celvedis" },
+            { "@type": "ListItem", "position": 3, "name": {{ guide.title | tojson }}, "item": "{{ site_url }}/celvedis/{{ guide.slug }}" }
+          ]
+        }
+      ]
+    }
+    </script>
+</head>
+<body class="auth">
+{% include "_site_bar.html" %}
+<main class="article-main">
+    {% if not guide.published %}
+    <p class="draft-note">Melnraksts: šī lapa vēl nav publicēta un meklētājos neparādās.</p>
+    {% endif %}
+    <article class="article">
+        <nav class="crumbs" aria-label="Atrašanās vieta"><a href="/">V-Rēķini</a> / {% if guide.published %}<a href="/celvedis">Ceļvedis</a>{% else %}Ceļvedis{% endif %}</nav>
+        <h1>{{ guide.title }}</h1>
+        <p class="lede">{{ guide.lede }}</p>
+        <p class="article-meta">Atjaunots {{ guide.updated[8:10] }}.{{ guide.updated[5:7] }}.{{ guide.updated[:4] }}{% if sample_pdf %} · <a href="{{ sample_pdf }}" download>Lejupielādēt paraugu (PDF)</a>{% endif %}</p>
+        <div class="article-body">
+            {% set body %}{% include "guides/" ~ guide.slug ~ ".html" %}{% endset %}
+            {{ body | guide_checks(not guide.published) }}
+        </div>
+        {% if guide.sources %}
+        <section class="article-sources" aria-labelledby="srcTitle">
+            <h2 id="srcTitle">Avoti</h2>
+            <ul>
+                {% for name, url in guide.sources %}<li><a href="{{ url }}" rel="nofollow noopener" target="_blank">{{ name }}</a></li>{% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+    </article>
+
+    <aside class="article-cta" aria-labelledby="ctaTitle">
+        <h2 id="ctaTitle">Rēķins ar pareiziem rekvizītiem minūtē</h2>
+        <p>V-Rēķini aizpilda rekvizītus no Uzņēmumu reģistra, aprēķina PVN un sagatavo arī e-rēķinu. Pirmās 14 dienas visas iespējas bez maksas.</p>
+        <a href="/register" class="btn">Sākt bez maksas</a>
+    </aside>
+
+    {% if related %}
+    <nav class="article-related" aria-label="Citi raksti">
+        <h2>Vēl ceļvedī</h2>
+        <ul>{% for g in related %}<li><a href="/celvedis/{{ g.slug }}">{{ g.title }}</a></li>{% endfor %}</ul>
+    </nav>
+    {% endif %}
+</main>
+{% include "_site_footer.html" %}
+</body>
+</html>

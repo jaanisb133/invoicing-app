@@ -135,7 +135,7 @@
             <a href="/recurring" class="{% if page == 'recurring' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg>
                 Periodiskie rēķini
-                {% if not tier_limits.recurring %}<span class="sidebar-lock">PRO</span>{% endif %}
+                {% if not tier_limits.recurring %}<span class="sidebar-lock">Pamata</span>{% endif %}
             </a>
             {% endif %}
 
@@ -159,13 +159,13 @@
             <a href="/export" class="{% if page == 'export' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
                 Eksports
-                {% if not offline_mode and not tier_limits.einvoice %}<span class="sidebar-lock">PRO</span>{% endif %}
+                {% if not offline_mode and not tier_limits.einvoice %}<span class="sidebar-lock">Mini</span>{% endif %}
             </a>
             {% if not offline_mode and is_owner %}
             <a href="/komanda" class="{% if page == 'team' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a4.5 4.5 0 0 1 4.5-4.5h4a4.5 4.5 0 0 1 4.5 4.5v1"/><path d="M17 11.5a3 3 0 1 0 0-6M21.5 20v-1a4 4 0 0 0-3-3.9"/></svg>
                 Komanda
-                {% if tier_limits.max_users == 1 %}<span class="sidebar-lock">PRO</span>{% endif %}
+                {% if tier_limits.max_users == 1 %}<span class="sidebar-lock">Bizness</span>{% endif %}
             </a>
             <a href="/pricing" class="{% if page == 'pricing' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19M6.5 15h4"/></svg>
@@ -181,6 +181,10 @@
             <a href="/trash" class="{% if page == 'trash' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6h17M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6M18.5 6l-.8 13.1a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 6"/></svg>
                 Papīrgrozs
+            </a>
+            <a href="/palidziba" class="{% if page == 'help' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17.2v.1"/></svg>
+                Palīdzība
             </a>
             {% if current_user and current_user.is_admin and not offline_mode %}
             <a href="/users" class="{% if page == 'users' %}active{% endif %}">
@@ -317,6 +321,10 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6h17M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6M18.5 6l-.8 13.1a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 6"/></svg>
                 Papīrgrozs
             </a>
+            <a href="/palidziba" class="{% if page == 'help' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17.2v.1"/></svg>
+                Palīdzība
+            </a>
             {% if current_user and current_user.is_admin and not offline_mode %}
             <a href="/users" class="{% if page == 'users' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s8-4 8-10v-7l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -423,8 +431,10 @@
             dateFormat: 'Y-m-d',
             altInput: true,
             altFormat: 'd.m.Y',
-            allowInput: true,
-            disableMobile: false,
+            // Typing a date is handy with a keyboard; on a touch screen it would pop the keyboard over the calendar
+            allowInput: !window.matchMedia('(pointer: coarse)').matches,
+            // Our own field on phones too: the native one shows "21 Oct 2026" in the phone's language, off-centre
+            disableMobile: true,
             defaultDate: existingVal || null,
             locale: {
                 firstDayOfWeek: 1,
@@ -462,6 +472,67 @@
             navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).catch(function () {});
         });
     }
+    </script>
+    {% block tour %}{% endblock %}
+    <script>
+    // Guided tour: a short card that points at the real control, one step at a time.
+    // A page sets window.VR_TOUR = {key, steps: [{sel, m (phone selector), title, text}]}.
+    window.vrTour = (function () {
+        var phone = function () { return window.matchMedia('(max-width: 768px)').matches; };
+        function visible(el) { if (!el) return false; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+        function target(st) { var el = document.querySelector(phone() && st.m ? st.m : st.sel); return visible(el) ? el : null; }
+        function seen(key) {
+            fetch('/api/tour-seen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ tour: key }) }).catch(function () {});
+        }
+        function start(def) {
+            var steps = def.steps.filter(function (st) { return target(st); });
+            if (!steps.length) return;
+            var i = 0;
+            var ring = document.createElement('div'); ring.className = 'tour-ring';
+            var pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-live', 'polite');
+            document.body.appendChild(ring); document.body.appendChild(pop);
+            function place() {
+                var el = target(steps[i]); if (!el) return;
+                var r = el.getBoundingClientRect(), pad = 6;
+                ring.style.cssText = 'top:' + (r.top - pad) + 'px;left:' + (r.left - pad) + 'px;width:' + (r.width + pad * 2) + 'px;height:' + (r.height + pad * 2) + 'px';
+                var pw = Math.min(320, window.innerWidth - 24), ph = pop.offsetHeight;
+                var below = r.bottom + 14 + ph < window.innerHeight;
+                var top = below ? r.bottom + 14 : Math.max(12, r.top - 14 - ph);
+                var left = Math.min(Math.max(12, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 12);
+                if (r.right < 300 && !phone()) { left = r.right + 16; top = Math.min(Math.max(12, r.top + r.height / 2 - ph / 2), window.innerHeight - ph - 12); }
+                pop.style.cssText = 'top:' + top + 'px;left:' + left + 'px;width:' + pw + 'px';
+            }
+            function show() {
+                var st = steps[i], el = target(st);
+                var last = i === steps.length - 1;
+                pop.innerHTML = '';
+                var h = document.createElement('h3'); h.textContent = st.title;
+                var p = document.createElement('p'); p.textContent = (phone() && st.mt) || st.text;
+                var foot = document.createElement('div'); foot.className = 'tour-foot';
+                var count = document.createElement('span'); count.textContent = (i + 1) + ' no ' + steps.length;
+                var skip = document.createElement('button'); skip.type = 'button'; skip.className = 'btn btn-ghost btn-sm'; skip.textContent = last ? 'Aizvērt' : 'Izlaist';
+                var next = document.createElement('button'); next.type = 'button'; next.className = 'btn btn-primary btn-sm'; next.textContent = last ? 'Sākt darbu' : 'Tālāk';
+                skip.onclick = end; next.onclick = function () { if (last) end(); else { i++; show(); } };
+                foot.appendChild(count); foot.appendChild(skip); foot.appendChild(next);
+                pop.appendChild(h); pop.appendChild(p); pop.appendChild(foot);
+                var r = el.getBoundingClientRect();
+                if (r.top < 60 || r.bottom > window.innerHeight - 80) el.scrollIntoView({ block: 'center' });
+                requestAnimationFrame(function () { place(); next.focus({ preventScroll: true }); });
+            }
+            function key(e) { if (e.key === 'Escape') end(); }
+            function end() {
+                ring.remove(); pop.remove();
+                window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true);
+                document.removeEventListener('keydown', key);
+                seen(def.key);
+            }
+            window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
+            document.addEventListener('keydown', key);
+            show();
+        }
+        if (window.VR_TOUR) window.addEventListener('load', function () { setTimeout(function () { start(window.VR_TOUR); }, 500); });
+        return { start: start, replay: function () { location.href = '/?tour=1'; } };
+    })();
     </script>
 </body>
 </html>

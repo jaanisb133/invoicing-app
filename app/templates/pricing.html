@@ -2,38 +2,66 @@
 <html lang="lv">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Cenas un plāni — V-Rēķini | No 0€ līdz 12.99€ mēnesī</title>
-    <meta name="description" content="V-Rēķini cenas un plāni: bezmaksas plāns ar 5 dokumentiem, Mini no 2.99€/mēn., Pamata 5.99€/mēn., Bizness 12.99€/mēn. Mūža licence 499€. Visi plāni iekļauj rēķinu izrakstīšanu, PVN, klientu un produktu pārvaldību.">
-    <meta name="keywords" content="rēķinu izrakstīšana, rēķinu programma, cenas, e-rēķini, PVN rēķini, Latvija, online rēķini, grāmatvedības programma">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cenas — rēķinu programma no 0 € mēnesī | V-Rēķini</title>
+    <meta name="description" content="Bezmaksas plāns ar {{ plans.free.max_documents }} rēķiniem mēnesī un 14 dienu Pamata izmēģinājumu. Mini {{ plans.mini.price_monthly | price }} €, Pamata {{ plans.starter.price_monthly | price }} €, Bizness {{ plans.business.price_monthly | price }} € mēnesī, cenas ar PVN.">
     <link rel="canonical" href="https://v-rekini.lv/pricing">
     <meta name="robots" content="index,follow">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="V-Rēķini">
     <meta property="og:title" content="Cenas un plāni — V-Rēķini">
-    <meta property="og:description" content="Izvēlieties savu rēķinu izrakstīšanas plānu. Sāciet bez maksas, no 2.99€ mēnesī Mini, līdz mūža licencei par 499€.">
+    <meta property="og:description" content="Sāciet bez maksas. Mini {{ plans.mini.price_monthly | price }} €, Pamata {{ plans.starter.price_monthly | price }} € un Bizness {{ plans.business.price_monthly | price }} € mēnesī, cenas ar PVN.">
     <meta property="og:url" content="https://v-rekini.lv/pricing">
-    <meta property="og:image" content="https://v-rekini.lv/static/icons/icon-512.png">
+    <meta property="og:image" content="https://v-rekini.lv/static/og-image.png">
     <meta property="og:locale" content="lv_LV">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Cenas un plāni — V-Rēķini">
-    <meta name="twitter:description" content="Rēķinu izrakstīšana no 0€ līdz 12.99€/mēn. Mūža licence pieejama.">
+    <meta name="twitter:description" content="Rēķinu programma no 0 € līdz {{ plans.business.price_monthly | price }} € mēnesī, cenas ar PVN.">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0c0d0f" media="(prefers-color-scheme: dark)">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&subset=latin-ext&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v={{ css_version }}">
-    <script>(function(){var t=localStorage.getItem('vrekini-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})()</script>
-    <style>
-        body { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg); }
-        .pricing-page-wrap { flex: 1; max-width: 960px; margin: 0 auto; padding: 48px 24px; }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/site.css?v={{ css_version }}">
+    <script>
+    (function () {
+        var d = document.documentElement; d.classList.add('js');
+        try { var t = localStorage.getItem('vrekini-theme'); if (t === 'light' || t === 'dark') d.setAttribute('data-theme', t); } catch (e) {}
+    })();
+    </script>
 </head>
-<body>
-    {% include "_public_navbar.html" %}
-    <div class="pricing-page-wrap">
-        {% include "_pricing_content.html" %}
+<body class="auth">
+<header class="auth-bar">
+    <a href="/" class="wordmark"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M6 3.5h16a1 1 0 0 1 1 1V24l-2.5-1.8L18 24l-2.5-1.8L13 24l-2.5-1.8L8 24l-2.5-1.8L5 22.6V4.5a1 1 0 0 1 1-1z" fill="currentColor"/><path class="v" d="M10 9.5l4 7.5 4-7.5" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>V-Rēķini</span></a>
+    <span class="auth-bar-link"><a href="/login">Ienākt</a></span>
+</header>
+<main class="pricing-main">
+    {% set pricing_heading = "h1" %}
+    {% include "_pricing_content.html" %}
+</main>
+<footer>
+    <div class="foot-line">
+        <span>Rēķinu programma Latvijai</span>
+        <nav aria-label="Kājene">
+            <a href="/">Sākums</a>
+            <a href="/terms">Noteikumi</a>
+            <a href="/contacts">Kontakti</a>
+            <a href="/login">Ienākt</a>
+        </nav>
+        <span class="right">© {{ current_year() }} SIA „VN Media”, reģ. Nr. 40203511357</span>
     </div>
-    {% include "_public_footer.html" %}
+    <div class="pay">
+        {% for logo in payment_logos %}
+            {% if loop.changed(logo.group) and not loop.first %}<span class="footer-sep" aria-hidden="true"></span>{% endif %}
+            {% if logo.url %}
+            <img src="{{ logo.url }}" alt="{{ logo.alt }}" height="{{ logo.height }}" class="{% if logo.mono %}pay-mono{% endif %}" loading="lazy" decoding="async">
+            {% else %}
+            <span class="footer-logo-text">{{ logo.alt }}</span>
+            {% endif %}
+        {% endfor %}
+    </div>
+</footer>
 </body>
 </html>
