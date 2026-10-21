@@ -566,6 +566,31 @@ def get_all_products(user_id, active_only=True):
     return [dict(r) for r in rows]
 
 
+def get_unpaid_invoices(user_id):
+    """Every issued, unpaid sales invoice with its total, oldest due date first.
+
+    Same scope as the unpaid figure in get_dashboard_stats_range(), so the
+    rows always add up to the "Neapmaksāti" total shown beside them.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT d.id, d.doc_number, d.doc_date, d.payment_due_date, d.client_id,
+                  COALESCE(c.name, '') AS client_name,
+                  SUM(di.quantity * di.price_per_unit * (1 + d.vat_rate / 100)) AS total
+           FROM documents d
+           JOIN document_items di ON di.document_id = d.id
+           LEFT JOIN clients c ON c.id = d.client_id
+           WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0
+             AND d.doc_type = 'sell' AND d.status = 'issued'
+           GROUP BY d.id
+           ORDER BY (d.payment_due_date IS NULL OR d.payment_due_date = ''),
+                    d.payment_due_date, d.doc_date""",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def get_client_last_billed(user_id):
     """{client_id: date of the latest non-deleted document}, newest use first."""
     conn = get_connection()

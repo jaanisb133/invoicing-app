@@ -1988,9 +1988,18 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
     stats = db.get_dashboard_stats(uid)
     range_stats = db.get_dashboard_stats_range(uid, date_from, date_to, compare_mode)
     recent_events = db.get_recent_events(uid, limit=5)
+    unpaid = db.get_unpaid_invoices(uid) if settings.get("status_tracking", "0") == "1" else []
+    for inv in unpaid:
+        try:
+            due = datetime.date.fromisoformat(str(inv.get("payment_due_date") or "")[:10])
+            inv["days_to_due"] = (due - today).days
+        except ValueError:
+            inv["days_to_due"] = None
 
     ctx.update({
         "recent_docs": recent_docs,
+        "unpaid": unpaid,
+        "today": today.isoformat(),
         "clients": clients,
         "stock": stock,
         "settings": settings,
@@ -2572,6 +2581,8 @@ async def documents_page(request: Request, doc_type: str = "", client_id: str = 
     limits = db.get_tier_limits(user.get("tier", "free"))
     ctx.update({
         "documents": docs,
+        "doc_rows": _doc_list_rows(docs, settings.get("status_tracking", "0") == "1"),
+        "today": datetime.date.today().isoformat(),
         "clients": clients,
         "settings": settings,
         "usage": usage,
@@ -4220,21 +4231,23 @@ async def api_documents(request: Request, doc_type: str = "", client_id: str = "
         exclude_doc_types=["offer"],
     )
     settings = _user_settings(user["account_id"])
-    status_tracking = settings.get("status_tracking", "0") == "1"
-    rows = []
-    for d in docs:
-        rows.append({
-            "id": d["id"],
-            "doc_number": d["doc_number"],
-            "doc_type": d["doc_type"],
-            "client_name": d["client_name"],
-            "client_id": d.get("client_id", 0),
-            "doc_date": d["doc_date"],
-            "total_with_vat": round(d.get("total_with_vat") or 0, 2),
-            "status": d.get("status", "issued") if status_tracking else None,
-            "excluded_from_stats": d.get("excluded_from_stats", 0),
-        })
-    return JSONResponse(rows)
+    return JSONResponse(_doc_list_rows(docs, settings.get("status_tracking", "0") == "1"))
+
+
+def _doc_list_rows(docs, status_tracking):
+    """The fields the documents list renders, shared by the page and its API."""
+    return [{
+        "id": d["id"],
+        "doc_number": d["doc_number"],
+        "doc_type": d["doc_type"],
+        "client_name": d["client_name"],
+        "client_id": d.get("client_id", 0),
+        "doc_date": d["doc_date"],
+        "total_with_vat": round(d.get("total_with_vat") or 0, 2),
+        "status": d.get("status", "issued") if status_tracking else None,
+        "payment_due_date": d.get("payment_due_date") or "",
+        "excluded_from_stats": d.get("excluded_from_stats", 0),
+    } for d in docs]
 
 
 @app.post("/api/clients/add")
