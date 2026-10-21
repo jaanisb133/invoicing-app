@@ -423,8 +423,10 @@
             dateFormat: 'Y-m-d',
             altInput: true,
             altFormat: 'd.m.Y',
-            allowInput: true,
-            disableMobile: false,
+            // Typing a date is handy with a keyboard; on a touch screen it would pop the keyboard over the calendar
+            allowInput: !window.matchMedia('(pointer: coarse)').matches,
+            // Our own field on phones too: the native one shows "21 Oct 2026" in the phone's language, off-centre
+            disableMobile: true,
             defaultDate: existingVal || null,
             locale: {
                 firstDayOfWeek: 1,

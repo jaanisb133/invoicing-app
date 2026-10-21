@@ -1,6 +1,6 @@
 // V-Rēķini service worker
 // Cache strategy: cache-first for /static/, network-first for HTML pages
-const CACHE = 'vrekini-v2';
+const CACHE = 'vrekini-v3';
 const STATIC_ASSETS = [
     
     '/static/manifest.json',

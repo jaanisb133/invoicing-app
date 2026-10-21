@@ -302,6 +302,9 @@ def _run_migrations():
         cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN email_subject TEXT NOT NULL DEFAULT ''")
     if "email_body" not in rec_cols:
         cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN email_body TEXT NOT NULL DEFAULT ''")
+    # Payment term per recurring invoice: NULL = account default, 0 = no due date, N = N days
+    if "payment_due_days" not in rec_cols:
+        cursor.execute("ALTER TABLE recurring_invoices ADD COLUMN payment_due_days INTEGER")
 
     # Add source column to email_log if missing
     email_cols = {row[1] for row in cursor.execute("PRAGMA table_info(email_log)").fetchall()}
@@ -2471,15 +2474,15 @@ def get_recent_events(user_id: int, limit: int = 10) -> list:
 
 def create_recurring_invoice(user_id, doc_type, client_id, vat_rate, notes, template,
                              frequency, next_run, send_email, items_json,
-                             email_subject="", email_body=""):
+                             email_subject="", email_body="", payment_due_days=None):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO recurring_invoices
            (user_id, doc_type, client_id, vat_rate, notes, template, frequency,
-            next_run, send_email, email_subject, email_body, items_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            next_run, send_email, email_subject, email_body, items_json, payment_due_days)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (user_id, doc_type, client_id, vat_rate, notes, template, frequency, next_run,
-         1 if send_email else 0, email_subject, email_body, items_json)
+         1 if send_email else 0, email_subject, email_body, items_json, payment_due_days)
     )
     rid = cursor.lastrowid
     conn.commit()
@@ -2489,16 +2492,16 @@ def create_recurring_invoice(user_id, doc_type, client_id, vat_rate, notes, temp
 
 def update_recurring_invoice(user_id, recurring_id, doc_type, client_id, vat_rate, notes,
                              template, frequency, next_run, send_email, items_json,
-                             email_subject="", email_body=""):
+                             email_subject="", email_body="", payment_due_days=None):
     conn = get_connection()
     conn.execute(
         """UPDATE recurring_invoices
            SET doc_type = ?, client_id = ?, vat_rate = ?, notes = ?, template = ?,
                frequency = ?, next_run = ?, send_email = ?, email_subject = ?,
-               email_body = ?, items_json = ?
+               email_body = ?, items_json = ?, payment_due_days = ?
            WHERE id = ? AND user_id = ?""",
         (doc_type, client_id, vat_rate, notes, template, frequency, next_run,
-         1 if send_email else 0, email_subject, email_body, items_json,
+         1 if send_email else 0, email_subject, email_body, items_json, payment_due_days,
          recurring_id, user_id)
     )
     conn.commit()
@@ -2546,6 +2549,52 @@ def toggle_recurring_invoice(user_id, recurring_id):
     )
     conn.commit()
     conn.close()
+
+
+DEFAULT_PAYMENT_DUE_DAYS = 14
+
+
+def recurring_due_days(rec):
+    """Days until payment for an invoice a recurring template generates.
+    The template's own term wins; NULL falls back to the account's default
+    (Iestatījumi → apmaksas termiņš), then to 14 days. 0 means no due date."""
+    days = rec.get("payment_due_days")
+    if days is None:
+        raw = get_user_setting(rec["user_id"], "payment_due_days", "")
+        try:
+            days = int(raw) if str(raw).strip() else DEFAULT_PAYMENT_DUE_DAYS
+        except ValueError:
+            days = DEFAULT_PAYMENT_DUE_DAYS
+    return max(0, int(days))
+
+
+def backfill_recurring_due_dates():
+    """One-time fix: recurring invoices used to be created without a due date,
+    so they could never show as overdue. Give each one its account's default
+    term (or 14 days). Runs once; marked done in the settings table."""
+    if get_setting("migr_recurring_due_dates") == "1":
+        return 0
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT d.id, d.user_id, d.doc_date FROM documents d
+           WHERE d.doc_type = 'sell' AND (d.payment_due_date IS NULL OR d.payment_due_date = '')
+             AND d.id IN (SELECT document_id FROM events
+                          WHERE event_type = 'document_created' AND meta LIKE '%"source": "recurring"%')"""
+    ).fetchall()
+    conn.close()
+    fixed = 0
+    for r in rows:
+        days = recurring_due_days({"payment_due_days": None, "user_id": r["user_id"]})
+        if not days:
+            continue
+        due = (datetime.date.fromisoformat(str(r["doc_date"])[:10]) + datetime.timedelta(days=days)).isoformat()
+        conn = get_connection()
+        conn.execute("UPDATE documents SET payment_due_date = ? WHERE id = ?", (due, r["id"]))
+        conn.commit()
+        conn.close()
+        fixed += 1
+    set_setting("migr_recurring_due_dates", "1")
+    return fixed
 
 
 def get_due_recurring_invoices(today_str):

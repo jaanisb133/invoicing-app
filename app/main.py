@@ -58,7 +58,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "41"
+CSS_VERSION = "42"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -797,9 +797,13 @@ async def _process_recurring_invoices():
                         if not allowed:
                             continue
 
+                    due_days = db.recurring_due_days(rec)
+                    due_date = ((datetime.date.today() + datetime.timedelta(days=due_days)).isoformat()
+                                if due_days and rec["doc_type"] == "sell" else None)
                     doc_id, doc_number = db.create_document(
                         rec["user_id"], rec["doc_type"], rec["client_id"],
-                        today, items, rec["vat_rate"], rec["notes"]
+                        today, items, rec["vat_rate"], rec["notes"],
+                        payment_due_date=due_date or "",
                     )
 
                     # Log document_created event (recurring source)
@@ -1015,6 +1019,9 @@ async def startup():
     print(f"[STARTUP] Database exists: {db_exists}, size: {db_size} bytes")
 
     db.init_db()
+    fixed = db.backfill_recurring_due_dates()
+    if fixed:
+        logger.info("[STARTUP] Gave %d recurring invoices their missing due date", fixed)
 
     user_ct = db.user_count()
     print(f"[STARTUP] Users in database: {user_ct}")
@@ -3488,6 +3495,14 @@ def _sync_client_email(user_id: int, client_id: int, email: str):
 _RECURRING_ITEM_KEY = re.compile(r"^items\[(\d+)\]\[product_id\]$")
 
 
+def _parse_due_days(raw):
+    """Payment term from a form: '' keeps the account default (None), 0 = no due date."""
+    try:
+        return max(0, min(365, int(str(raw).strip()))) if str(raw or "").strip() else None
+    except ValueError:
+        return None
+
+
 def _parse_recurring_form(form):
     """Parse and validate the recurring form. Returns dict or raises ValueError."""
     try:
@@ -3568,6 +3583,7 @@ def _parse_recurring_form(form):
         "email_body": email_body,
         "client_email": client_email,
         "items": items,
+        "payment_due_days": _parse_due_days(form.get("payment_due_days")),
     }
 
 
@@ -3597,6 +3613,7 @@ async def create_recurring(request: Request):
         data["notes"], data["template"], data["frequency"], data["next_run"],
         data["send_email"], json.dumps(data["items"]),
         email_subject=data["email_subject"], email_body=data["email_body"],
+        payment_due_days=data["payment_due_days"],
     )
 
     return RedirectResponse("/recurring?created=1", status_code=303)
@@ -3624,6 +3641,7 @@ async def update_recurring(request: Request, recurring_id: int):
         data["vat_rate"], data["notes"], data["template"], data["frequency"],
         data["next_run"], data["send_email"], json.dumps(data["items"]),
         email_subject=data["email_subject"], email_body=data["email_body"],
+        payment_due_days=data["payment_due_days"],
     )
 
     return RedirectResponse("/recurring?updated=1", status_code=303)
@@ -3665,10 +3683,20 @@ async def create_recurring_from_document(request: Request, doc_id: int):
         for item in items
     ]
 
+    # Keep the source invoice's payment term; one without a due date keeps the account default
+    due_days = None
+    try:
+        if doc.get("payment_due_date"):
+            due_days = (datetime.date.fromisoformat(str(doc["payment_due_date"])[:10])
+                        - datetime.date.fromisoformat(str(doc["doc_date"])[:10])).days
+            due_days = max(0, due_days)
+    except ValueError:
+        due_days = None
+
     db.create_recurring_invoice(
         user["account_id"], doc["doc_type"], doc["client_id"], doc["vat_rate"],
         doc.get("notes", ""), template, frequency, next_run, send_email,
-        json.dumps(items_data)
+        json.dumps(items_data), payment_due_days=due_days
     )
 
     return RedirectResponse(f"/documents/{doc_id}?scheduled=1&template={template}", status_code=303)
