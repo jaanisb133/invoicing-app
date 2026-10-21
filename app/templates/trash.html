@@ -38,7 +38,7 @@
                     </td>
                     <td data-label="Klients" class="mobile-card-meta">{{ doc.client_name }}</td>
                     <td data-label="Datums" class="mobile-card-meta">{{ doc.doc_date }}</td>
-                    <td data-label="Summa" style="text-align:right;font-weight:700">{{ "%.2f"|format(doc.total_with_vat) }} &euro;</td>
+                    <td data-label="Summa" style="text-align:right;font-weight:700">{{ doc.total_with_vat | eur }}</td>
                     <td data-label="Dzēsts" class="mobile-card-meta">{{ doc.deleted_at[:10] if doc.deleted_at else '' }}</td>
                     <td>
                         <div class="btn-group" style="justify-content:flex-end">

@@ -119,7 +119,7 @@ tr.clickable-row:hover td { background: var(--bg-card-hover); }
                             <td>
                                 <span class="mobile-card-meta">{{ doc.doc_date[8:10] }}.{{ doc.doc_date[5:7] }}.{{ doc.doc_date[:4] }}</span>
                             </td>
-                            <td class="text-right" style="font-weight:600">{{ "%.2f" | format(doc.total_with_vat) }} EUR</td>
+                            <td class="text-right" style="font-weight:600">{{ doc.total_with_vat | eur }}</td>
                             <td>
                                 <div class="row-menu-wrapper">
                                     <button type="button" class="row-menu-trigger" aria-label="Darbības">

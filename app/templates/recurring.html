@@ -92,7 +92,7 @@
                                 <span class="pill pill-brand">Pārdošana</span>
                                 {% endif %}
                             </td>
-                            <td data-label="Summa" style="font-weight:700">{{ "%.2f"|format(rec.total) }} &euro;</td>
+                            <td data-label="Summa" style="font-weight:700">{{ rec.total | eur }}</td>
                             <td data-label="Biežums">{{ frequency_labels.get(rec.frequency, rec.frequency) }}</td>
                             <td data-label="Nākamā izpilde">{{ rec.next_run }}</td>
                             <td data-label="E-pasts">

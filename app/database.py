@@ -566,6 +566,41 @@ def get_all_products(user_id, active_only=True):
     return [dict(r) for r in rows]
 
 
+def get_client_last_billed(user_id):
+    """{client_id: date of the latest non-deleted document}, newest use first."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT client_id, MAX(doc_date) AS last_date FROM documents
+           WHERE user_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL
+           GROUP BY client_id""",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return {r["client_id"]: r["last_date"] for r in rows}
+
+
+def get_product_last_prices(user_id, doc_type="sell"):
+    """{product_id: the price it was last billed at}, for prefilling a new line.
+
+    Sales and offers share prices; purchases keep their own, since what a
+    product is bought for is not what it is sold for. Deleted documents and
+    "included in price" lines are ignored.
+    """
+    types = ("buy",) if doc_type == "buy" else ("sell", "offer")
+    conn = get_connection()
+    rows = conn.execute(
+        f"""SELECT di.product_id, di.price_per_unit
+            FROM document_items di JOIN documents d ON d.id = di.document_id
+            WHERE d.user_id = ? AND d.deleted_at IS NULL
+              AND di.product_id IS NOT NULL AND di.included_in_price = 0
+              AND d.doc_type IN ({",".join("?" * len(types))})
+            ORDER BY d.doc_date, d.id, di.id""",
+        (user_id, *types),
+    ).fetchall()
+    conn.close()
+    return {r["product_id"]: r["price_per_unit"] for r in rows}
+
+
 def get_product(product_id):
     conn = get_connection()
     row = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
@@ -2136,9 +2171,9 @@ def get_plan_price(tier, cycle):
 
 
 def format_price(cents):
-    """Cents -> display string: 1299 -> '12.99', 12900 -> '129'."""
+    """Cents -> display string, Latvian style: 1299 -> '12,99', 12900 -> '129'."""
     whole, rem = divmod(int(cents or 0), 100)
-    return str(whole) if rem == 0 else f"{whole}.{rem:02d}"
+    return str(whole) if rem == 0 else f"{whole},{rem:02d}"
 
 
 def _column_limit(value):

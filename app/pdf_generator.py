@@ -3,6 +3,7 @@ PDF invoice generation for V-Rēķini (Web).
 Three professional templates using Liberation Sans for clean Latvian typography.
 """
 
+from app import fmt
 import os
 import datetime
 from reportlab.lib.pagesizes import A4
@@ -373,13 +374,13 @@ def _generate_classic(doc_id):
     for i, item in enumerate(data["items"], 1):
         included = bool(item.get("included_in_price"))
         line_total = 0 if included else item["quantity"] * item["price_per_unit"]
-        price_text = "Iekļauts cenā" if included else f"{item['price_per_unit']:.2f}"
-        total_text = "Iekļauts cenā" if included else f"{line_total:.2f}"
+        price_text = "Iekļauts cenā" if included else fmt.num(item['price_per_unit'])
+        total_text = "Iekļauts cenā" if included else fmt.num(line_total)
         items_data.append([
             Paragraph(str(i), td),
             Paragraph(item["product_name"], td),
             Paragraph(item["unit"], td),
-            Paragraph(f"{item['quantity']:.2f}", td_r),
+            Paragraph(fmt.qty(item['quantity']), td_r),
             Paragraph(price_text, td_r),
             Paragraph(total_text, td_r),
         ])
@@ -418,11 +419,11 @@ def _generate_classic(doc_id):
         vat_label = "PVN (0% - Reverse Charge):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
         totals_data = [
             [Paragraph("Summa bez PVN:", total_label),
-             Paragraph(f"{data['subtotal']:.2f} EUR", total_val)],
+             Paragraph(fmt.eur(data['subtotal']), total_val)],
             [Paragraph(vat_label, total_label),
-             Paragraph(f"{data['vat_amount']:.2f} EUR", total_val)],
+             Paragraph(fmt.eur(data['vat_amount']), total_val)],
             [Paragraph("Kopā ar PVN:", grand_label),
-             Paragraph(f"{data['total']:.2f} EUR", grand_val)],
+             Paragraph(fmt.eur(data['total']), grand_val)],
         ]
         totals_table = Table(totals_data, colWidths=[128 * mm, 42 * mm])
         totals_table.setStyle(TableStyle([
@@ -434,7 +435,7 @@ def _generate_classic(doc_id):
     else:
         totals_data = [
             [Paragraph("Kopā:", grand_label),
-             Paragraph(f"{data['total']:.2f} EUR", grand_val)],
+             Paragraph(fmt.eur(data['total']), grand_val)],
         ]
         totals_table = Table(totals_data, colWidths=[128 * mm, 42 * mm])
         totals_table.setStyle(TableStyle([
@@ -584,13 +585,13 @@ def _generate_modern(doc_id):
     for i, item in enumerate(data["items"], 1):
         included = bool(item.get("included_in_price"))
         line_total = 0 if included else item["quantity"] * item["price_per_unit"]
-        price_text = "Iekļauts cenā" if included else f"{item['price_per_unit']:.2f}"
-        total_text = "Iekļauts cenā" if included else f"{line_total:.2f}"
+        price_text = "Iekļauts cenā" if included else fmt.num(item['price_per_unit'])
+        total_text = "Iekļauts cenā" if included else fmt.num(line_total)
         items_data.append([
             Paragraph(str(i), td),
             Paragraph(item["product_name"], td),
             Paragraph(item["unit"], td),
-            Paragraph(f"{item['quantity']:.2f}", td_r),
+            Paragraph(fmt.qty(item['quantity']), td_r),
             Paragraph(price_text, td_r),
             Paragraph(total_text, td_r),
         ])
@@ -623,11 +624,11 @@ def _generate_modern(doc_id):
         vat_label = "PVN (0% - Reverse Charge):" if data["reverse_charge"] else f"PVN ({data['vat_rate']:.0f}%):"
         totals_data = [
             [Paragraph("Summa bez PVN:", styles["total_label"]),
-             Paragraph(f"{data['subtotal']:.2f} EUR", styles["total_value"])],
+             Paragraph(fmt.eur(data['subtotal']), styles["total_value"])],
             [Paragraph(vat_label, styles["total_label"]),
-             Paragraph(f"{data['vat_amount']:.2f} EUR", styles["total_value"])],
+             Paragraph(fmt.eur(data['vat_amount']), styles["total_value"])],
             [Paragraph("KOPĀ AR PVN:", styles["grand_label"]),
-             Paragraph(f"{data['total']:.2f} EUR", styles["grand_value"])],
+             Paragraph(fmt.eur(data['total']), styles["grand_value"])],
         ]
         totals_table = Table(totals_data, colWidths=[128 * mm, 40 * mm])
         totals_table.setStyle(TableStyle([
@@ -639,7 +640,7 @@ def _generate_modern(doc_id):
     else:
         totals_data = [
             [Paragraph("KOPĀ:", styles["grand_label"]),
-             Paragraph(f"{data['total']:.2f} EUR", styles["grand_value"])],
+             Paragraph(fmt.eur(data['total']), styles["grand_value"])],
         ]
         totals_table = Table(totals_data, colWidths=[128 * mm, 40 * mm])
         totals_table.setStyle(TableStyle([
@@ -784,13 +785,13 @@ def _generate_minimal(doc_id):
     for i, item in enumerate(data["items"], 1):
         included = bool(item.get("included_in_price"))
         line_total = 0 if included else item["quantity"] * item["price_per_unit"]
-        price_text = "Iekļauts cenā" if included else f"{item['price_per_unit']:.2f}"
-        total_text = "Iekļauts cenā" if included else f"{line_total:.2f}"
+        price_text = "Iekļauts cenā" if included else fmt.num(item['price_per_unit'])
+        total_text = "Iekļauts cenā" if included else fmt.num(line_total)
         items_data.append([
             Paragraph(str(i), td),
             Paragraph(item["product_name"], td),
             Paragraph(item["unit"], td),
-            Paragraph(f"{item['quantity']:.2f}", td_r),
+            Paragraph(fmt.qty(item['quantity']), td_r),
             Paragraph(price_text, td_r),
             Paragraph(total_text, td_r),
         ])
@@ -826,10 +827,10 @@ def _generate_minimal(doc_id):
     if data["is_vat_payer"]:
         vat_label = "PVN 0% - Reverse Charge" if data["reverse_charge"] else f"PVN {data['vat_rate']:.0f}%"
         totals_data = [
-            [Paragraph("Bez PVN", tr), Paragraph(f"{data['subtotal']:.2f} EUR", tr)],
+            [Paragraph("Bez PVN", tr), Paragraph(fmt.eur(data['subtotal']), tr)],
             [Paragraph(vat_label, tr),
-             Paragraph(f"{data['vat_amount']:.2f} EUR", tr)],
-            [Paragraph("Kopā", tr_bold), Paragraph(f"{data['total']:.2f} EUR", tr_bold)],
+             Paragraph(fmt.eur(data['vat_amount']), tr)],
+            [Paragraph("Kopā", tr_bold), Paragraph(fmt.eur(data['total']), tr_bold)],
         ]
         totals_table = Table(totals_data, colWidths=[118 * mm, 36 * mm])
         totals_table.setStyle(TableStyle([
@@ -840,7 +841,7 @@ def _generate_minimal(doc_id):
         ]))
     else:
         totals_data = [
-            [Paragraph("Kopā", tr_bold), Paragraph(f"{data['total']:.2f} EUR", tr_bold)],
+            [Paragraph("Kopā", tr_bold), Paragraph(fmt.eur(data['total']), tr_bold)],
         ]
         totals_table = Table(totals_data, colWidths=[118 * mm, 36 * mm])
         totals_table.setStyle(TableStyle([

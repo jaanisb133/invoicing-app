@@ -1,406 +1,560 @@
 {% extends "base.html" %}
 
+{% if edit_mode %}
+    {% set form_title = "Rediģēt " ~ doc.doc_number %}
+{% elif doc_type == 'buy' %}
+    {% set form_title = "Jauns iegādes dokuments" %}
+{% elif doc_type == 'offer' %}
+    {% set form_title = "Jauns piedāvājums" %}
+{% else %}
+    {% set form_title = "Jauns rēķins" %}
+{% endif %}
+{% set is_vat_payer = settings.get('is_vat_payer', '1') == '1' %}
+{% set submit_label = "Saglabāt izmaiņas" if edit_mode else ("Izveidot piedāvājumu" if doc_type == 'offer' else ("Saglabāt dokumentu" if doc_type == 'buy' else "Izveidot rēķinu")) %}
+{% if edit_mode %}
+    {% set cancel_href = "/documents/" ~ doc.id %}
+{% elif from_offer %}
+    {% set cancel_href = "/documents/" ~ from_offer %}
+{% elif doc_type == 'offer' %}
+    {% set cancel_href = "/offers" %}
+{% else %}
+    {% set cancel_href = "/documents" %}
+{% endif %}
+
+{% block title %}{{ form_title }} · V-Rēķini{% endblock %}
+
 {% block content %}
 <style>
-.search-dropdown {
-    position: absolute; top: 100%; left: 0; z-index: 100;
-    min-width: 100%; width: max-content; max-width: 500px;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 10px; box-shadow: var(--shadow-md); max-height: 240px;
-    overflow-y: auto; margin-top: 4px;
-}
-.search-dropdown-item {
-    padding: 9px 12px; cursor: pointer; font-size: 14px;
+/* ---- invoice editor ---------------------------------------------------- */
+.editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
+.editor-main { min-width: 0; }
+.editor-rail { position: sticky; top: 24px; display: flex; flex-direction: column; gap: var(--gap); }
+
+.section-title { font-size: var(--fs-section); font-weight: 600; line-height: 24px; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.section-head .muted { font-size: 13px; }
+
+/* Combobox (client and product search) */
+.combo { position: relative; }
+.combo .search-dropdown[hidden] { display: none; }
+.combo-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--faint); pointer-events: none; }
+.combo-input { padding-left: 36px !important; }
+.field-error { font-size: 12px; color: var(--negative); margin-top: 6px; }
+.form-control.invalid { border-color: var(--negative); }
+
+/* Chosen client */
+.client-chosen { display: flex; align-items: flex-start; gap: 12px; }
+.client-chosen[hidden] { display: none; }
+.client-chosen-body { flex: 1; min-width: 0; }
+.client-chosen-name { font-size: 15px; font-weight: 600; line-height: 22px; }
+.client-chosen-meta { font-size: 13px; color: var(--muted); line-height: 18px; }
+
+/* Terms row */
+.terms { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr); gap: 0 16px; }
+.terms .chips { margin-top: 8px; }
+.terms .form-group { margin-bottom: 0; }
+
+/* Lines: a table you type into. Cells look like text until hovered or focused. */
+.lines { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.lines thead th { height: 32px; padding: 0 6px; font-size: 12px; color: var(--muted); font-weight: 400; border-bottom: 1px solid var(--border); }
+.lines thead th:first-child { padding-left: 0; }
+.lines thead th:last-child { padding-right: 0; }
+.lines tbody td { height: auto; padding: 4px 6px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.lines tbody td:first-child { padding-left: 0; }
+.lines tbody td:last-child { padding-right: 0; }
+.lines tbody tr:last-child td { border-bottom: 1px solid var(--rule); }
+.lines .c-qty { width: 84px; }
+.lines .c-unit { width: 92px; }
+.lines .c-price { width: 112px; }
+.lines .c-total { width: 116px; }
+.lines .c-del { width: 36px; }
+.lines th.c-qty, .lines th.c-price, .lines th.c-total { text-align: right; }
+.cell-input {
+    width: 100%;
+    height: 36px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background: transparent;
+    font-size: 14px;
     color: var(--text);
+    transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
 }
-.search-dropdown-item:hover { background: var(--bg-card-hover); }
-.docform-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.docform-title h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.6px; margin: 0; color: var(--text); }
-.docform-title .pill { font-size: 12px; padding: 4px 12px; }
+.cell-input.num { text-align: right; font-variant-numeric: tabular-nums; }
+.cell-input::placeholder { color: var(--faint); }
+.cell-input:hover:not([readonly]) { border-color: var(--border); background: var(--surface); }
+.cell-input:focus { outline: none; border-color: var(--text); background: var(--surface); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 10%, transparent); }
+.cell-input[readonly] { color: var(--muted); }
+.cell-input:disabled { color: var(--muted); }
+.cell-total { height: 36px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-variant-numeric: tabular-nums; }
+.cell-total.muted { color: var(--muted); font-size: 13px; }
+.row-del { width: 32px; height: 36px; border: 0; background: none; border-radius: var(--radius-control); color: var(--faint); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity var(--transition), color var(--transition); }
+.row-del svg { width: 16px; height: 16px; }
+.item-row:hover .row-del, .item-row:focus-within .row-del { opacity: 1; }
+.row-del:hover { color: var(--negative); background: var(--pill-negative-bg); }
+.row-del:focus-visible { opacity: 1; outline: 2px solid var(--text); }
+.row-sub { display: flex; gap: 12px; align-items: center; padding: 0 8px 4px; font-size: 12px; color: var(--muted); }
+.row-sub:empty { display: none; }
+.row-sub .check { font-size: 12px; gap: 6px; }
+.row-sub .check input { width: 14px; height: 14px; }
+.stock-hint { color: var(--muted); }
+.stock-warn { color: var(--negative); font-weight: 500; }
+.lines .search-dropdown { width: 100%; max-width: none; }
+
+.add-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 40px;
+    margin-top: 4px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: none;
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+    text-align: left;
+}
+.add-line:hover { background: var(--raised); color: var(--text); }
+.add-line svg { width: 16px; height: 16px; }
+.add-line kbd { margin-left: auto; }
+
+.totals { display: grid; grid-template-columns: auto auto; justify-content: end; gap: 6px 0; margin-top: 16px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.totals dt { color: var(--muted); }
+.totals dd { text-align: right; padding-left: 32px; }
+.totals .grand { font-size: 20px; line-height: 28px; font-weight: 700; color: var(--text); padding-top: 8px; border-top: 1px solid var(--border); }
+.totals dt.grand { font-size: 15px; font-weight: 600; }
+
+/* Rail: preview + total + the one primary action */
+.rail-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.rail-total-label { font-size: 13px; color: var(--muted); }
+.rail-total-value { font-size: var(--fs-kpi); line-height: 36px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rail-meta { font-size: 12px; color: var(--muted); margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; }
+.paper-frame { position: relative; display: block; width: 100%; border: 0; padding: 0; background: none; cursor: zoom-in; text-align: left; }
+.paper-frame .invoice-preview-wrapper {
+    padding: 18px;
+    font-size: 11px;
+    line-height: 1.45;
+    max-height: 62vh;
+    overflow: hidden;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px var(--border);
+    pointer-events: none;
+}
+.paper-frame::after { content: "Atvērt lielāku"; position: absolute; right: 8px; bottom: 8px; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.72); color: #fff; opacity: 0; transition: opacity var(--transition); }
+.paper-frame:hover::after, .paper-frame:focus-visible::after { opacity: 1; }
+.preview-modal .modal { max-width: 860px; padding: 0; overflow: hidden; }
+.preview-modal .modal-header { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.preview-modal .invoice-preview-wrapper { padding: 40px 48px; font-size: 14px; line-height: 1.5; zoom: 1.3; }
+.preview-modal .scroll { max-height: calc(100vh - 120px); overflow-y: auto; background: var(--raised); padding: 20px; }
+
+/* Phone: one column, the lines become two-row blocks, total pinned above the bottom bar */
+.editor-bar { display: none; }
+@media (max-width: 1180px) {
+    .editor-grid { grid-template-columns: minmax(0, 1fr); }
+    .editor-rail { position: static; }
+    .rail-preview { display: none; }
+}
+@media (max-width: 768px) {
+    .terms { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 12px; }
+    .terms .vat-field { grid-column: 1 / -1; }
+    .lines thead { display: none; }
+    .lines, .lines tbody { display: block; }
+    .lines tbody tr.item-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr) 36px;
+        grid-template-areas: "name name name del" "qty unit price price" "sub sub total total";
+        gap: 6px 8px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--rule);
+    }
+    .lines tbody tr.item-row td { display: block; width: auto; padding: 0; border: 0; }
+    .lines .c-name { grid-area: name; }
+    .lines .c-qty { grid-area: qty; }
+    .lines .c-unit { grid-area: unit; }
+    .lines .c-price { grid-area: price; }
+    .lines .c-total { grid-area: total; }
+    .lines .c-del { grid-area: del; }
+    .lines td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px 2px; }
+    .lines .c-total::before { display: none !important; }
+    .cell-input { height: 44px; border-color: var(--control); background: var(--surface); font-size: 16px; }
+    .lines .c-name .cell-input { font-weight: 500; }
+    .cell-total { height: 24px; font-weight: 600; padding-right: 2px; }
+    .row-del { opacity: 1; height: 44px; width: 36px; }
+    .row-sub { padding: 6px 2px 0; }
+    .add-line { height: 48px; justify-content: center; border: 1px dashed var(--control); margin-top: 12px; }
+    .add-line kbd { display: none; }
+    .rail-cta { display: none; }
+    .editor-bar {
+        display: flex;
+        position: fixed;
+        left: 0; right: 0;
+        bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+        z-index: 140;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+    }
+    .editor-bar .bar-total { flex: 1; min-width: 0; line-height: 18px; }
+    .editor-bar .bar-total small { display: block; font-size: 12px; color: var(--muted); }
+    .editor-bar .bar-total strong { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .page-body.editor-body { padding-bottom: 96px; }
+    .page-header .btn-group:not(:has(.segmented)) { display: none; }
+    .preview-modal .scroll { padding: 8px; }
+    .preview-modal .invoice-preview-wrapper { zoom: 1; padding: 20px 16px; font-size: 12px; }
+}
 </style>
+
 <div class="page-header">
-    <div class="docform-title">
-        {% if edit_mode %}
-            {% if doc_type == 'buy' %}
-            <span class="pill pill-warning">Iegāde</span>
-            {% elif doc_type == 'offer' %}
-            <span class="pill pill-brand">Piedāvājums</span>
-            {% else %}
-            <span class="pill pill-brand">Pārdošana</span>
-            {% endif %}
-            <h2>Rediģēt {{ doc.doc_number }}</h2>
-        {% else %}
-            {% if doc_type == 'buy' %}
-            <span class="pill pill-warning">Iegāde</span>
-            <h2>Jauns iegādes dokuments</h2>
-            {% elif doc_type == 'offer' %}
-            <span class="pill pill-brand">Piedāvājums</span>
-            <h2>Jauns piedāvājums</h2>
-            {% else %}
-            <span class="pill pill-brand">Pārdošana</span>
-            <h2>Jauns rēķins</h2>
-            {% endif %}
-        {% endif %}
+    <div>
+        <div class="page-title-row">
+            <h1>{{ form_title }}</h1>
+            {% if doc_type == 'buy' %}<span class="pill pill-warning">Iegāde</span>{% endif %}
+        </div>
+        <div class="page-sub">
+            {% if edit_mode %}{{ doc_type_name }} no {{ doc.doc_date[8:10] }}.{{ doc.doc_date[5:7] }}.{{ doc.doc_date[:4] }}
+            {% elif doc_type == 'offer' %}Numurs tiks piešķirts, saglabājot. Piedāvājums neietekmē apgrozījumu.
+            {% else %}Numurs tiks piešķirts, saglabājot.{% endif %}
+        </div>
     </div>
     <div class="btn-group">
-        {% if edit_mode %}
-        <a href="/documents/{{ doc.id }}" class="btn btn-outline">Atcelt</a>
-        {% elif from_offer %}
-        {# Converting an offer: the type is already decided, so the
-           Iegāde/Pārdošana switcher would only be a way to lose the data. #}
-        <a href="/documents/{{ from_offer }}" class="btn btn-outline">Atcelt</a>
-        {% elif doc_type == 'offer' %}
-        <a href="/offers" class="btn btn-outline">Atcelt</a>
-        {% else %}
-            {% if stock_enabled %}
-            <a href="/documents/new?doc_type=buy"
-               class="btn {% if doc_type == 'buy' %}btn-primary{% else %}btn-outline{% endif %}">Iegāde</a>
-            {% endif %}
-            <a href="/documents/new?doc_type=sell"
-               class="btn {% if doc_type == 'sell' %}btn-primary{% else %}btn-outline{% endif %}">Pārdošana</a>
+        {% if not edit_mode and not from_offer and doc_type != 'offer' and stock_enabled %}
+        <div class="segmented" role="group" aria-label="Dokumenta veids">
+            <a href="/documents/new?doc_type=sell" class="{% if doc_type == 'sell' %}on{% endif %}">Pārdošana</a>
+            <a href="/documents/new?doc_type=buy" class="{% if doc_type == 'buy' %}on{% endif %}">Iegāde</a>
+        </div>
         {% endif %}
+        <a href="{{ cancel_href }}" class="btn btn-ghost hide-mobile">Atcelt</a>
     </div>
 </div>
 
-<div class="page-body">
-    {% if request.query_params.get('error') %}
-    <div class="alert alert-danger">{{ request.query_params.get('error') }}</div>
+<div class="page-body editor-body">
+    {% set err = request.query_params.get('error') %}
+    {% if err %}
+    <div class="alert alert-danger">{% if err == 'no_items' %}Pievienojiet vismaz vienu rindu ar nosaukumu.{% else %}{{ err }}{% endif %}</div>
     {% endif %}
     {% if from_offer %}
-    <div class="alert alert-info" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span>Dati pārkopēti no piedāvājuma
-            <a href="/documents/{{ from_offer }}"><strong>{{ from_offer_number }}</strong></a>.
-            Pārbaudiet tos un izveidojiet rēķinu — piedāvājums paliks neizmainīts.</span>
+    <div class="alert">
+        Dati pārkopēti no piedāvājuma <a href="/documents/{{ from_offer }}">{{ from_offer_number }}</a>.
+        Pārbaudiet tos un izveidojiet rēķinu — piedāvājums paliks neizmainīts.
     </div>
     {% endif %}
 
-    <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm"
-          onsubmit="if(!document.getElementById('clientSelect').value){document.getElementById('clientSearchInput').focus();return false;}">
+    <form method="post" action="{% if edit_mode %}/documents/{{ doc.id }}/update{% else %}/documents/create{% endif %}" id="docForm" novalidate>
         <input type="hidden" name="doc_type" value="{{ doc_type }}">
         {% if from_offer %}<input type="hidden" name="from_offer" value="{{ from_offer }}">{% endif %}
+        <datalist id="unitList">{% for u in units %}<option value="{{ u }}">{% endfor %}</datalist>
 
-        <div class="doc-editor-layout">
-            <!-- LEFT COLUMN: Form -->
-            <div class="doc-editor-form">
-                <div class="card">
-                    <div class="card-header">Dokumenta informācija</div>
+        <div class="editor-grid">
+            <div class="editor-main">
+
+                <!-- Client -->
+                <section class="card">
                     <div class="card-body">
-                        <div class="form-row-3">
+                        <div class="section-head">
+                            <h2 class="section-title">{{ 'Piegādātājs' if doc_type == 'buy' else 'Klients' }}</h2>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="showQuickAddClient()">+ Jauns klients</button>
+                        </div>
+                        <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if prefill else '' }}">
+                        <div class="combo" id="clientCombo">
+                            <svg class="combo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                            <input type="text" id="clientSearchInput" class="form-control combo-input"
+                                   placeholder="Meklēt pēc nosaukuma vai reģ. nr." autocomplete="off"
+                                   role="combobox" aria-expanded="false" aria-controls="formClientDropdown" aria-label="Klients">
+                            <div id="formClientDropdown" class="search-dropdown" role="listbox" hidden></div>
+                        </div>
+                        <div class="client-chosen" id="clientChosen" hidden>
+                            <span class="brand-avatar" id="clientAvatar"></span>
+                            <div class="client-chosen-body">
+                                <div class="client-chosen-name" id="clientChosenName"></div>
+                                <div class="client-chosen-meta" id="clientChosenMeta"></div>
+                            </div>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="clearClient()">Mainīt</button>
+                        </div>
+                        <div class="field-error" id="clientError" hidden>Izvēlieties klientu, kam izrakstīt dokumentu.</div>
+                    </div>
+                </section>
+
+                <!-- Dates and VAT -->
+                <section class="card">
+                    <div class="card-body">
+                        <div class="terms">
                             <div class="form-group">
-                                <label>Klients *</label>
-                                <div style="display:flex;gap:8px">
-                                    <div style="flex:1;position:relative">
-                                        <input type="hidden" name="client_id" id="clientSelect" value="{{ doc.client_id if prefill else '' }}" required>
-                                        <input type="text" id="clientSearchInput" class="form-control" placeholder="Meklēt klientu..."
-                                               autocomplete="off" onfocus="showFormClientDropdown()" oninput="filterFormClients()">
-                                        <div id="formClientDropdown" class="search-dropdown" style="display:none">
-                                            {% for c in clients %}
-                                            <div class="search-dropdown-item" data-id="{{ c.id }}" onclick="selectFormClient('{{ c.id }}','{{ c.name | e }}')">{{ c.name }}</div>
-                                            {% endfor %}
-                                        </div>
-                                    </div>
-                                    <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddClient()" title="Ātri pievienot klientu" style="font-size:16px;padding:6px 12px">+</button>
+                                <label for="docDate">Datums</label>
+                                <input type="date" name="doc_date" class="form-control" id="docDate"
+                                       value="{{ doc.doc_date if edit_mode else (today if today else '') }}">
+                            </div>
+                            {% if doc_type != 'offer' %}
+                            <div class="form-group">
+                                <label for="paymentDueDate">Apmaksāt līdz</label>
+                                <input type="date" name="payment_due_date" id="paymentDueDate" class="form-control"
+                                       value="{{ doc.payment_due_date if edit_mode and doc.payment_due_date else '' }}">
+                                <div class="chips" id="dueChips">
+                                    <button type="button" class="chip" data-days="7">7 d.</button>
+                                    <button type="button" class="chip" data-days="14">14 d.</button>
+                                    <button type="button" class="chip" data-days="30">30 d.</button>
+                                    <button type="button" class="chip" data-days="">Bez termiņa</button>
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label>Datums</label>
-                                <input type="date" name="doc_date" class="form-control"
-                                       value="{{ doc.doc_date if edit_mode else (today if today else '') }}"
-                                       id="docDate" onchange="updatePreview()">
-                            </div>
-                            {% if settings.get('is_vat_payer', '1') == '1' %}
-                            <div class="form-group" id="vatRateGroup">
-                                <label>PVN likme (%)</label>
-                                <input type="number" name="vat_rate" id="vatRate" class="form-control"
-                                       value="{{ doc.vat_rate if prefill else settings.get('default_vat_rate', '21') }}" step="0.1" min="0" onchange="updatePreview()" oninput="updatePreview()">
-                                <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400;font-size:13px;cursor:pointer">
+                            {% endif %}
+                            {% if is_vat_payer %}
+                            <div class="form-group vat-field" id="vatRateGroup">
+                                <label for="vatRate">PVN likme</label>
+                                <div class="input-affix">
+                                    <input type="number" name="vat_rate" id="vatRate" class="form-control num"
+                                           value="{{ ('%g' % doc.vat_rate) if prefill else settings.get('default_vat_rate', '21') }}" step="0.1" min="0">
+                                    <span class="affix">%</span>
+                                </div>
+                                <label class="check" style="margin-top:10px">
                                     <input type="checkbox" name="reverse_charge" id="reverseCharge" value="1"
-                                           {% if prefill and doc.reverse_charge %}checked{% endif %}
-                                           onchange="toggleReverseCharge()">
-                                    Reverse Charge
+                                           {% if prefill and doc.reverse_charge %}checked{% endif %} onchange="toggleReverseCharge()">
+                                    Reverse charge (PVN 0 %)
                                 </label>
                             </div>
                             {% else %}
                             <input type="hidden" name="vat_rate" id="vatRate" value="0">
                             {% endif %}
                         </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>PDF veidne</label>
-                                <select name="template" id="templateSelect" class="form-control" onchange="updatePreview()">
-                                    {% for key, label in templates.items() %}
-                                    {% if tier_limits.all_templates or key == 'classic' %}
-                                    <option value="{{ key }}" {% if key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
-                                    {% else %}
-                                    <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
-                                    {% endif %}
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            {% if doc_type != 'offer' %}
-                            <div class="form-group">
-                                <label>Apmaksas termiņš</label>
-                                <input type="date" name="payment_due_date" id="paymentDueDate" class="form-control"
-                                       value="{{ doc.payment_due_date if edit_mode and doc.payment_due_date else '' }}">
-                                <span style="font-size:12px;color:var(--text-light)" id="dueDateHint"></span>
-                            </div>
-                            {% endif %}
-                            <div class="form-group">
-                                <label>Piezīmes</label>
-                                <input type="text" name="notes" class="form-control" id="notesInput"
-                                       value="{{ doc.notes if prefill and doc.notes else '' }}" oninput="updatePreview()">
-                            </div>
-                        </div>
                     </div>
-                </div>
+                </section>
 
                 {% if doc_type == 'offer' and branded_offers %}
-                <div class="card">
-                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                <section class="card">
+                    <div class="card-header">
                         <span>Tāmes saturs</span>
-                        <a href="/tames" class="btn btn-outline btn-sm">Pārvaldīt veidnes</a>
+                        <a href="/tames" class="btn btn-ghost btn-sm">Pārvaldīt veidnes</a>
                     </div>
                     <div class="card-body">
                         <input type="hidden" name="offer_branded" id="offerBranded" value="0">
                         <input type="hidden" name="offer_preset_id" id="offerPresetId" value="">
                         <div class="form-group">
-                            <label>Veidne</label>
+                            <label for="offerPresetSelect">Veidne</label>
                             <select id="offerPresetSelect" class="form-control" onchange="applyOfferPreset(this.value)">
-                                <option value="">— Standarta PDF izskats —</option>
+                                <option value="">Standarta PDF izskats</option>
                                 {% for p in offer_presets %}
                                 <option value="{{ p.id }}">{{ p.name }}</option>
                                 {% endfor %}
                             </select>
-                            <span style="font-size:12px;color:var(--text-light)">Izvēloties veidni, tāme tiks noformēta jūsu firmas dizainā. Tekstus zemāk var pielāgot šim piedāvājumam — veidne paliek neskarta.</span>
+                            <span class="field-hint">Ar veidni tāme tiks noformēta jūsu firmas dizainā. Tekstus zemāk var pielāgot šim piedāvājumam; veidne paliek neskarta.</span>
                         </div>
                         <div id="offerBrandedFields" style="display:none">
                             <div class="form-group">
-                                <label>Virsraksts uz tāmes</label>
+                                <label for="offerTitle">Virsraksts uz tāmes</label>
                                 <input type="text" name="offer_title" id="offerTitle" class="form-control">
                             </div>
                             <div class="form-group">
-                                <label style="display:flex;justify-content:space-between;align-items:center">Tehniskā specifikācija
-                                    <button type="button" class="btn btn-outline btn-sm" onclick="addOfferRow('offerSpecRows', offerSpecRowHtml)">+ Rinda</button>
-                                </label>
+                                <div class="section-head" style="margin-bottom:8px"><span class="field-label" style="margin:0">Tehniskā specifikācija</span>
+                                    <button type="button" class="btn btn-ghost btn-sm" onclick="addOfferRow('offerSpecRows', offerSpecRowHtml)">+ Rinda</button></div>
                                 <div id="offerSpecRows" class="tame-rows"></div>
                             </div>
                             <div class="form-group">
-                                <label style="display:flex;justify-content:space-between;align-items:center">Priekšrocības
-                                    <button type="button" class="btn btn-outline btn-sm" onclick="addOfferRow('offerBenefitRows', offerBenefitRowHtml)">+ Rinda</button>
-                                </label>
+                                <div class="section-head" style="margin-bottom:8px"><span class="field-label" style="margin:0">Priekšrocības</span>
+                                    <button type="button" class="btn btn-ghost btn-sm" onclick="addOfferRow('offerBenefitRows', offerBenefitRowHtml)">+ Rinda</button></div>
                                 <div id="offerBenefitRows" class="tame-rows"></div>
                             </div>
                             <div class="form-group">
-                                <label>Papildus nosacījumi</label>
+                                <label for="offerConditions">Papildu nosacījumi</label>
                                 <textarea name="offer_conditions" id="offerConditions" class="form-control" rows="2"></textarea>
                             </div>
                             <div class="form-group" style="margin-bottom:0">
-                                <label>Foto (no veidnes)</label>
+                                <span class="field-label">Foto (no veidnes)</span>
                                 <div id="offerPhotoInputs"></div>
                                 <div id="offerPhotoThumbs" class="offer-preset-photos"></div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </section>
                 {% endif %}
 
-                <div class="card">
-                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-                        <span>Preces / Pakalpojumi</span>
-                        <div class="btn-group">
-                            <button type="button" class="btn btn-outline btn-sm" onclick="showQuickAddProduct()">+ Jauns produkts</button>
-                            <button type="button" class="btn btn-primary btn-sm" onclick="addItemRow()">+ Pievienot rindu</button>
-                        </div>
-                    </div>
+                <!-- Lines -->
+                <section class="card">
                     <div class="card-body">
-                        <div class="table-wrapper">
-                            <table class="doc-items-table">
-                                <thead>
-                                    <tr>
-                                        <th>Produkts / Pakalpojums</th>
-                                        <th style="width:100px">Mērvienība</th>
-                                        <th style="width:100px">Daudzums</th>
-                                        <th style="width:100px">Cena</th>
-                                        <th style="width:100px">Summa</th>
-                                        <th style="width:40px"></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="itemsBody">
-                                </tbody>
-                                <tfoot>
-                                    <tr id="subtotalRow" style="{% if settings.get('is_vat_payer', '1') != '1' %}display:none{% endif %}">
-                                        <td colspan="4" class="text-right" style="font-weight:600">Summa bez PVN:</td>
-                                        <td id="subtotalDisplay" style="font-weight:600">0.00</td>
-                                        <td></td>
-                                    </tr>
-                                    <tr id="vatRow" style="{% if settings.get('is_vat_payer', '1') != '1' %}display:none{% endif %}">
-                                        <td colspan="4" class="text-right"><span id="vatLabel">PVN:</span></td>
-                                        <td id="vatDisplay">0.00</td>
-                                        <td></td>
-                                    </tr>
-                                    <tr>
-                                        <td colspan="4" class="text-right" style="font-weight:700;font-size:16px" id="totalLabel">{% if settings.get('is_vat_payer', '1') == '1' %}Kopā ar PVN:{% else %}Kopā:{% endif %}</td>
-                                        <td id="totalDisplay" style="font-weight:700;font-size:16px">0.00</td>
-                                        <td></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                        <div class="section-head">
+                            <h2 class="section-title">Rindas</h2>
+                            <span class="muted" id="lineCount"></span>
                         </div>
+                        <table class="lines" id="itemsTable">
+                            <thead>
+                                <tr>
+                                    <th class="c-name">Prece vai pakalpojums</th>
+                                    <th class="c-qty">Daudz.</th>
+                                    <th class="c-unit">Mērv.</th>
+                                    <th class="c-price">Cena</th>
+                                    <th class="c-total">Summa</th>
+                                    <th class="c-del"><span class="sr-only">Dzēst</span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemsBody"></tbody>
+                        </table>
+                        <button type="button" class="add-line" onclick="addItemRow(); focusLastRow();">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                            Pievienot rindu
+                            <kbd class="kbd">Enter</kbd>
+                        </button>
+                        <dl class="totals" id="totals">
+                            <dt id="subtotalLabel" {% if not is_vat_payer %}hidden{% endif %}>Summa bez PVN</dt>
+                            <dd id="subtotalDisplay" {% if not is_vat_payer %}hidden{% endif %}>0,00 €</dd>
+                            <dt id="vatLabel" {% if not is_vat_payer %}hidden{% endif %}>PVN</dt>
+                            <dd id="vatDisplay" {% if not is_vat_payer %}hidden{% endif %}>0,00 €</dd>
+                            <dt class="grand" id="totalLabel">{{ 'Kopā ar PVN' if is_vat_payer else 'Kopā' }}</dt>
+                            <dd class="grand" id="totalDisplay">0,00 €</dd>
+                        </dl>
+                        <div id="stockError" class="alert alert-danger" style="display:none;margin:16px 0 0"></div>
                     </div>
-                </div>
+                </section>
 
-                <div id="stockError" class="alert alert-danger" style="display:none;margin-bottom:12px"></div>
-                <button type="submit" id="submitBtn" class="btn btn-primary" style="font-size:15px;padding:12px 32px">
-                    {% if edit_mode %}Saglabāt izmaiņas{% else %}Izveidot dokumentu{% endif %}
-                </button>
+                <!-- Notes -->
+                <section class="card">
+                    <div class="card-body">
+                        <label for="notesInput" class="section-title" style="display:block;margin-bottom:10px">Piezīmes <span class="muted" style="font-size:13px;font-weight:400">— būs redzamas dokumentā</span></label>
+                        <textarea name="notes" class="form-control" id="notesInput" rows="2"
+                                  placeholder="Piemēram, darbu izpildes adrese vai apmaksas nosacījumi">{{ doc.notes if prefill and doc.notes else '' }}</textarea>
+                    </div>
+                </section>
             </div>
 
-            <!-- RIGHT COLUMN: Live Preview -->
-            <div class="doc-editor-preview">
-                <div class="card" style="position:sticky;top:20px">
-                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <aside class="editor-rail">
+                <section class="card rail-preview">
+                    <div class="card-header" style="padding-bottom:12px">
                         <span>Priekšskatījums</span>
-                        <span class="text-muted" style="font-size:11px" id="previewTemplateLabel">Klasiskā</span>
-                    </div>
-                    <div class="card-body" style="padding:0">
-                        <div class="invoice-preview-wrapper" id="invoicePreview">
-                            <p class="text-muted text-center" style="padding:24px">Aizpildiet dokumenta datus, lai redzētu priekšskatījumu</p>
+                        <div class="form-group" style="margin:0">
+                            <select name="template" id="templateSelect" class="form-control" style="height:30px;font-size:13px;width:auto" aria-label="PDF veidne">
+                                {% for key, label in templates.items() %}
+                                {% if tier_limits.all_templates or key == 'classic' %}
+                                <option value="{{ key }}" {% if key == settings.get('default_template', 'classic') %}selected{% endif %}>{{ label }}</option>
+                                {% else %}
+                                <option value="{{ key }}" disabled>{{ label }} (PRO)</option>
+                                {% endif %}
+                                {% endfor %}
+                            </select>
                         </div>
+                    </div>
+                    <div class="card-body" style="padding-top:0">
+                        <button type="button" class="paper-frame" onclick="openPreview()" aria-label="Atvērt priekšskatījumu lielāku">
+                            <div class="invoice-preview-wrapper" id="invoicePreview"></div>
+                        </button>
+                        <span class="sr-only" id="previewTemplateLabel"></span>
                         {% if doc_type == 'offer' and branded_offers %}
-                        <div id="brandedPreviewCard" style="display:none;padding:16px">
+                        <div id="brandedPreviewCard" style="display:none">
                             <img src="/static/img/tame_sample.jpg?v={{ css_version }}" alt="Tāmes dizaina paraugs"
-                                 style="width:100%;border:1px solid var(--border);border-radius:8px;display:block">
-                            <p class="text-muted" style="font-size:12.5px;margin:10px 2px 0">
-                                Tāme tiks noformēta firmas dizainā (paraugs augstāk ar veidnes tekstiem).
-                                Precīzs PDF būs redzams pēc saglabāšanas.
-                            </p>
+                                 style="width:100%;border:1px solid var(--border);border-radius:6px">
+                            <p class="field-hint">Tāme tiks noformēta firmas dizainā. Precīzs PDF būs redzams pēc saglabāšanas.</p>
                         </div>
                         {% endif %}
                     </div>
-                </div>
-            </div>
+                </section>
+
+                <section class="card rail-cta">
+                    <div class="card-body">
+                        <div class="rail-total">
+                            <span class="rail-total-label">Kopā apmaksai</span>
+                            <span class="rail-total-value" id="railTotal">0,00 €</span>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block btn-lg js-submit" id="submitBtn">
+                            {{ submit_label }}
+                        </button>
+                        <div class="rail-meta"><span id="railLines">—</span><span><kbd class="kbd" id="submitHint">Ctrl ↵</kbd></span></div>
+                    </div>
+                </section>
+            </aside>
+        </div>
+
+        <div class="editor-bar">
+            <div class="bar-total"><small>Kopā apmaksai</small><strong id="barTotal">0,00 €</strong></div>
+            <button type="button" class="btn btn-outline" onclick="openPreview()">Skatīt</button>
+            <button type="submit" class="btn btn-primary js-submit">{{ 'Saglabāt' if edit_mode else 'Izveidot' }}</button>
         </div>
     </form>
 </div>
 
-<!-- Quick Add Client Modal -->
-<div class="modal-overlay" id="quickAddClientModal">
-    <div class="modal">
-        <div class="modal-title">Ātrā klienta pievienošana</div>
-        <div class="form-group">
-            <div class="client-type-toggle" style="display:flex;gap:6px;background:var(--bg-input);padding:4px;border-radius:12px;border:1px solid var(--border);margin-bottom:4px">
-                <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:var(--brand);color:#fff;border-radius:9px;transition:all 0.15s;box-shadow:0 2px 6px rgba(59,130,246,0.32)" id="qc_type_business_label">
-                    <input type="radio" name="qc_client_type" value="business" checked
-                           onchange="qcToggleClientType('business')" style="display:none">
-                    Juridiska persona
-                </label>
-                <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:transparent;color:var(--text-light);border-radius:9px;transition:all 0.15s" id="qc_type_individual_label">
-                    <input type="radio" name="qc_client_type" value="individual"
-                           onchange="qcToggleClientType('individual')" style="display:none">
-                    Fiziska persona
-                </label>
-            </div>
+<!-- Full-size preview -->
+<div class="modal-overlay preview-modal" id="previewModal" onclick="if(event.target===this)this.classList.remove('active')">
+    <div class="modal" role="dialog" aria-label="Priekšskatījums">
+        <div class="modal-header">
+            <h3 id="previewModalTitle">Priekšskatījums</h3>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('previewModal').classList.remove('active')">Aizvērt</button>
         </div>
-        <div class="form-group">
-            <div class="client-save-toggle" style="display:flex;gap:6px;background:var(--bg-input);padding:4px;border-radius:12px;border:1px solid var(--border)">
-                <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:var(--brand);color:#fff;border-radius:9px;transition:all 0.15s;box-shadow:0 2px 6px rgba(59,130,246,0.32)" id="qc_save_keep_label">
-                    <input type="radio" name="qc_save_mode" value="keep" checked
-                           onchange="qcToggleSaveMode('keep')" style="display:none">
-                    Saglabāt sarakstā
-                </label>
-                <label style="flex:1;text-align:center;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:600;background:transparent;color:var(--text-light);border-radius:9px;transition:all 0.15s" id="qc_save_once_label">
-                    <input type="radio" name="qc_save_mode" value="once"
-                           onchange="qcToggleSaveMode('once')" style="display:none">
-                    Vienreizējs
-                </label>
-            </div>
-            <div style="font-size:12px;color:var(--text-light);margin-top:6px" id="qc_save_hint">Klients tiks saglabāts klientu sarakstā.</div>
-        </div>
-        <!-- Business name with registry search -->
-        <div class="form-group" id="qc_business_name_group">
-            <label>Nosaukums *</label>
-            <div class="registry-wrapper">
-                <input type="text" id="qc_name" class="form-control" required
-                       autocomplete="off" placeholder="Sāciet rakstīt uzņēmuma nosaukumu...">
-                <div class="registry-dropdown" id="qc_registry_dropdown"></div>
-            </div>
-            <div class="registry-hint">Meklē Uzņēmumu reģistrā</div>
-        </div>
-        <!-- Individual name fields -->
-        <div id="qc_individual_name_group" style="display:none">
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Vārds *</label>
-                    <input type="text" id="qc_first_name" class="form-control" placeholder="Vārds">
-                </div>
-                <div class="form-group">
-                    <label>Uzvārds *</label>
-                    <input type="text" id="qc_last_name" class="form-control" placeholder="Uzvārds">
-                </div>
-            </div>
-        </div>
-        <div class="form-group">
-            <label id="qc_reg_label">Reģ. Nr.</label>
-            <input type="text" id="qc_reg_number" class="form-control">
-        </div>
-        <div class="form-group">
-            <label style="font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px">
-                <input type="checkbox" id="qc_vat_payer" value="1"
-                       style="width:18px;height:18px;cursor:pointer"
-                       onchange="document.getElementById('qc_vat_group').style.display=this.checked?'':'none'">
-                Ir PVN maksātājs?
-            </label>
-        </div>
-        <div class="form-group" id="qc_vat_group" style="display:none">
-            <label>PVN Nr.</label>
-            <input type="text" id="qc_vat_number" class="form-control">
-            <button type="button" class="vat-validate-btn" onclick="validateVat('qc_vat_number', 'qc_vat_status')">&#x2713; Pārbaudīt VIES</button>
-            <div class="vat-status" id="qc_vat_status"></div>
-        </div>
-        <div class="form-group">
-            <label>Juridiskā adrese</label>
-            <input type="text" id="qc_legal_address" class="form-control">
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Banka</label>
-                <input type="text" id="qc_bank_name" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Bankas konts</label>
-                <input type="text" id="qc_bank_account" class="form-control">
-            </div>
-        </div>
-        <div class="modal-actions">
-            <button type="button" class="btn btn-outline"
-                    onclick="document.getElementById('quickAddClientModal').classList.remove('active')">Atcelt</button>
-            <button type="button" class="btn btn-primary" onclick="quickAddClient()">Pievienot</button>
-        </div>
+        <div class="scroll"><div class="invoice-preview-wrapper" id="invoicePreviewBig"></div></div>
     </div>
 </div>
 
-<!-- Quick Add Product Modal -->
-<div class="modal-overlay" id="quickAddProductModal">
-    <div class="modal">
-        <div class="modal-title">Ātrā produkta / pakalpojuma pievienošana</div>
+<!-- Quick add client -->
+<div class="modal-overlay" id="quickAddClientModal" onclick="if(event.target===this)this.classList.remove('active')">
+    <div class="modal" role="dialog" aria-labelledby="qcTitle">
+        <div class="modal-title" id="qcTitle">Jauns klients</div>
         <div class="form-group">
-            <label>Nosaukums *</label>
-            <input type="text" id="qp_name" class="form-control" required>
+            <div class="segmented block client-type-toggle">
+                <label><input type="radio" name="qc_client_type" value="business" checked onchange="qcToggleClientType('business')">Uzņēmums</label>
+                <label><input type="radio" name="qc_client_type" value="individual" onchange="qcToggleClientType('individual')">Privātpersona</label>
+            </div>
+        </div>
+        <div class="form-group" id="qc_business_name_group">
+            <label for="qc_name">Nosaukums</label>
+            <div class="registry-wrapper">
+                <input type="text" id="qc_name" class="form-control" autocomplete="off" placeholder="Sāciet rakstīt — meklēsim Uzņēmumu reģistrā">
+                <div class="registry-dropdown" id="qc_registry_dropdown"></div>
+            </div>
+            <div class="registry-hint">Izvēloties no saraksta, reģ. nr., adrese un PVN nr. aizpildīsies paši.</div>
+        </div>
+        <div id="qc_individual_name_group" style="display:none">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="qc_first_name">Vārds</label>
+                    <input type="text" id="qc_first_name" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="qc_last_name">Uzvārds</label>
+                    <input type="text" id="qc_last_name" class="form-control">
+                </div>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label id="qc_reg_label" for="qc_reg_number">Reģ. nr.</label>
+                <input type="text" id="qc_reg_number" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="qc_legal_address">Juridiskā adrese</label>
+                <input type="text" id="qc_legal_address" class="form-control">
+            </div>
         </div>
         <div class="form-group">
-            <label>Mērvienība</label>
-            <select id="qp_unit" class="form-control">
-                {% for u in units %}
-                <option value="{{ u }}">{{ u }}</option>
-                {% endfor %}
-            </select>
+            <label class="check">
+                <input type="checkbox" id="qc_vat_payer" value="1"
+                       onchange="document.getElementById('qc_vat_group').style.display=this.checked?'':'none'">
+                PVN maksātājs
+            </label>
+        </div>
+        <div class="form-group" id="qc_vat_group" style="display:none">
+            <label for="qc_vat_number">PVN nr.</label>
+            <input type="text" id="qc_vat_number" class="form-control">
+            <button type="button" class="vat-validate-btn" onclick="validateVat('qc_vat_number', 'qc_vat_status')">Pārbaudīt VIES</button>
+            <div class="vat-status" id="qc_vat_status"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="qc_bank_name">Banka</label>
+                <input type="text" id="qc_bank_name" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="qc_bank_account">Konts (IBAN)</label>
+                <input type="text" id="qc_bank_account" class="form-control">
+            </div>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+            <div class="segmented block client-save-toggle">
+                <label><input type="radio" name="qc_save_mode" value="keep" checked onchange="qcToggleSaveMode('keep')">Saglabāt sarakstā</label>
+                <label><input type="radio" name="qc_save_mode" value="once" onchange="qcToggleSaveMode('once')">Tikai šim dokumentam</label>
+            </div>
+            <div class="field-hint" id="qc_save_hint">Klients būs pieejams arī nākamajos rēķinos.</div>
         </div>
         <div class="modal-actions">
-            <button type="button" class="btn btn-outline"
-                    onclick="document.getElementById('quickAddProductModal').classList.remove('active')">Atcelt</button>
-            <button type="button" class="btn btn-primary" onclick="quickAddProduct()">Pievienot</button>
+            <button type="button" class="btn btn-ghost" onclick="document.getElementById('quickAddClientModal').classList.remove('active')">Atcelt</button>
+            <button type="button" class="btn btn-primary" onclick="quickAddClient()">Pievienot klientu</button>
         </div>
     </div>
 </div>
@@ -411,492 +565,593 @@
 const products = {{ products | tojson }};
 const clientsData = {{ clients | tojson }};
 const stockMap = {{ stock_map | tojson }};
+const productPrices = {{ product_prices | tojson }};
+const clientLastBilled = {{ client_last_billed | tojson }};
 const units = {{ units | tojson }};
-
-// --- Searchable client select ---
-function showFormClientDropdown() {
-    document.getElementById('formClientDropdown').style.display = 'block';
-    filterFormClients();
-}
-function filterFormClients() {
-    var q = document.getElementById('clientSearchInput').value.toLowerCase();
-    document.querySelectorAll('#formClientDropdown .search-dropdown-item').forEach(function(el) {
-        el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
-    });
-}
-function selectFormClient(id, name) {
-    document.getElementById('clientSelect').value = id;
-    document.getElementById('clientSearchInput').value = name;
-    document.getElementById('formClientDropdown').style.display = 'none';
-    updatePreview();
-}
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('#clientSearchInput') && !e.target.closest('#formClientDropdown')) {
-        document.getElementById('formClientDropdown').style.display = 'none';
-    }
-});
-// Init with current selection
-(function() {
-    var cid = document.getElementById('clientSelect').value;
-    if (cid) {
-        var c = clientsData.find(function(x) { return String(x.id) === String(cid); });
-        if (c) document.getElementById('clientSearchInput').value = c.name;
-    }
-})();
 const docType = "{{ doc_type }}";
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
 const companySettings = {{ settings | tojson }};
 const isVatPayer = companySettings.is_vat_payer !== '0';
 const entityType = companySettings.entity_type || 'business';
 const editMode = {{ 'true' if edit_mode else 'false' }};
-let savedVatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+const editItems = {{ edit_items | tojson if prefill else '[]' }};
+const editDocNumber = "{{ doc.doc_number if edit_mode else '' }}";
+const templateLabels = {{ templates | tojson }};
+let itemIndex = 0;
+let previewTimer = null;
 
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+document.getElementById('submitHint').textContent = (isMac ? '⌘' : 'Ctrl') + ' ↵';
+
+function initials(name) {
+    const words = String(name || '').replace(/^(SIA|AS|IK|ZS|biedrība)\s+/i, '').replace(/["„“]/g, '').trim().split(/\s+/);
+    return ((words[0] || '?')[0] + (words[1] ? words[1][0] : '')).toUpperCase();
+}
+function hashHue(name) {
+    let h = 0;
+    for (const ch of String(name || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return h % 10;
+}
+
+/* ------------------------------------------------------------ combobox */
+// A small keyboard-friendly list under an input: arrows move, Enter picks.
+function makeCombo(input, dropdown, render, onPick, opts) {
+    opts = opts || {};
+    let hl = -1;
+    function items() { return Array.from(dropdown.querySelectorAll('.search-dropdown-item')); }
+    function paint() {
+        items().forEach((el, i) => el.classList.toggle('hl', i === hl));
+        const cur = items()[hl];
+        if (cur) cur.scrollIntoView({ block: 'nearest' });
+    }
+    function open() {
+        dropdown.innerHTML = render(input.value);
+        dropdown.hidden = !dropdown.innerHTML.trim();
+        input.setAttribute('aria-expanded', dropdown.hidden ? 'false' : 'true');
+        // Pre-select the first real match; a "create" row is only ever chosen on purpose.
+        const first = items()[0];
+        hl = first && !first.classList.contains('create') ? 0 : -1;
+        paint();
+    }
+    function close() { dropdown.hidden = true; input.setAttribute('aria-expanded', 'false'); hl = -1; }
+    // Product cells that already hold a name stay quiet until the user types.
+    input.addEventListener('focus', () => { if (!opts.focusOpensOnlyWhenEmpty || !input.value.trim()) open(); });
+    input.addEventListener('input', open);
+    input.addEventListener('blur', () => setTimeout(close, 120));
+    input.addEventListener('keydown', e => {
+        if (dropdown.hidden || e.metaKey || e.ctrlKey) return;
+        const list = items();
+        if (e.key === 'ArrowDown') { e.preventDefault(); hl = Math.min(hl + 1, list.length - 1); paint(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); hl = Math.max(hl - 1, 0); paint(); }
+        else if (e.key === 'Enter' && hl >= 0 && list[hl]) { e.preventDefault(); e.stopPropagation(); onPick(list[hl].dataset); close(); }
+        else if (e.key === 'Escape') { close(); }
+    });
+    dropdown.addEventListener('mousedown', e => {
+        const el = e.target.closest('.search-dropdown-item');
+        if (!el) return;
+        e.preventDefault();
+        onPick(el.dataset);
+        close();
+    });
+    return { open, close, isOpen: () => !dropdown.hidden };
+}
+
+/* -------------------------------------------------------------- client */
+const clientInput = document.getElementById('clientSearchInput');
+const clientDropdown = document.getElementById('formClientDropdown');
+
+function renderClientList(q) {
+    q = (q || '').trim().toLowerCase();
+    let list = clientsData.slice().sort((a, b) => {
+        const da = clientLastBilled[a.id] || '', dbb = clientLastBilled[b.id] || '';
+        if (da !== dbb) return da < dbb ? 1 : -1;
+        return a.name.localeCompare(b.name, 'lv');
+    });
+    if (q) list = list.filter(c => c.name.toLowerCase().includes(q) || String(c.reg_number || '').includes(q));
+    let html = list.slice(0, 40).map(c => {
+        const last = clientLastBilled[c.id];
+        const meta = last ? 'pēdējais ' + fmtDate(last) : (c.reg_number ? 'reģ. ' + esc(c.reg_number) : '');
+        return '<div class="search-dropdown-item" role="option" data-action="pick" data-id="' + c.id + '">'
+            + '<span>' + esc(c.name) + '</span><span class="meta">' + meta + '</span></div>';
+    }).join('');
+    if (!list.length && q) html = '<div class="search-dropdown-empty">Nav tāda klienta sarakstā.</div>';
+    html += '<div class="search-dropdown-item create" data-action="create" data-q="' + esc(q) + '">+ Jauns klients'
+        + (q ? ' “' + esc(clientInput.value.trim()) + '”' : '') + '</div>';
+    return html;
+}
+const clientCombo = makeCombo(clientInput, clientDropdown, renderClientList, data => {
+    if (data.action === 'create') { showQuickAddClient(clientInput.value.trim()); return; }
+    const c = clientsData.find(x => String(x.id) === String(data.id));
+    if (c) selectFormClient(String(c.id), c.name);
+});
+
+function selectFormClient(id, name) {
+    const c = clientsData.find(x => String(x.id) === String(id)) || { id, name };
+    document.getElementById('clientSelect').value = id;
+    clientInput.value = c.name;
+    const av = document.getElementById('clientAvatar');
+    av.textContent = initials(c.name);
+    av.className = 'brand-avatar bg-' + hashHue(c.name);
+    document.getElementById('clientChosenName').textContent = c.name;
+    const meta = [];
+    if (c.reg_number) meta.push('Reģ. nr. ' + c.reg_number);
+    if (c.vat_number) meta.push('PVN ' + c.vat_number);
+    if (c.legal_address) meta.push(c.legal_address);
+    document.getElementById('clientChosenMeta').textContent = meta.join(' · ') || 'Bez rekvizītiem';
+    document.getElementById('clientCombo').hidden = true;
+    document.getElementById('clientChosen').hidden = false;
+    document.getElementById('clientError').hidden = true;
+    clientInput.classList.remove('invalid');
+    updatePreview();
+}
+function clearClient() {
+    document.getElementById('clientSelect').value = '';
+    document.getElementById('clientChosen').hidden = true;
+    document.getElementById('clientCombo').hidden = false;
+    clientInput.value = '';
+    clientInput.focus();
+    updatePreview();
+}
+(function () {
+    const cid = document.getElementById('clientSelect').value;
+    if (cid) {
+        const c = clientsData.find(x => String(x.id) === String(cid));
+        if (c) selectFormClient(String(c.id), c.name);
+    }
+})();
+
+/* ------------------------------------------------------------ dates/VAT */
+let savedVatRate = parseFloat(document.getElementById('vatRate').value) || 0;
 function toggleReverseCharge() {
     const cb = document.getElementById('reverseCharge');
     const vatInput = document.getElementById('vatRate');
     if (cb && cb.checked) {
         savedVatRate = parseFloat(vatInput.value) || savedVatRate;
         vatInput.value = '0';
-        vatInput.disabled = true;
+        vatInput.readOnly = true;
     } else {
-        vatInput.disabled = false;
+        vatInput.readOnly = false;
         vatInput.value = savedVatRate || companySettings.default_vat_rate || '21';
     }
     recalculate();
 }
-// Initialize on page load if editing a reverse charge doc
 if (document.getElementById('reverseCharge') && document.getElementById('reverseCharge').checked) {
-    document.getElementById('vatRate').disabled = true;
+    document.getElementById('vatRate').readOnly = true;
 }
-const editItems = {{ edit_items | tojson if prefill else '[]' }};
-const editDocNumber = "{{ doc.doc_number if edit_mode else '' }}";
-let itemIndex = 0;
 
 const dateInput = document.getElementById('docDate');
-if (!dateInput.value) {
-    dateInput.value = new Date().toISOString().slice(0, 10);
-}
-
-const paymentDueDays = parseInt("{{ settings.get('payment_due_days', '') }}") || 0;
+if (!dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
 const dueDateInput = document.getElementById('paymentDueDate');
-const dueDateHint = document.getElementById('dueDateHint');
+const paymentDueDays = parseInt("{{ settings.get('payment_due_days', '') }}") || 0;
 
-function setDateValue(el, isoDate) {
-    if (!el) return;
-    if (el._flatpickr) {
-        el._flatpickr.setDate(isoDate, false);
-    } else {
-        el.value = isoDate;
-    }
+function addDays(iso, n) {
+    const d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    const p = x => String(x).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
-
-function calcDefaultDueDate() {
-    if (!dueDateInput || dueDateInput.value || !paymentDueDays) return;
-    const docDate = dateInput.value;
-    if (!docDate) return;
-    const d = new Date(docDate);
-    d.setDate(d.getDate() + paymentDueDays);
-    setDateValue(dueDateInput, d.toISOString().slice(0, 10));
-    if (dueDateHint) dueDateHint.textContent = paymentDueDays + ' dienas no dokumenta datuma';
+function dueDays() {
+    if (!dueDateInput || !dueDateInput.value || !dateInput.value) return null;
+    return Math.round((new Date(dueDateInput.value) - new Date(dateInput.value)) / 86400000);
 }
-
-if (!editMode && paymentDueDays && dueDateInput) {
-    calcDefaultDueDate();
-    dateInput.addEventListener('change', function() {
-        setDateValue(dueDateInput, '');
-        calcDefaultDueDate();
+function paintDueChips() {
+    if (!dueDateInput) return;
+    const n = dueDays();
+    document.querySelectorAll('#dueChips .chip').forEach(ch => {
+        const d = ch.dataset.days;
+        ch.classList.toggle('on', d === '' ? !dueDateInput.value : Number(d) === n);
     });
 }
+function setDue(days) {
+    if (!dueDateInput) return;
+    dueDateInput.value = (days === '' || days == null) ? '' : addDays(dateInput.value, Number(days));
+    paintDueChips();
+}
+if (dueDateInput) {
+    if (!editMode && !dueDateInput.value && paymentDueDays) setDue(paymentDueDays);
+    document.getElementById('dueChips').addEventListener('click', e => {
+        const ch = e.target.closest('.chip');
+        if (ch) setDue(ch.dataset.days);
+    });
+    let lastDays = dueDays();
+    dateInput.addEventListener('change', () => {
+        // Moving the document date keeps the same payment term.
+        if (lastDays != null) dueDateInput.value = addDays(dateInput.value, lastDays);
+        paintDueChips();
+        updatePreview();
+    });
+    dueDateInput.addEventListener('change', () => { lastDays = dueDays(); paintDueChips(); });
+    paintDueChips();
+} else {
+    dateInput.addEventListener('change', updatePreview);
+}
+document.getElementById('vatRate').addEventListener('input', recalculate);
 
-const templateLabels = {{ templates | tojson }};
+/* ---------------------------------------------------------------- lines */
+const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
 function addItemRow(presetProduct, presetUnit, presetQty, presetPrice, presetName, presetIncluded) {
     const idx = itemIndex++;
-    const tbody = document.getElementById('itemsBody');
     const tr = document.createElement('tr');
     tr.className = 'item-row';
     tr.id = 'item-' + idx;
 
-    let unitOptions = '';
-    units.forEach(u => {
-        const selected = presetUnit && u === presetUnit ? ' selected' : '';
-        unitOptions += '<option value="' + u + '"' + selected + '>' + u + '</option>';
-    });
-
-    const qty = presetQty || 1;
-    const price = presetPrice || 0;
-
-    // Initial product name comes from preset or by looking up the preset product id
-    let initialName = presetName || '';
-    let initialPid = presetProduct || '';
-    if (presetProduct && !initialName) {
+    let name = presetName || '';
+    const pid = presetProduct || '';
+    if (presetProduct && !name) {
         const p = products.find(p => p.id == presetProduct);
-        if (p) initialName = p.name;
+        if (p) name = p.name;
     }
+    const included = !!presetIncluded;
+    const qty = presetQty != null && presetQty !== '' ? fmtQty(presetQty) : '1';
+    const price = (presetPrice != null && presetPrice !== '' && !included) ? fmtNum(presetPrice) : '';
+    const unit = presetUnit || (units[0] || 'gab');
 
-    const included = presetIncluded ? true : false;
-    const includedAttr = included ? 'checked' : '';
-    const priceDisabledAttr = included ? 'disabled' : 'required';
-    const priceValue = included ? '' : price;
-    const includedRowHtml = (docType === 'offer') ? `
-        <tr class="item-row-included" id="item-included-${idx}">
-            <td></td>
-            <td colspan="5" style="padding-top:0;padding-bottom:8px">
-                <label style="display:inline-flex;align-items:center;gap:6px;font-weight:400;font-size:12.5px;color:var(--text-light);cursor:pointer">
-                    <input type="checkbox" name="items[${idx}][included_in_price]" value="1" id="included-${idx}"
-                           onchange="toggleIncludedInPrice(${idx})" ${includedAttr}
-                           style="width:14px;height:14px;cursor:pointer">
-                    Iekļauts cenā (nerādīt cenu šai pozīcijai)
-                </label>
-            </td>
-        </tr>` : '';
     tr.innerHTML = `
-        <td>
-            <div class="product-search-wrapper" style="position:relative;display:flex;gap:4px">
-                <input type="hidden" name="items[${idx}][product_id]" id="product-pid-${idx}" value="${initialPid}">
-                <input type="text" name="items[${idx}][product_name]" id="product-name-${idx}" class="form-control product-search-input"
-                       value="${initialName.replace(/"/g, '&quot;')}" autocomplete="off"
-                       placeholder="Meklēt vai ierakstīt produktu..."
-                       data-idx="${idx}" required>
-                <div class="search-dropdown product-search-dropdown" id="product-dropdown-${idx}" style="display:none"></div>
-                <button type="button" class="btn btn-success btn-sm" onclick="showQuickAddProduct(this)" style="flex-shrink:0;font-size:14px;padding:4px 8px">+</button>
+        <td class="c-name">
+            <div class="combo">
+                <input type="hidden" name="items[${idx}][product_id]" id="product-pid-${idx}" value="${esc(pid)}">
+                <input type="text" name="items[${idx}][product_name]" id="product-name-${idx}" class="cell-input"
+                       value="${esc(name)}" autocomplete="off" placeholder="Nosaukums vai produkts no saraksta"
+                       aria-label="Prece vai pakalpojums" data-idx="${idx}">
+                <div class="search-dropdown" id="product-dropdown-${idx}" role="listbox" hidden></div>
             </div>
-            <div class="stock-hint" id="stock-hint-${idx}"></div>
+            <div class="row-sub">${docType === 'offer' ? `<label class="check"><input type="checkbox" name="items[${idx}][included_in_price]" value="1" id="included-${idx}" ${included ? 'checked' : ''} onchange="toggleIncludedInPrice(${idx})">Iekļauts cenā</label>` : ''}<span class="stock-hint" id="stock-hint-${idx}"></span></div>
         </td>
-        <td data-label="Mērvienība"><select name="items[${idx}][unit]" id="unit-${idx}" class="form-control" ${stockEnabled ? 'disabled' : ''}>${unitOptions}</select>${stockEnabled ? `<input type="hidden" name="items[${idx}][unit]" id="unit-hidden-${idx}" value="${presetUnit || units[0]}">` : ''}</td>
-        <td data-label="Daudzums"><input type="number" name="items[${idx}][quantity]" class="form-control" step="0.01" min="0.01" value="${qty}" placeholder="Daudzums" onchange="recalculate()" oninput="recalculate()" required></td>
-        <td data-label="Cena"><input type="number" name="items[${idx}][price_per_unit]" id="price-${idx}" class="form-control" step="0.01" min="0" value="${priceValue}" placeholder="${included ? 'Iekļauts cenā' : 'Cena'}" onchange="recalculate()" oninput="recalculate()" ${priceDisabledAttr}></td>
-        <td class="item-total text-right" id="total-${idx}">${included ? 'Iekļauts cenā' : '0.00'}</td>
-        <td><button type="button" class="btn btn-danger btn-sm" onclick="removeItemRow(${idx})">X</button></td>
-    `;
-    tbody.appendChild(tr);
-    if (includedRowHtml) {
-        const wrap = document.createElement('tbody');
-        wrap.innerHTML = includedRowHtml;
-        tbody.appendChild(wrap.firstElementChild);
-    }
-    // Wire the product search behavior
+        <td class="c-qty" data-label="Daudzums"><input type="text" inputmode="decimal" name="items[${idx}][quantity]" class="cell-input num js-qty" value="${esc(qty)}" aria-label="Daudzums"></td>
+        <td class="c-unit" data-label="Mērvienība"><input type="text" list="unitList" name="items[${idx}][unit]" id="unit-${idx}" class="cell-input" value="${esc(unit)}" aria-label="Mērvienība" ${stockEnabled ? 'readonly title="Mērvienību nosaka produkts"' : ''}></td>
+        <td class="c-price" data-label="Cena, €"><input type="text" inputmode="decimal" name="items[${idx}][price_per_unit]" id="price-${idx}" class="cell-input num js-price" value="${esc(price)}" placeholder="${included ? 'iekļauts' : '0,00'}" aria-label="Cena" ${included ? 'disabled' : ''}></td>
+        <td class="c-total"><div class="cell-total" id="total-${idx}">${included ? 'iekļauts' : '0,00'}</div></td>
+        <td class="c-del"><button type="button" class="row-del" onclick="removeItemRow(${idx})" aria-label="Dzēst rindu">${ICON_X}</button></td>`;
+    document.getElementById('itemsBody').appendChild(tr);
     initProductSearch(idx);
+    wireRowKeys(tr);
     recalculate();
+    return tr;
+}
+
+function focusLastRow() {
+    const rows = document.querySelectorAll('.item-row');
+    const last = rows[rows.length - 1];
+    if (last) last.querySelector('[id^="product-name-"]').focus();
+}
+
+// Enter moves along the row like a spreadsheet; on the last price it opens a new row.
+function wireRowKeys(tr) {
+    const nameIn = tr.querySelector('[id^="product-name-"]');
+    const qtyIn = tr.querySelector('.js-qty');
+    const unitIn = tr.querySelector('[id^="unit-"]');
+    const priceIn = tr.querySelector('.js-price');
+    const order = [nameIn, qtyIn, unitIn, priceIn];
+    order.forEach((el, i) => el.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.defaultPrevented) return;
+        e.preventDefault();
+        let next = order.slice(i + 1).find(x => !x.disabled && !x.readOnly);
+        if (!next) {
+            const rows = Array.from(document.querySelectorAll('.item-row'));
+            const nextRow = rows[rows.indexOf(tr) + 1];
+            if (nextRow) { nextRow.querySelector('[id^="product-name-"]').focus(); return; }
+            addItemRow();
+            focusLastRow();
+            return;
+        }
+        next.focus();
+        if (next.select) next.select();
+    }));
+    [qtyIn, priceIn].forEach(el => {
+        el.addEventListener('input', recalculate);
+        el.addEventListener('blur', () => {
+            // Tidy the number the way it will print: "8.5" becomes "8,50".
+            const v = parseNum(el.value);
+            if (!isNaN(v)) el.value = el === priceIn ? fmtNum(v) : fmtQty(v);
+        });
+    });
+    unitIn.addEventListener('input', updatePreview);
 }
 
 function toggleIncludedInPrice(idx) {
     const cb = document.getElementById('included-' + idx);
     const priceInput = document.getElementById('price-' + idx);
-    const totalCell = document.getElementById('total-' + idx);
-    if (!cb || !priceInput || !totalCell) return;
-    if (cb.checked) {
-        priceInput.value = '';
-        priceInput.disabled = true;
-        priceInput.removeAttribute('required');
-        priceInput.placeholder = 'Iekļauts cenā';
-    } else {
-        priceInput.disabled = false;
-        priceInput.setAttribute('required', '');
-        priceInput.placeholder = 'Cena';
-    }
+    if (!cb || !priceInput) return;
+    priceInput.disabled = cb.checked;
+    if (cb.checked) priceInput.value = '';
+    priceInput.placeholder = cb.checked ? 'iekļauts' : '0,00';
     recalculate();
+}
+
+function productMeta(p) {
+    const parts = [];
+    const last = productPrices[p.id];
+    if (last != null) parts.push(fmtEur(last) + ' / ' + esc(p.unit));
+    else parts.push(esc(p.unit));
+    if (stockEnabled && docType === 'sell') parts.push('atlikums ' + fmtQty(stockMap[p.id] || 0));
+    return parts.join(' · ');
 }
 
 function initProductSearch(idx) {
     const input = document.getElementById('product-name-' + idx);
     const dropdown = document.getElementById('product-dropdown-' + idx);
-    if (!input || !dropdown) return;
-
-    function renderResults(query) {
+    function render(query) {
         const q = (query || '').trim().toLowerCase();
-        const matches = q
-            ? products.filter(p => p.name.toLowerCase().includes(q))
-            : products.slice();
-        if (matches.length === 0) {
-            dropdown.innerHTML = '<div class="search-dropdown-item" style="color:var(--text-light);cursor:default">' +
-                'Nav atrasts. Tiks izmantots ierakstītais teksts (netiks saglabāts kā produkts).' +
-                '</div>';
-        } else {
-            dropdown.innerHTML = matches.map(p => {
-                const stockInfo = (stockEnabled && docType === 'sell') ? ' (atl: ' + (stockMap[p.id] || 0).toFixed(2) + ')' : '';
-                return '<div class="search-dropdown-item" data-pid="' + p.id + '" data-unit="' + p.unit + '" data-name="' + p.name.replace(/"/g, '&quot;') + '">' +
-                       '<strong>' + p.name + '</strong>' +
-                       '<span style="color:var(--text-light);font-size:12px">' + stockInfo + '</span>' +
-                       '</div>';
-            }).join('');
-            dropdown.querySelectorAll('.search-dropdown-item').forEach(el => {
-                el.addEventListener('mousedown', function(ev) {
-                    ev.preventDefault();
-                    selectProduct(idx, el.dataset.pid, el.dataset.name, el.dataset.unit);
-                });
-            });
+        const matches = q ? products.filter(p => p.name.toLowerCase().includes(q)) : products.slice();
+        let html = matches.slice(0, 30).map(p =>
+            '<div class="search-dropdown-item" role="option" data-action="pick" data-pid="' + p.id + '">'
+            + '<span>' + esc(p.name) + '</span><span class="meta">' + productMeta(p) + '</span></div>').join('');
+        const exact = q && products.some(p => p.name.toLowerCase() === q);
+        if (q && !exact) {
+            html += '<div class="search-dropdown-item create" data-action="create">+ Saglabāt “' + esc(input.value.trim()) + '” kā produktu</div>';
         }
-        dropdown.style.display = 'block';
+        return html;
     }
-
-    input.addEventListener('focus', () => renderResults(input.value));
+    makeCombo(input, dropdown, render, data => {
+        if (data.action === 'create') { quickAddProduct(idx, input.value.trim()); return; }
+        const p = products.find(x => String(x.id) === String(data.pid));
+        if (p) selectProduct(idx, p.id, p.name, p.unit);
+    }, { focusOpensOnlyWhenEmpty: true });
     input.addEventListener('input', () => {
-        // User is typing — clear the bound product_id (becomes free-text unless they pick one)
+        // Typing over a picked product turns the line back into free text.
         document.getElementById('product-pid-' + idx).value = '';
-        renderResults(input.value);
-    });
-    input.addEventListener('blur', () => {
-        // Close dropdown shortly after blur so mousedown on item can fire
-        setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+        updateStockHint(idx);
+        recalculate();
     });
 }
 
 function selectProduct(idx, pid, name, unit) {
     document.getElementById('product-pid-' + idx).value = pid;
     document.getElementById('product-name-' + idx).value = name;
-    const unitSel = document.getElementById('unit-' + idx);
-    if (unitSel && unit) {
-        unitSel.value = unit;
-        const hidden = document.getElementById('unit-hidden-' + idx);
-        if (hidden) hidden.value = unit;
+    const unitIn = document.getElementById('unit-' + idx);
+    if (unitIn && unit) unitIn.value = unit;
+    const priceIn = document.getElementById('price-' + idx);
+    const last = productPrices[pid];
+    if (priceIn && !priceIn.disabled && last != null && !(parseNum(priceIn.value) > 0)) {
+        priceIn.value = fmtNum(last);
     }
-    document.getElementById('product-dropdown-' + idx).style.display = 'none';
-    if (stockEnabled && docType === 'sell' && pid) {
-        const stock = stockMap[parseInt(pid)] || 0;
-        const hint = document.getElementById('stock-hint-' + idx);
-        if (hint) {
-            hint.textContent = 'Pieejams: ' + stock.toFixed(2);
-            hint.className = stock <= 0 ? 'stock-hint stock-warn' : 'stock-hint';
-        }
-    }
+    updateStockHint(idx);
     recalculate();
+    const qty = document.querySelector('#item-' + idx + ' .js-qty');
+    if (qty) { qty.focus(); qty.select(); }
+}
+
+function updateStockHint(idx) {
+    const hint = document.getElementById('stock-hint-' + idx);
+    if (!hint) return;
+    const pid = parseInt(document.getElementById('product-pid-' + idx).value) || 0;
+    if (!stockEnabled || docType !== 'sell' || !pid) { hint.textContent = ''; return; }
+    const qty = parseNum(document.querySelector('#item-' + idx + ' .js-qty').value) || 0;
+    const available = stockMap[pid] || 0;
+    hint.textContent = 'Noliktavā ' + fmtQty(available);
+    hint.className = qty > available ? 'stock-hint stock-warn' : 'stock-hint';
 }
 
 function removeItemRow(idx) {
     const row = document.getElementById('item-' + idx);
+    const rows = Array.from(document.querySelectorAll('.item-row'));
+    const prev = rows[rows.indexOf(row) - 1];
     if (row) row.remove();
-    const includedRow = document.getElementById('item-included-' + idx);
-    if (includedRow) includedRow.remove();
-    // Ensure at least one row remains
-    if (document.querySelectorAll('.item-row').length === 0) {
-        addItemRow();
-    }
+    if (!document.querySelectorAll('.item-row').length) addItemRow();
     recalculate();
+    const target = prev || document.querySelector('.item-row');
+    if (target) target.querySelector('[id^="product-name-"]').focus();
+}
+
+function lineValues(row) {
+    const idx = row.id.split('-')[1];
+    const includedCb = document.getElementById('included-' + idx);
+    const included = !!(includedCb && includedCb.checked);
+    const qty = parseNum(row.querySelector('.js-qty').value);
+    const price = included ? 0 : parseNum(row.querySelector('.js-price').value);
+    return {
+        idx, included,
+        name: (row.querySelector('[id^="product-name-"]').value || '').trim(),
+        unit: row.querySelector('[id^="unit-"]').value,
+        qty: isNaN(qty) ? 0 : qty,
+        price: isNaN(price) ? 0 : price,
+    };
+}
+
+function currentVatRate() {
+    return isVatPayer ? (parseFloat(document.getElementById('vatRate').value) || 0) : 0;
 }
 
 function recalculate() {
-    let subtotal = 0;
+    let subtotal = 0, named = 0;
     document.querySelectorAll('.item-row').forEach(row => {
-        const idx = row.id.split('-')[1];
-        const includedCb = document.getElementById('included-' + idx);
-        const isIncluded = includedCb && includedCb.checked;
-        const totalCell = document.getElementById('total-' + idx);
-        if (isIncluded) {
-            if (totalCell) totalCell.textContent = 'Iekļauts cenā';
-            return;
-        }
-        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
-        const price = parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0;
-        const lineTotal = qty * price;
-        subtotal += lineTotal;
-        if (totalCell) totalCell.textContent = lineTotal.toFixed(2);
+        const v = lineValues(row);
+        const cell = document.getElementById('total-' + v.idx);
+        if (v.name) named++;
+        if (v.included) { cell.textContent = 'iekļauts'; cell.classList.add('muted'); return; }
+        // Same arithmetic as the server and the PDF: lines unrounded, rounded only for display.
+        const line = v.qty * v.price;
+        subtotal += line;
+        cell.textContent = fmtNum(line);
+        cell.classList.remove('muted');
     });
-
-    const rcCheckbox = document.getElementById('reverseCharge');
-    const isReverseCharge = rcCheckbox && rcCheckbox.checked;
-    const vatRate = isVatPayer ? (parseFloat(document.getElementById('vatRate').value) || 0) : 0;
-    const vat = subtotal * (vatRate / 100);
+    const rc = document.getElementById('reverseCharge');
+    const reverse = rc && rc.checked;
+    const rate = currentVatRate();
+    const vat = subtotal * (rate / 100);
     const total = subtotal + vat;
 
-    document.getElementById('subtotalDisplay').textContent = subtotal.toFixed(2);
-    document.getElementById('vatDisplay').textContent = vat.toFixed(2);
-    document.getElementById('totalDisplay').textContent = total.toFixed(2);
-    const vatLabel = document.getElementById('vatLabel');
-    if (vatLabel) {
-        vatLabel.textContent = isReverseCharge ? 'PVN (0% - Reverse Charge):' : 'PVN:';
-    }
+    document.getElementById('subtotalDisplay').textContent = fmtEur(subtotal);
+    document.getElementById('vatDisplay').textContent = fmtEur(vat);
+    document.getElementById('vatLabel').textContent = reverse ? 'PVN 0 % (reverse charge)' : 'PVN ' + fmtQty(rate) + ' %';
+    document.getElementById('totalDisplay').textContent = fmtEur(total);
+    document.getElementById('railTotal').textContent = fmtEur(total);
+    document.getElementById('barTotal').textContent = fmtEur(total);
+    const lines = named === 1 ? '1 rinda' : named + ' rindas';
+    document.getElementById('railLines').textContent = named ? lines : 'Nav rindu';
+    document.getElementById('lineCount').textContent = named ? lines : '';
 
+    document.querySelectorAll('.item-row').forEach(row => updateStockHint(row.id.split('-')[1]));
     validateStock();
     updatePreview();
 }
 
-function validateStock() {
-    const submitBtn = document.getElementById('submitBtn');
-    const errorDiv = document.getElementById('stockError');
-    if (!stockEnabled || docType !== 'sell') {
-        submitBtn.disabled = false;
-        errorDiv.style.display = 'none';
-        return;
-    }
+function setSubmitEnabled(on) {
+    document.querySelectorAll('.js-submit').forEach(b => { b.disabled = !on; });
+}
 
-    // Aggregate requested quantities per product (skip free-text rows)
+function validateStock() {
+    const errorDiv = document.getElementById('stockError');
+    if (!stockEnabled || docType !== 'sell') { errorDiv.style.display = 'none'; setSubmitEnabled(true); return; }
     const requested = {};
     document.querySelectorAll('.item-row').forEach(row => {
-        const pidInput = row.querySelector('input[name*="product_id"]');
-        const productId = parseInt(pidInput && pidInput.value) || 0;
-        if (!productId) return;
-        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
-        requested[productId] = (requested[productId] || 0) + qty;
+        const pid = parseInt(row.querySelector('input[name*="product_id"]').value) || 0;
+        if (!pid) return;
+        requested[pid] = (requested[pid] || 0) + (parseNum(row.querySelector('.js-qty').value) || 0);
     });
-
     const errors = [];
-    for (const [productId, totalQty] of Object.entries(requested)) {
-        const available = stockMap[parseInt(productId)] || 0;
-        if (totalQty > available) {
-            const product = products.find(p => p.id == productId);
-            const name = product ? product.name : 'ID:' + productId;
-            errors.push(`${name}: pieejams ${available.toFixed(2)}, pieprasīts ${totalQty.toFixed(2)}`);
+    for (const [pid, qty] of Object.entries(requested)) {
+        const available = stockMap[parseInt(pid)] || 0;
+        if (qty > available) {
+            const p = products.find(p => p.id == pid);
+            errors.push(esc(p ? p.name : 'ID ' + pid) + ': noliktavā ' + fmtQty(available) + ', vajag ' + fmtQty(qty));
         }
     }
-
-    // Update stock hints per row
-    document.querySelectorAll('.item-row').forEach(row => {
-        const pidInput = row.querySelector('input[name*="product_id"]');
-        const productId = parseInt(pidInput && pidInput.value) || 0;
-        const idx = row.id.split('-')[1];
-        const hint = document.getElementById('stock-hint-' + idx);
-        if (!productId || !hint) return;
-        const available = stockMap[productId] || 0;
-        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
-        hint.textContent = 'Pieejams: ' + available.toFixed(2);
-        hint.className = qty > available ? 'stock-hint stock-warn' : 'stock-hint';
-    });
-
-    if (errors.length > 0) {
-        errorDiv.innerHTML = '<strong>Nepietiekams krājums:</strong><br>' + errors.join('<br>');
+    if (errors.length) {
+        errorDiv.innerHTML = '<strong>Nepietiek krājuma.</strong><br>' + errors.join('<br>');
         errorDiv.style.display = 'block';
-        submitBtn.disabled = true;
-        submitBtn.style.opacity = '0.5';
-        submitBtn.style.cursor = 'not-allowed';
+        setSubmitEnabled(false);
     } else {
         errorDiv.style.display = 'none';
-        submitBtn.disabled = false;
-        submitBtn.style.opacity = '';
-        submitBtn.style.cursor = '';
+        setSubmitEnabled(true);
     }
 }
 
-document.getElementById('vatRate').addEventListener('input', recalculate);
+/* --------------------------------------------------------------- submit */
+const form = document.getElementById('docForm');
+form.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); form.requestSubmit(); }
+    else if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'submit') { e.preventDefault(); }
+});
+form.addEventListener('submit', e => {
+    if (!document.getElementById('clientSelect').value) {
+        e.preventDefault();
+        document.getElementById('clientError').hidden = false;
+        clientInput.classList.add('invalid');
+        clientInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        clientInput.focus();
+        return;
+    }
+    const hasLine = Array.from(document.querySelectorAll('.item-row')).some(r => lineValues(r).name);
+    if (!hasLine) {
+        e.preventDefault();
+        const first = document.querySelector('.item-row [id^="product-name-"]');
+        first.focus();
+        first.placeholder = 'Ierakstiet, par ko ir rēķins';
+        return;
+    }
+    // Send plain dot decimals so every parser downstream agrees.
+    document.querySelectorAll('.item-row').forEach(row => {
+        ['.js-qty', '.js-price'].forEach(sel => {
+            const el = row.querySelector(sel);
+            const v = parseNum(el.value);
+            if (!el.disabled && !isNaN(v)) el.value = String(v);
+        });
+    });
+    setSubmitEnabled(false);
+});
 
-// =========================================================================
-// TEMPLATE-STYLED PREVIEW
-// =========================================================================
-
+/* -------------------------------------------------------------- preview */
 function getPreviewData() {
     const clientId = document.getElementById('clientSelect').value;
-    const docDate = document.getElementById('docDate').value;
-    const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+    const docDate = dateInput.value;
+    const vatRate = currentVatRate();
     const notes = document.getElementById('notesInput').value;
     const template = document.getElementById('templateSelect').value;
-
-    let clientInfo = null;
-    if (clientId) clientInfo = clientsData.find(c => c.id == clientId);
+    const clientInfo = clientId ? clientsData.find(c => c.id == clientId) : null;
 
     let docTypeName;
-    if (docType === 'buy') {
-        docTypeName = companySettings.buy_doc_name || 'Rēķins';
-    } else if (docType === 'offer') {
-        docTypeName = companySettings.offer_doc_name || 'Piedāvājums';
-    } else {
-        docTypeName = companySettings.sell_doc_name || 'Rēķins';
-    }
-
-    let displayDate = docDate;
-    if (docDate) {
-        const parts = docDate.split('-');
-        if (parts.length === 3) displayDate = parts[2] + '.' + parts[1] + '.' + parts[0];
-    }
+    if (docType === 'buy') docTypeName = companySettings.buy_doc_name || 'Rēķins';
+    else if (docType === 'offer') docTypeName = companySettings.offer_doc_name || 'Piedāvājums';
+    else docTypeName = companySettings.sell_doc_name || 'Rēķins';
 
     const company = {
         name: companySettings.company_name || '(Jūsu uzņēmums)',
-        reg: companySettings.reg_number || '',
-        vat: companySettings.vat_number || '',
-        addr: companySettings.legal_address || '',
-        bank: companySettings.bank_name || '',
-        account: companySettings.bank_account || '',
-        isOwn: true,
+        reg: companySettings.reg_number || '', vat: companySettings.vat_number || '',
+        addr: companySettings.legal_address || '', bank: companySettings.bank_name || '',
+        account: companySettings.bank_account || '', isOwn: true,
     };
     const client = clientInfo ? {
-        name: clientInfo.name,
-        reg: clientInfo.reg_number || '',
-        vat: clientInfo.vat_number || '',
-        addr: clientInfo.legal_address || '',
-        bank: clientInfo.bank_name || '',
-        account: clientInfo.bank_account || '',
-        isOwn: false,
+        name: clientInfo.name, reg: clientInfo.reg_number || '', vat: clientInfo.vat_number || '',
+        addr: clientInfo.legal_address || '', bank: clientInfo.bank_name || '',
+        account: clientInfo.bank_account || '', isOwn: false,
     } : { name: '—', reg: '', vat: '', addr: '', bank: '', account: '', isOwn: false };
 
-    const supplier = docType === 'buy' ? client : company;
-    const buyer = docType === 'buy' ? company : client;
-
-    let items = [];
+    const items = [];
     let subtotal = 0;
     document.querySelectorAll('.item-row').forEach(row => {
-        const idx = row.id.split('-')[1];
-        const includedCb = document.getElementById('included-' + idx);
-        const isIncluded = includedCb && includedCb.checked;
-        const nameInput = row.querySelector('input[name*="product_name"]');
-        const productName = (nameInput && nameInput.value || '').trim();
-        const unit = row.querySelector('select[name*="unit"]').value;
-        const qty = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
-        const price = isIncluded ? 0 : (parseFloat(row.querySelector('input[name*="price_per_unit"]').value) || 0);
-        const lineTotal = isIncluded ? 0 : qty * price;
-        if (!isIncluded) subtotal += lineTotal;
-        if (productName) {
-            items.push({ name: productName, unit, qty, price, total: lineTotal, included: isIncluded });
-        }
+        const v = lineValues(row);
+        const total = v.included ? 0 : v.qty * v.price;
+        subtotal += total;
+        if (v.name) items.push({ name: esc(v.name), unit: esc(v.unit), qty: v.qty, price: v.price, total, included: v.included });
     });
-
     const vatAmount = subtotal * (vatRate / 100);
-    const total = subtotal + vatAmount;
-    const docNumber = editMode ? editDocNumber : '(automātiski)';
     const rcCb = document.getElementById('reverseCharge');
-    const reverseCharge = rcCb && rcCb.checked;
-
-    return { template, docTypeName, docNumber, displayDate, supplier, buyer, items, subtotal, vatRate, vatAmount, total, notes, isVatPayer, reverseCharge };
+    return {
+        template, docTypeName, docNumber: editMode ? editDocNumber : '(automātiski)',
+        displayDate: fmtDate(docDate),
+        supplier: docType === 'buy' ? client : company,
+        buyer: docType === 'buy' ? company : client,
+        items, subtotal, vatRate, vatAmount, total: subtotal + vatAmount,
+        notes: esc(notes), isVatPayer, reverseCharge: !!(rcCb && rcCb.checked),
+    };
 }
 
 function partyLines(info, showVat) {
-    let html = '<strong>' + info.name + '</strong>';
+    let html = '<strong>' + esc(info.name) + '</strong>';
     if (info.reg) {
         const regLabel = info.isOwn ? (entityType === 'individual' ? 'P.k.:' : 'Reģ.Nr.:') : 'Reģ.Nr. / P.k.:';
-        html += '<br>' + regLabel + ' ' + info.reg;
+        html += '<br>' + regLabel + ' ' + esc(info.reg);
     }
-    if (showVat && info.vat) html += '<br>PVN Nr.: ' + info.vat;
-    if (info.addr) html += '<br>' + info.addr;
-    if (info.bank) html += '<br>Banka: ' + info.bank;
-    if (info.account) html += '<br>Konts: ' + info.account;
+    if (showVat && info.vat) html += '<br>PVN Nr.: ' + esc(info.vat);
+    if (info.addr) html += '<br>' + esc(info.addr);
+    if (info.bank) html += '<br>Banka: ' + esc(info.bank);
+    if (info.account) html += '<br>Konts: ' + esc(info.account);
     return html;
 }
 
 function itemsTableHtml(items, style) {
-    if (!items.length) {
-        return '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:12px">Nav pievienotu preču</td></tr>';
-    }
+    if (!items.length) return '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:12px">Nav pievienotu rindu</td></tr>';
     return items.map((item, i) => {
         const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
-        const priceCell = item.included ? 'Iekļauts cenā' : item.price.toFixed(2);
-        const totalCell = item.included ? 'Iekļauts cenā' : item.total.toFixed(2);
+        const priceCell = item.included ? 'Iekļauts cenā' : fmtNum(item.price);
+        const totalCell = item.included ? 'Iekļauts cenā' : fmtNum(item.total);
         return `<tr style="${bg}">
             <td style="padding:5px 8px">${i + 1}</td>
             <td style="padding:5px 8px">${item.name}</td>
             <td style="padding:5px 8px">${item.unit}</td>
-            <td style="padding:5px 8px;text-align:right">${item.qty.toFixed(2)}</td>
+            <td style="padding:5px 8px;text-align:right">${fmtQty(item.qty)}</td>
             <td style="padding:5px 8px;text-align:right">${priceCell}</td>
             <td style="padding:5px 8px;text-align:right">${totalCell}</td>
         </tr>`;
     }).join('');
 }
 
+function vatLines(d, muted) {
+    if (!d.isVatPayer) return '';
+    const c = muted ? '#9ca3af' : '#6b7280';
+    const label = d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + fmtQty(d.vatRate) + '%)';
+    return `<div style="color:${c}">Summa bez PVN: <strong style="color:#111827">${fmtEur(d.subtotal)}</strong></div>
+            <div style="color:${c}">${label}: <strong style="color:#111827">${fmtEur(d.vatAmount)}</strong></div>`;
+}
+
 function previewSignatureHtml(style) {
     if (companySettings.electronic_doc === '1') {
         const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
-        const size = style === 'minimal' ? '8px' : '9px';
-        return `<div style="margin-top:20px;font-size:${size};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
+        return `<div style="margin-top:20px;font-size:${style === 'minimal' ? '8px' : '9px'};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
     }
-    if (style === 'minimal') {
-        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:8px;color:#9ca3af">
-            <div>Izsniedza ________________________</div>
-            <div>Saņēma ________________________</div>
-        </div>`;
-    }
-    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:9px;color:#6b7280">
-        <div><strong>Izsniedza:</strong> ________________________</div>
-        <div><strong>Saņēma:</strong> ________________________</div>
+    const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
+    const b = style === 'minimal' ? ['', ''] : ['<strong>', '</strong>'];
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:${style === 'minimal' ? '8px' : '9px'};color:${color}">
+        <div>${b[0]}Izsniedza:${b[1]} ____________________</div>
+        <div>${b[0]}Saņēma:${b[1]} ____________________</div>
     </div>`;
 }
 
+const thStyle = 'padding:5px 8px;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151';
 function renderClassicPreview(d) {
     return `
         <div style="text-align:center;margin-bottom:2px">
@@ -906,259 +1161,189 @@ function renderClassicPreview(d) {
         </div>
         <hr style="border:none;border-top:0.5px solid #e5e7eb;margin:8px 0 10px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
-            <div>
-                <div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                <div style="font-size:10px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div>
-            </div>
-            <div>
-                <div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">SAŅĒMĒJS / PIRCĒJS</div>
-                <div style="font-size:10px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div>
-            </div>
+            <div><div style="font-size:8px;font-weight:700;color:#6b7280;letter-spacing:0.5px;margin-bottom:3px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
+                 <div style="font-size:10px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div></div>
+            <div><div style="font-size:8px;font-weight:700;color:#6b7280;letter-spacing:0.5px;margin-bottom:3px">SAŅĒMĒJS / PIRCĒJS</div>
+                 <div style="font-size:10px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div></div>
         </div>
         <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
-            <thead>
-                <tr style="background:#f9fafb">
-                    <th style="padding:5px 8px;text-align:left;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Nr.</th>
-                    <th style="padding:5px 8px;text-align:left;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Nosaukums</th>
-                    <th style="padding:5px 8px;text-align:left;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Mērv.</th>
-                    <th style="padding:5px 8px;text-align:right;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Daudz.</th>
-                    <th style="padding:5px 8px;text-align:right;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Cena</th>
-                    <th style="padding:5px 8px;text-align:right;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151">Summa</th>
-                </tr>
-            </thead>
+            <thead><tr style="background:#f9fafb">
+                <th style="${thStyle};text-align:left">Nr.</th><th style="${thStyle};text-align:left">Nosaukums</th>
+                <th style="${thStyle};text-align:left">Mērv.</th><th style="${thStyle};text-align:right">Daudz.</th>
+                <th style="${thStyle};text-align:right">Cena</th><th style="${thStyle};text-align:right">Summa</th>
+            </tr></thead>
             <tbody>${itemsTableHtml(d.items, 'classic')}</tbody>
         </table>
         <div style="text-align:right;font-size:10px">
-            ${d.isVatPayer ? `<div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
-            <div style="color:#6b7280">${d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + d.vatRate + '%)'}: <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
-            <div style="font-size:12px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
+            ${vatLines(d)}
+            <div style="font-size:12px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${fmtEur(d.total)}</div>
         </div>
         ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        ${previewSignatureHtml('classic')}
-    `;
+        ${previewSignatureHtml('classic')}`;
 }
 
 function renderModernPreview(d) {
-    var ac = (companySettings && companySettings.accent_color) || '#09090b';
+    const ac = (companySettings && companySettings.accent_color) || '#09090b';
+    const th = 'padding:6px 8px;font-size:8px;color:white';
     return `
         <div style="background:${ac};color:white;padding:14px 16px;border-radius:4px;margin:-1px -1px 12px -1px;display:flex;justify-content:space-between;align-items:center">
             <div style="font-size:16px;font-weight:700">${d.docTypeName}</div>
-            <div style="font-size:10px;color:rgba(255,255,255,0.7);text-align:right">
-                Nr. ${d.docNumber}<br>Datums: ${d.displayDate || '—'}
-            </div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.7);text-align:right">Nr. ${d.docNumber}<br>Datums: ${d.displayDate || '—'}</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;padding:0 4px">
-            <div>
-                <div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                <div style="font-size:10px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div>
-            </div>
-            <div>
-                <div style="font-size:8px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">SAŅĒMĒJS / PIRCĒJS</div>
-                <div style="font-size:10px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div>
-            </div>
+            <div><div style="font-size:8px;font-weight:700;color:#6b7280;letter-spacing:0.5px;margin-bottom:3px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
+                 <div style="font-size:10px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div></div>
+            <div><div style="font-size:8px;font-weight:700;color:#6b7280;letter-spacing:0.5px;margin-bottom:3px">SAŅĒMĒJS / PIRCĒJS</div>
+                 <div style="font-size:10px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div></div>
         </div>
         <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
-            <thead>
-                <tr style="background:${ac}">
-                    <th style="padding:6px 8px;text-align:left;font-size:8px;color:white">Nr.</th>
-                    <th style="padding:6px 8px;text-align:left;font-size:8px;color:white">Nosaukums</th>
-                    <th style="padding:6px 8px;text-align:left;font-size:8px;color:white">Mērv.</th>
-                    <th style="padding:6px 8px;text-align:right;font-size:8px;color:white">Daudz.</th>
-                    <th style="padding:6px 8px;text-align:right;font-size:8px;color:white">Cena</th>
-                    <th style="padding:6px 8px;text-align:right;font-size:8px;color:white">Summa</th>
-                </tr>
-            </thead>
+            <thead><tr style="background:${ac}">
+                <th style="${th};text-align:left">Nr.</th><th style="${th};text-align:left">Nosaukums</th>
+                <th style="${th};text-align:left">Mērv.</th><th style="${th};text-align:right">Daudz.</th>
+                <th style="${th};text-align:right">Cena</th><th style="${th};text-align:right">Summa</th>
+            </tr></thead>
             <tbody>${itemsTableHtml(d.items, 'modern')}</tbody>
         </table>
         <div style="text-align:right;font-size:10px;padding:0 4px">
-            ${d.isVatPayer ? `<div style="color:#6b7280">Summa bez PVN: <strong style="color:#111827">${d.subtotal.toFixed(2)} EUR</strong></div>
-            <div style="color:#6b7280">${d.reverseCharge ? 'PVN (0% - Reverse Charge)' : 'PVN (' + d.vatRate + '%)'}: <strong style="color:#111827">${d.vatAmount.toFixed(2)} EUR</strong></div>` : ''}
-            <div style="font-size:13px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${d.total.toFixed(2)} EUR</div>
+            ${vatLines(d)}
+            <div style="font-size:13px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${fmtEur(d.total)}</div>
         </div>
         ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280;padding:0 4px"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        ${previewSignatureHtml('modern')}
-    `;
+        ${previewSignatureHtml('modern')}`;
 }
 
 function renderMinimalPreview(d) {
+    const th = 'padding:5px 8px;font-size:7px;font-weight:700;color:#9ca3af;border-bottom:0.5px solid #6b7280';
     return `
         <div style="padding:0 8px">
             <div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:2px">${d.docTypeName}</div>
             <div style="font-size:10px;color:#9ca3af;margin-bottom:10px">Nr. ${d.docNumber} &nbsp;&middot;&nbsp; ${d.displayDate || '—'}</div>
             <hr style="border:none;border-top:0.25px solid #e5e7eb;margin:0 0 10px">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px">
-                <div>
-                    <div style="font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                    <div style="font-size:9.5px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div>
-                </div>
-                <div>
-                    <div style="font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">SAŅĒMĒJS / PIRCĒJS</div>
-                    <div style="font-size:9.5px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div>
-                </div>
+                <div><div style="font-size:7px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;margin-bottom:2px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
+                     <div style="font-size:9.5px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div></div>
+                <div><div style="font-size:7px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;margin-bottom:2px">SAŅĒMĒJS / PIRCĒJS</div>
+                     <div style="font-size:9.5px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div></div>
             </div>
             <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
-                <thead>
-                    <tr>
-                        <th style="padding:5px 8px;text-align:left;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">#</th>
-                        <th style="padding:5px 8px;text-align:left;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">PRECE</th>
-                        <th style="padding:5px 8px;text-align:left;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">MĒRV.</th>
-                        <th style="padding:5px 8px;text-align:right;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">DAUDZ.</th>
-                        <th style="padding:5px 8px;text-align:right;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">CENA</th>
-                        <th style="padding:5px 8px;text-align:right;font-size:7px;font-weight:700;color:#9ca3af;text-transform:uppercase;border-bottom:0.5px solid #6b7280">SUMMA</th>
-                    </tr>
-                </thead>
+                <thead><tr>
+                    <th style="${th};text-align:left">#</th><th style="${th};text-align:left">PRECE</th>
+                    <th style="${th};text-align:left">MĒRV.</th><th style="${th};text-align:right">DAUDZ.</th>
+                    <th style="${th};text-align:right">CENA</th><th style="${th};text-align:right">SUMMA</th>
+                </tr></thead>
                 <tbody>${itemsTableHtml(d.items, 'minimal')}</tbody>
             </table>
             <div style="text-align:right;font-size:10px">
-                ${d.isVatPayer ? `<div style="color:#9ca3af">Bez PVN: <span style="color:#9ca3af">${d.subtotal.toFixed(2)} EUR</span></div>
-                <div style="color:#9ca3af">${d.reverseCharge ? 'PVN 0% - Reverse Charge' : 'PVN ' + d.vatRate + '%'}: <span style="color:#9ca3af">${d.vatAmount.toFixed(2)} EUR</span></div>` : ''}
-                <div style="font-size:11px;font-weight:800;color:#111827;margin-top:3px;padding-top:3px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${d.total.toFixed(2)} EUR</div>
+                ${vatLines(d, true)}
+                <div style="font-size:11px;font-weight:800;color:#111827;margin-top:3px;padding-top:3px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${fmtEur(d.total)}</div>
             </div>
             ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:8px 0 4px"><div style="font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
             ${previewSignatureHtml('minimal')}
-        </div>
-    `;
+        </div>`;
+}
+
+function renderPreview(d) {
+    if (d.template === 'modern') return renderModernPreview(d);
+    if (d.template === 'minimal') return renderMinimalPreview(d);
+    return renderClassicPreview(d);
 }
 
 function updatePreview() {
-    const preview = document.getElementById('invoicePreview');
-    const d = getPreviewData();
-
-    // Branded tāme active: the sample card is shown instead — don't fight
-    // its label or repaint the hidden standard preview
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(paintPreview, 60);
+}
+function paintPreview() {
     const brandedFlag = document.getElementById('offerBranded');
     if (brandedFlag && brandedFlag.value === '1') return;
-
-    // Update template label
+    const d = getPreviewData();
     document.getElementById('previewTemplateLabel').textContent = templateLabels[d.template] || d.template;
-
-    // Set wrapper style based on template
-    preview.className = 'invoice-preview-wrapper preview-' + d.template;
-
-    if (d.template === 'modern') {
-        preview.innerHTML = renderModernPreview(d);
-    } else if (d.template === 'minimal') {
-        preview.innerHTML = renderMinimalPreview(d);
-    } else {
-        preview.innerHTML = renderClassicPreview(d);
-    }
+    const html = renderPreview(d);
+    const small = document.getElementById('invoicePreview');
+    small.className = 'invoice-preview-wrapper preview-' + d.template;
+    small.innerHTML = html;
+    const big = document.getElementById('invoicePreviewBig');
+    if (document.getElementById('previewModal').classList.contains('active')) big.innerHTML = html;
 }
+function openPreview() {
+    const brandedFlag = document.getElementById('offerBranded');
+    const big = document.getElementById('invoicePreviewBig');
+    if (brandedFlag && brandedFlag.value === '1') {
+        big.innerHTML = '<img src="/static/img/tame_sample.jpg?v={{ css_version }}" alt="Tāmes dizaina paraugs" style="width:100%">';
+    } else {
+        const d = getPreviewData();
+        big.className = 'invoice-preview-wrapper preview-' + d.template;
+        big.innerHTML = renderPreview(d);
+    }
+    document.getElementById('previewModalTitle').textContent = 'Priekšskatījums · ' + (templateLabels[document.getElementById('templateSelect').value] || '');
+    document.getElementById('previewModal').classList.add('active');
+}
+document.getElementById('templateSelect').addEventListener('change', updatePreview);
+document.getElementById('notesInput').addEventListener('input', updatePreview);
 
-function showQuickAddClient() {
-    document.getElementById('quickAddClientModal').classList.add('active');
-    // Reset to business mode + keep-in-list mode
+/* ------------------------------------------------------ quick add client */
+function showQuickAddClient(prefill) {
+    const modal = document.getElementById('quickAddClientModal');
+    modal.classList.add('active');
     document.querySelector('#quickAddClientModal input[name="qc_client_type"][value="business"]').checked = true;
     qcToggleClientType('business');
     document.querySelector('#quickAddClientModal input[name="qc_save_mode"][value="keep"]').checked = true;
     qcToggleSaveMode('keep');
-    document.getElementById('qc_name').focus();
+    const nameIn = document.getElementById('qc_name');
+    if (prefill) { nameIn.value = prefill; nameIn.dispatchEvent(new Event('input')); }
+    nameIn.focus();
 }
-
-/* --- Quick-Add Save Mode Toggle (keep in list vs one-time) --- */
 function qcToggleSaveMode(mode) {
-    const keepLabel = document.getElementById('qc_save_keep_label');
-    const onceLabel = document.getElementById('qc_save_once_label');
-    const hint = document.getElementById('qc_save_hint');
-    const activeStyle = 'var(--brand)';
-    const activeShadow = '0 2px 6px rgba(59,130,246,0.32)';
-    if (mode === 'keep') {
-        keepLabel.style.background = activeStyle;
-        keepLabel.style.color = '#fff';
-        keepLabel.style.boxShadow = activeShadow;
-        onceLabel.style.background = 'transparent';
-        onceLabel.style.color = 'var(--text-light)';
-        onceLabel.style.boxShadow = 'none';
-        hint.textContent = 'Klients tiks saglabāts klientu sarakstā.';
-    } else {
-        onceLabel.style.background = activeStyle;
-        onceLabel.style.color = '#fff';
-        onceLabel.style.boxShadow = activeShadow;
-        keepLabel.style.background = 'transparent';
-        keepLabel.style.color = 'var(--text-light)';
-        keepLabel.style.boxShadow = 'none';
-        hint.textContent = 'Klients tiks lietots tikai šim dokumentam un neparādīsies klientu sarakstā.';
-    }
+    document.getElementById('qc_save_hint').textContent = mode === 'keep'
+        ? 'Klients būs pieejams arī nākamajos rēķinos.'
+        : 'Klients tiks lietots tikai šim dokumentam un neparādīsies klientu sarakstā.';
 }
-
-/* --- Quick-Add Client Type Toggle --- */
 function qcToggleClientType(type) {
-    const bizLabel = document.getElementById('qc_type_business_label');
-    const indLabel = document.getElementById('qc_type_individual_label');
-    const bizGroup = document.getElementById('qc_business_name_group');
-    const indGroup = document.getElementById('qc_individual_name_group');
-    const regLabel = document.getElementById('qc_reg_label');
-    const activeStyle = 'var(--brand)';
-    const activeShadow = '0 2px 6px rgba(59,130,246,0.32)';
-    if (type === 'business') {
-        bizLabel.style.background = activeStyle;
-        bizLabel.style.color = '#fff';
-        bizLabel.style.boxShadow = activeShadow;
-        indLabel.style.background = 'transparent';
-        indLabel.style.color = 'var(--text-light)';
-        indLabel.style.boxShadow = 'none';
-        bizGroup.style.display = '';
-        indGroup.style.display = 'none';
-        regLabel.textContent = 'Reģ. Nr.';
-    } else {
-        indLabel.style.background = activeStyle;
-        indLabel.style.color = '#fff';
-        indLabel.style.boxShadow = activeShadow;
-        bizLabel.style.background = 'transparent';
-        bizLabel.style.color = 'var(--text-light)';
-        bizLabel.style.boxShadow = 'none';
-        bizGroup.style.display = 'none';
-        indGroup.style.display = '';
-        regLabel.textContent = 'Personas kods';
-    }
+    const business = type === 'business';
+    document.getElementById('qc_business_name_group').style.display = business ? '' : 'none';
+    document.getElementById('qc_individual_name_group').style.display = business ? 'none' : '';
+    document.getElementById('qc_reg_label').textContent = business ? 'Reģ. nr.' : 'Personas kods';
 }
 
-/* --- Registry Autocomplete (Quick Add Client) --- */
-(function() {
+(function () {
     let timer = null, idx = -1;
     const nameInput = document.getElementById('qc_name');
     const dropdown = document.getElementById('qc_registry_dropdown');
     if (!nameInput || !dropdown) return;
-
-    nameInput.addEventListener('input', function() {
+    nameInput.addEventListener('input', function () {
         clearTimeout(timer);
         const q = this.value.trim();
         if (q.length < 2) { dropdown.classList.remove('active'); return; }
         timer = setTimeout(() => doSearch(q), 250);
     });
-
-    nameInput.addEventListener('keydown', function(e) {
+    nameInput.addEventListener('keydown', function (e) {
         const items = dropdown.querySelectorAll('.registry-item');
         if (!dropdown.classList.contains('active') || !items.length) return;
         if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, items.length - 1); hl(items); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); hl(items); }
         else if (e.key === 'Enter' && idx >= 0) { e.preventDefault(); items[idx].click(); }
-        else if (e.key === 'Escape') { dropdown.classList.remove('active'); }
+        else if (e.key === 'Escape') { e.stopPropagation(); dropdown.classList.remove('active'); }
     });
-
     function hl(items) {
         items.forEach((el, i) => el.classList.toggle('selected', i === idx));
-        if (idx >= 0 && items[idx]) items[idx].scrollIntoView({block: 'nearest'});
+        if (idx >= 0 && items[idx]) items[idx].scrollIntoView({ block: 'nearest' });
     }
-
     async function doSearch(q) {
         try {
             const resp = await fetch('/api/registry/search?q=' + encodeURIComponent(q));
             const data = await resp.json();
             if (!data.length) { dropdown.classList.remove('active'); return; }
             dropdown.innerHTML = data.map(b => `
-                <div class="registry-item" data-regcode="${b.regcode}" data-name="${b.name.replace(/"/g, '&quot;')}"
-                     data-address="${(b.address||'').replace(/"/g, '&quot;')}" data-type="${(b.type_text||'').replace(/"/g, '&quot;')}">
-                    <div class="registry-item-name">${b.name}</div>
-                    <div class="registry-item-details"><span class="registry-item-regcode">${b.regcode}</span> <span class="registry-item-type">${b.type_text || ''}</span></div>
-                    ${b.address ? '<div class="registry-item-details">' + b.address + '</div>' : ''}
-                </div>
-            `).join('');
+                <div class="registry-item" data-regcode="${esc(b.regcode)}" data-name="${esc(b.name)}"
+                     data-address="${esc(b.address || '')}" data-type="${esc(b.type_text || '')}">
+                    <div class="registry-item-name">${esc(b.name)}</div>
+                    <div class="registry-item-details"><span class="registry-item-regcode">${esc(b.regcode)}</span> ${esc(b.type_text || '')}</div>
+                    ${b.address ? '<div class="registry-item-details">' + esc(b.address) + '</div>' : ''}
+                </div>`).join('');
             dropdown.querySelectorAll('.registry-item').forEach(el => {
                 el.addEventListener('click', () => {
                     document.getElementById('qc_name').value = el.dataset.name;
                     document.getElementById('qc_reg_number').value = el.dataset.regcode;
                     document.getElementById('qc_legal_address').value = el.dataset.address;
-                    // Auto-set VAT payer status based on entity type
                     const type = (el.dataset.type || '').toLowerCase();
                     const isBusiness = type.includes('sabiedr') || type.includes('akciju') || type.includes('komersants');
                     document.getElementById('qc_vat_payer').checked = isBusiness;
@@ -1171,45 +1356,34 @@ function qcToggleClientType(type) {
             });
             idx = -1;
             dropdown.classList.add('active');
-        } catch(e) { dropdown.classList.remove('active'); }
+        } catch (e) { dropdown.classList.remove('active'); }
     }
-
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('#quickAddClientModal .registry-wrapper')) {
-            dropdown.classList.remove('active');
-        }
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#quickAddClientModal .registry-wrapper')) dropdown.classList.remove('active');
     });
 })();
 
-/* --- VIES VAT Validation --- */
 async function validateVat(inputId, statusId) {
     const input = document.getElementById(inputId);
     const status = document.getElementById(statusId);
     const vat = input.value.trim();
     if (!vat) { status.textContent = ''; return; }
-    status.textContent = 'Pārbauda...';
+    status.textContent = 'Pārbauda…';
     status.className = 'vat-status';
     try {
         const resp = await fetch('/api/vat/validate?vat_number=' + encodeURIComponent(vat));
         const data = await resp.json();
         if (data.valid) {
-            status.textContent = '✓ Derīgs PVN numurs' + (data.name ? ' — ' + data.name : '');
+            status.textContent = 'Derīgs PVN numurs' + (data.name ? ' — ' + data.name : '');
             status.className = 'vat-status valid';
         } else {
-            status.textContent = '✗ ' + (data.error || 'Nederīgs PVN numurs');
+            status.textContent = data.error || 'Nederīgs PVN numurs';
             status.className = 'vat-status invalid';
         }
-    } catch(e) {
-        status.textContent = '✗ Neizdevās pārbaudīt';
+    } catch (e) {
+        status.textContent = 'Neizdevās pārbaudīt';
         status.className = 'vat-status invalid';
     }
-}
-
-let quickAddProductTargetRow = null;
-function showQuickAddProduct(rowBtn) {
-    quickAddProductTargetRow = rowBtn ? rowBtn.closest('.item-row') : null;
-    document.getElementById('quickAddProductModal').classList.add('active');
-    document.getElementById('qp_name').focus();
 }
 
 async function quickAddClient() {
@@ -1217,16 +1391,16 @@ async function quickAddClient() {
     const saveMode = (document.querySelector('#quickAddClientModal input[name="qc_save_mode"]:checked') || {}).value || 'keep';
     let name;
     if (clientType === 'individual') {
-        const first = (document.getElementById('qc_first_name') || {}).value || '';
-        const last = (document.getElementById('qc_last_name') || {}).value || '';
-        if (!first.trim() || !last.trim()) { alert('Lūdzu aizpildiet vārdu un uzvārdu'); return; }
-        name = first.trim() + ' ' + last.trim();
+        const first = document.getElementById('qc_first_name').value.trim();
+        const last = document.getElementById('qc_last_name').value.trim();
+        if (!first || !last) { document.getElementById(first ? 'qc_last_name' : 'qc_first_name').focus(); return; }
+        name = first + ' ' + last;
     } else {
-        name = document.getElementById('qc_name').value;
+        name = document.getElementById('qc_name').value.trim();
+        if (!name) { document.getElementById('qc_name').focus(); return; }
     }
     const data = {
-        name: name,
-        client_type: clientType,
+        name, client_type: clientType,
         reg_number: document.getElementById('qc_reg_number').value,
         vat_number: document.getElementById('qc_vat_number').value,
         vat_payer: document.getElementById('qc_vat_payer').checked ? 1 : 0,
@@ -1235,177 +1409,114 @@ async function quickAddClient() {
         bank_account: document.getElementById('qc_bank_account').value,
         one_time: saveMode === 'once' ? 1 : 0,
     };
-    if (!data.name) return;
-
     const resp = await fetch('/api/clients/add', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
     });
     const result = await resp.json();
-
     if (!resp.ok) {
         if (result.duplicate && result.client) {
-            // Duplicate found — select the existing client instead
             _addAndSelectClient(result.client);
             document.getElementById('quickAddClientModal').classList.remove('active');
             return;
         }
-        alert(result.error || 'Kļūda saglabājot klientu');
+        alert(result.error || 'Neizdevās saglabāt klientu');
         return;
     }
-    const client = result;
-
-    _addAndSelectClient(client);
-
+    _addAndSelectClient(result);
     document.getElementById('quickAddClientModal').classList.remove('active');
-    ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_bank_name', 'qc_bank_account'].forEach(
-        id => document.getElementById(id).value = ''
-    );
-    if (document.getElementById('qc_first_name')) document.getElementById('qc_first_name').value = '';
-    if (document.getElementById('qc_last_name')) document.getElementById('qc_last_name').value = '';
+    ['qc_name', 'qc_reg_number', 'qc_vat_number', 'qc_legal_address', 'qc_bank_name', 'qc_bank_account', 'qc_first_name', 'qc_last_name']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('qc_vat_payer').checked = false;
     document.getElementById('qc_vat_group').style.display = 'none';
+    const firstName = document.querySelector('.item-row [id^="product-name-"]');
+    if (firstName && !firstName.value) firstName.focus();
 }
-
 function _addAndSelectClient(client) {
-    if (!clientsData.find(function(c) { return c.id === client.id; })) {
-        clientsData.push(client);
-        // Add to dropdown
-        var dd = document.getElementById('formClientDropdown');
-        var div = document.createElement('div');
-        div.className = 'search-dropdown-item';
-        div.setAttribute('data-id', client.id);
-        div.textContent = client.name;
-        div.onclick = function() { selectFormClient(String(client.id), client.name); };
-        dd.appendChild(div);
-    }
+    if (!clientsData.find(c => c.id === client.id)) clientsData.push(client);
     selectFormClient(String(client.id), client.name);
 }
 
-async function quickAddProduct() {
-    const name = document.getElementById('qp_name').value;
-    const unit = document.getElementById('qp_unit').value;
+/* ----------------------------------------------------- quick add product */
+async function quickAddProduct(idx, name) {
     if (!name) return;
-
+    const unit = document.getElementById('unit-' + idx).value || units[0];
     const resp = await fetch('/api/products/add', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name, unit})
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, unit })
     });
     const product = await resp.json();
-
-    products.push(product);
-    stockMap[product.id] = 0;
-
-    // Push the new product into the in-memory list so other rows' searches find it
+    if (!resp.ok) { alert(product.error || 'Neizdevās saglabāt produktu'); return; }
     products.push({ id: product.id, name: product.name, unit: product.unit });
-    if (stockEnabled) stockMap[product.id] = 0;
-
-    if (quickAddProductTargetRow) {
-        const idx = quickAddProductTargetRow.id.split('-')[1];
-        selectProduct(idx, product.id, product.name, product.unit);
-    }
-
-    document.getElementById('quickAddProductModal').classList.remove('active');
-    document.getElementById('qp_name').value = '';
-    quickAddProductTargetRow = null;
+    stockMap[product.id] = stockMap[product.id] || 0;
+    selectProduct(idx, product.id, product.name, product.unit);
 }
 
-// Initialize
+/* ----------------------------------------------------------------- start */
 if (editItems.length > 0) {
-    editItems.forEach(item => {
-        addItemRow(item.product_id, item.unit, item.quantity, item.price_per_unit, item.product_name, item.included_in_price);
-    });
+    editItems.forEach(item => addItemRow(item.product_id, item.unit, item.quantity, item.price_per_unit, item.product_name, item.included_in_price));
 } else {
     addItemRow();
 }
-setTimeout(updatePreview, 100);
+paintPreview();
+if (!document.getElementById('clientSelect').value && !editMode && matchMedia('(pointer: fine)').matches) {
+    // Start where the work starts: who the invoice is for.
+    setTimeout(() => clientInput.focus({ preventScroll: true }), 50);
+}
 </script>
 
 {% if doc_type == 'offer' and branded_offers %}
 <script>
-// Branded tāme section — kept in its own script block so a failure here can
-// never take down the main form logic above.
+// Branded tāme section — its own script block so a failure here can never
+// take down the main form logic above.
 (function () {
     const offerPresets = {{ offer_presets | tojson }};
     const existingMeta = {{ offer_meta | tojson }};
-
     const esc = s => String(s ?? '').replace(/[&<>"']/g,
-        ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-
-    window.offerSpecRowHtml = `<div class="tame-row">
-        <input type="text" name="spec_label" class="form-control" placeholder="Apraksts">
-        <input type="text" name="spec_value" class="form-control tame-row-value" placeholder="Vērtība">
-        <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
-    </div>`;
-    window.offerBenefitRowHtml = `<div class="tame-row tame-row-benefit">
-        <input type="text" name="benefit_title" class="form-control" placeholder="Virsraksts">
-        <input type="text" name="benefit_text" class="form-control" placeholder="Paskaidrojums">
-        <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
-    </div>`;
-
-    window.addOfferRow = function (containerId, html) {
-        document.getElementById(containerId).insertAdjacentHTML('beforeend', html);
-    };
+        ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
+    const DEL = '<button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>';
+    const specRow = r => `<div class="tame-row">
+        <input type="text" name="spec_label" class="form-control" placeholder="Apraksts" value="${esc(r.label)}">
+        <input type="text" name="spec_value" class="form-control tame-row-value" placeholder="Vērtība" value="${esc(r.value)}">${DEL}</div>`;
+    const benefitRow = r => `<div class="tame-row tame-row-benefit">
+        <input type="text" name="benefit_title" class="form-control" placeholder="Virsraksts" value="${esc(r.title)}">
+        <input type="text" name="benefit_text" class="form-control" placeholder="Paskaidrojums" value="${esc(r.text)}">${DEL}</div>`;
+    window.offerSpecRowHtml = specRow({});
+    window.offerBenefitRowHtml = benefitRow({});
+    window.addOfferRow = (containerId, html) => document.getElementById(containerId).insertAdjacentHTML('beforeend', html);
 
     function fillRows(containerId, rows, build) {
         const box = document.getElementById(containerId);
         box.innerHTML = '';
         (rows || []).forEach(r => box.insertAdjacentHTML('beforeend', build(r)));
     }
-
     function fillFields(meta) {
         document.getElementById('offerTitle').value = meta.title || '';
         document.getElementById('offerConditions').value = meta.conditions || '';
-        fillRows('offerSpecRows', meta.specs, r => `<div class="tame-row">
-            <input type="text" name="spec_label" class="form-control" placeholder="Apraksts" value="${esc(r.label)}">
-            <input type="text" name="spec_value" class="form-control tame-row-value" placeholder="Vērtība" value="${esc(r.value)}">
-            <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
-        </div>`);
-        fillRows('offerBenefitRows', meta.benefits, r => `<div class="tame-row tame-row-benefit">
-            <input type="text" name="benefit_title" class="form-control" placeholder="Virsraksts" value="${esc(r.title)}">
-            <input type="text" name="benefit_text" class="form-control" placeholder="Paskaidrojums" value="${esc(r.text)}">
-            <button type="button" class="btn btn-outline btn-sm" onclick="this.parentElement.remove()" aria-label="Dzēst rindu">×</button>
-        </div>`);
+        fillRows('offerSpecRows', meta.specs, specRow);
+        fillRows('offerBenefitRows', meta.benefits, benefitRow);
         const inputs = document.getElementById('offerPhotoInputs');
         const thumbs = document.getElementById('offerPhotoThumbs');
         inputs.innerHTML = '';
         thumbs.innerHTML = '';
         (meta.photos || []).forEach(f => {
             const fn = String(f);
-            inputs.insertAdjacentHTML('beforeend',
-                `<input type="hidden" name="offer_photos" value="${esc(fn)}">`);
-            thumbs.insertAdjacentHTML('beforeend',
-                `<img src="/preset-photos/${encodeURIComponent(fn)}" alt="" loading="lazy">`);
+            inputs.insertAdjacentHTML('beforeend', `<input type="hidden" name="offer_photos" value="${esc(fn)}">`);
+            thumbs.insertAdjacentHTML('beforeend', `<img src="/preset-photos/${encodeURIComponent(fn)}" alt="" loading="lazy">`);
         });
         if (!(meta.photos || []).length) {
-            thumbs.innerHTML = '<span style="font-size:12.5px;color:var(--text-lighter)">Veidnei nav foto — tāme tiks izveidota bez foto rindas.</span>';
+            thumbs.innerHTML = '<span class="field-hint" style="margin:0">Veidnei nav foto — tāme būs bez foto rindas.</span>';
         }
     }
-
     function setBranded(on) {
         document.getElementById('offerBranded').value = on ? '1' : '0';
         document.getElementById('offerBrandedFields').style.display = on ? '' : 'none';
-        // The standard template picker is meaningless for a branded tāme
         const tpl = document.getElementById('templateSelect');
         if (tpl && tpl.closest('.form-group')) tpl.closest('.form-group').style.display = on ? 'none' : '';
-        // The live preview only models the standard templates — swap in the
-        // branded design sample so it doesn't show the wrong look
-        const std = document.getElementById('invoicePreview');
+        const std = document.querySelector('.paper-frame');
         const branded = document.getElementById('brandedPreviewCard');
         if (std) std.style.display = on ? 'none' : '';
         if (branded) branded.style.display = on ? '' : 'none';
-        const label = document.getElementById('previewTemplateLabel');
-        if (label && on) label.textContent = 'Tāmes dizains';
-        if (label && !on) {
-            const t = document.getElementById('templateSelect');
-            if (t && typeof templateLabels !== 'undefined') label.textContent = templateLabels[t.value] || '';
-        }
-        // Coming back from branded, the hidden standard preview is stale
         if (!on && typeof updatePreview === 'function') setTimeout(updatePreview, 0);
     }
-
     window.applyOfferPreset = function (presetId) {
         if (presetId === 'custom') { setBranded(true); return; }
         document.getElementById('offerPresetId').value = presetId || '';
@@ -1415,17 +1526,13 @@ setTimeout(updatePreview, 100);
         fillFields(preset);
         setBranded(true);
     };
-
-    // Edit mode: restore the document's own copy of the content
     if (existingMeta) {
         fillFields(existingMeta);
         setBranded(true);
         const sel = document.getElementById('offerPresetSelect');
-        if (existingMeta.preset_id
-                && offerPresets.some(p => String(p.id) === String(existingMeta.preset_id))) {
+        if (existingMeta.preset_id && offerPresets.some(p => String(p.id) === String(existingMeta.preset_id))) {
             sel.value = String(existingMeta.preset_id);
         } else {
-            // Preset was deleted since — keep content, mark the picker custom
             const opt = document.createElement('option');
             opt.value = 'custom';
             opt.textContent = 'Pielāgots saturs';

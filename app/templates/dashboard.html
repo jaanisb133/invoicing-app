@@ -287,15 +287,15 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                 </span>
             </div>
-            <div class="dash-stat-value" id="statRevenue">{{ "%.2f" | format(range_stats.total_revenue) }} <small>EUR</small></div>
+            <div class="dash-stat-value" id="statRevenue">{{ range_stats.total_revenue | eur }}</div>
             {# Net / VAT split of the total above. Hidden for non-VAT-payers
                unless the period still holds VAT (invoices from before they
                stopped being a payer); loadStats() re-applies the same rule. #}
             {% set vat_payer = settings.get('is_vat_payer', '1') == '1' %}
             <div class="dash-stat-sub" id="statRevenueSplit" data-vat-payer="{{ '1' if vat_payer else '0' }}"
                  {% if not vat_payer and not range_stats.revenue_vat %}hidden{% endif %}>
-                <span>Bez PVN <b id="statRevenueNet">{{ "%.2f" | format(range_stats.revenue_net) }}</b></span>
-                <span>PVN <b id="statRevenueVat">{{ "%.2f" | format(range_stats.revenue_vat) }}</b></span>
+                <span>Bez PVN <b id="statRevenueNet">{{ range_stats.revenue_net | num }}</b></span>
+                <span>PVN <b id="statRevenueVat">{{ range_stats.revenue_vat | num }}</b></span>
             </div>
             <div class="dash-stat-spark" id="sparkRevenue"></div>
             <div class="dash-stat-foot" id="statRevenueChange">
@@ -315,7 +315,7 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                 </span>
             </div>
-            <div class="dash-stat-value" id="statUnpaid">{{ "%.2f" | format(range_stats.unpaid_total) }} <small>EUR</small></div>
+            <div class="dash-stat-value" id="statUnpaid">{{ range_stats.unpaid_total | eur }}</div>
             {# Unpaid is a point-in-time snapshot, not a trend, so it gets no
                sparkline — but it keeps the spacer so all four feet line up. #}
             <div class="dash-stat-spark"></div>
@@ -351,7 +351,7 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 12l4-4 3 3 5-6"/></svg>
                 </span>
             </div>
-            <div class="dash-stat-value" id="statAvg">{{ "%.2f" | format(range_stats.avg_invoice) }} <small>EUR</small></div>
+            <div class="dash-stat-value" id="statAvg">{{ range_stats.avg_invoice | eur }}</div>
             <div class="dash-stat-spark" id="sparkAvg"></div>
             <div class="dash-stat-foot"><span style="color:var(--text-lighter)">Pārdošanas vidējais</span></div>
         </div>
@@ -412,7 +412,7 @@
                         </div>
                     {% endif %}
                     <div class="activity-meta">
-                        {% if ev.amount and ev.amount > 0 %}<div class="activity-amount">{{ "%.2f" | format(ev.amount) }} €</div>{% endif %}
+                        {% if ev.amount and ev.amount > 0 %}<div class="activity-amount">{{ ev.amount | eur }}</div>{% endif %}
                         <div data-event-time="{{ ev.created_at }}">—</div>
                     </div>
                 </a>
@@ -449,11 +449,11 @@
                 <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
                     <span style="font-size:12px;color:var(--text-light)">Neto</span>
                     {% set net = range_stats.total_revenue - range_stats.total_expenses %}
-                    <span class="insight-big" id="statNet">{{ "%.2f" | format(net) }}</span>
+                    <span class="insight-big" id="statNet">{{ net | num }}</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-light)">
-                    <span>+<span id="statRevGreen">{{ "%.2f" | format(range_stats.total_revenue) }}</span></span>
-                    <span>−<span id="statExpRed">{{ "%.2f" | format(range_stats.total_expenses) }}</span></span>
+                    <span>+<span id="statRevGreen">{{ range_stats.total_revenue | num }}</span></span>
+                    <span>−<span id="statExpRed">{{ range_stats.total_expenses | num }}</span></span>
                 </div>
             </div>
         </div>
@@ -466,7 +466,7 @@
                 <div class="insight-label">Top klients</div>
                 {% if range_stats.top_client %}
                 <div class="insight-title">{{ range_stats.top_client.name }}</div>
-                <div class="insight-sub">{{ range_stats.top_client.count }} dok. · {{ "%.2f" | format(range_stats.top_client.revenue) }} EUR</div>
+                <div class="insight-sub">{{ range_stats.top_client.count }} dok. · {{ range_stats.top_client.revenue | eur }}</div>
                 {% else %}
                 <div class="insight-title" style="color:var(--text-lighter);font-weight:500">Nav datu</div>
                 <div class="insight-sub">Periodā nav pārdošanas dokumentu</div>
@@ -482,7 +482,7 @@
                 <div class="insight-label">Kavētie rēķini</div>
                 {% if range_stats.overdue_count > 0 %}
                 <div class="insight-big" style="color:var(--danger)">{{ range_stats.overdue_count }}</div>
-                <div class="insight-sub">{{ "%.2f" | format(range_stats.overdue_total) }} EUR jāatgūst</div>
+                <div class="insight-sub">{{ range_stats.overdue_total | eur }} jāatgūst</div>
                 {% else %}
                 <div class="insight-big" style="color:var(--success)">0</div>
                 <div class="insight-sub">Viss savlaicīgi</div>
@@ -543,7 +543,7 @@
                             </td>
                             <td data-label="Klients">{{ doc.client_name }}</td>
                             <td class="text-muted">{{ doc.doc_date.split('-')[2] }}/{{ doc.doc_date.split('-')[1] }}/{{ doc.doc_date.split('-')[0] }}</td>
-                            <td class="text-right" data-label="Summa" style="font-weight:500;white-space:nowrap;color:var(--text)">{{ "%.2f" | format(doc.total_with_vat) }} €</td>
+                            <td class="text-right" data-label="Summa" style="font-weight:500;white-space:nowrap;color:var(--text)">{{ doc.total_with_vat | eur }}</td>
                             {% if settings.get('status_tracking', '0') == '1' %}
                             <td>
                                 <span class="pill pill-status {% if doc.status == 'paid' %}pill-success{% else %}pill-brand{% endif %}"
@@ -670,9 +670,9 @@
                         <tr>
                             <td>{{ s.name }}</td>
                             <td>{{ s.unit }}</td>
-                            <td class="text-right">{{ "%.2f" | format(s.bought) }}</td>
-                            <td class="text-right">{{ "%.2f" | format(s.sold) }}</td>
-                            <td class="text-right" style="font-weight:600">{{ "%.2f" | format(s.stock) }}</td>
+                            <td class="text-right">{{ s.bought | num }}</td>
+                            <td class="text-right">{{ s.sold | num }}</td>
+                            <td class="text-right" style="font-weight:600">{{ s.stock | num }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
