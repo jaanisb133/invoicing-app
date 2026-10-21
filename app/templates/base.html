@@ -135,7 +135,7 @@
             <a href="/recurring" class="{% if page == 'recurring' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg>
                 Periodiskie rēķini
-                {% if not tier_limits.recurring %}<span class="sidebar-lock">PRO</span>{% endif %}
+                {% if not tier_limits.recurring %}<span class="sidebar-lock">Pamata</span>{% endif %}
             </a>
             {% endif %}
 
@@ -159,13 +159,13 @@
             <a href="/export" class="{% if page == 'export' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
                 Eksports
-                {% if not offline_mode and not tier_limits.einvoice %}<span class="sidebar-lock">PRO</span>{% endif %}
+                {% if not offline_mode and not tier_limits.einvoice %}<span class="sidebar-lock">Mini</span>{% endif %}
             </a>
             {% if not offline_mode and is_owner %}
             <a href="/komanda" class="{% if page == 'team' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a4.5 4.5 0 0 1 4.5-4.5h4a4.5 4.5 0 0 1 4.5 4.5v1"/><path d="M17 11.5a3 3 0 1 0 0-6M21.5 20v-1a4 4 0 0 0-3-3.9"/></svg>
                 Komanda
-                {% if tier_limits.max_users == 1 %}<span class="sidebar-lock">PRO</span>{% endif %}
+                {% if tier_limits.max_users == 1 %}<span class="sidebar-lock">Bizness</span>{% endif %}
             </a>
             <a href="/pricing" class="{% if page == 'pricing' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19M6.5 15h4"/></svg>
