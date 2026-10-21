@@ -146,6 +146,8 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   the part being changed (taller sticky panels fail the inspector's covered-text check).
 - **The sign-up dialog** carries the chosen company into `/register?display_name=&reg_number=
   &legal_address=&entity_type=` — `register_page()` accepts these as prefill.
+- **Light only.** The public site ignores the in-app theme and the OS dark mode (owner's call,
+  2026-10-21): `site.css` has no dark tokens and the pages set no `data-theme`.
 - **Footage:** `app/static/media/editor{,-phone}.mp4` are real, not-sped-up recordings of
   the editor ("Bez paātrinājuma" claims it). Regenerate after editor UI changes with
   `scripts/footage/seed.py` + `scripts/footage/record.py` (fictional photo studio SIA "Ziemeļu
@@ -214,6 +216,30 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
 2. **Self-host the last payment logos** — card marks are committed; EveryPay, SEB, Citadele
    and LHV are still hotlinked from `vnmedia.lv` (startup logs a warning). Run
    `scripts/fetch_payment_logos.py` once from a machine that can reach that host.
+
+### Invoice PDFs (redesigned 2026-10-21)
+- `app/pdf_generator.py`: three templates built from shared parts (`_head_*`, `_parties`,
+  `_lines`, `_summary` = payment details + totals, `_notes`, `_sign_off`, page `_chrome`),
+  geometry/type per template in `THEMES`. classic = serif title over a double rule in the
+  accent; modern = the amount due in an accent panel (`_Panel`, drawn on the canvas);
+  minimal = hairlines, a 3-column party row, an accent marker.
+- Every page: footer with the supplier's name and contacts (`company_email`, `company_phone`,
+  `company_website`, now on /settings for everyone) and "1 / n" (`_numbered_canvas`); a
+  running header from page 2; the free-plan line. Line header repeats across pages.
+- Fonts in `app/fonts` (OFL): DM Sans 400/500/600/700/italic, Source Serif 4 400/600/italic.
+  `_register_fonts()` still returns the regular/bold pair `pdf_branded` uses.
+- User text goes through `_x()` (escaped; an "&" used to break the PDF); names and
+  addresses through `_xq()`, which prints straight quotes as „…”. Not line items (27" = inches).
+- Payment details (bank, IBAN in fours, "Maksājuma mērķis") only on sales invoices with an
+  account. Persons print "P. k.", companies "Reģ. Nr." (`client_type` / `entity_type`).
+- **The previews are the same layout in HTML:** `static/js/paper.js` (`vrPaper.render`) draws
+  an A4 page 595 px wide (1 pt = 1 px) and scales it; CSS is the `.pp` block at the end of
+  `app.css`, with the PDF's numbers. Editor (`#invoicePreview`, modal) and document page use
+  it. A change to one side needs the other; compare a PDF at 72 dpi with the preview at
+  595 px side by side.
+- The landing's pinned invoice (`site.css` `[data-ui].paper.t-*`) is a reading-size cousin,
+  not a mirror; keep its template variants in the same spirit.
+- Test against the pinned ReportLab (4.2.2), not whatever a venv has.
 
 ### Branded tāmes (custom offer PDF design, per-account)
 Built for the TT Konstrukcijas client: a premium dark/gold offer PDF

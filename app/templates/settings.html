@@ -138,19 +138,25 @@
                                value="{{ settings.get('bank_account', '') }}">
                     </div>
                 </div>
-                {% if branded_offers %}
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Tālrunis (uz tāmes)</label>
-                        <input type="text" name="company_phone" class="form-control"
-                               value="{{ settings.get('company_phone', '') }}" placeholder="+371 ...">
+                        <label for="sEmail">E-pasts</label>
+                        <input type="email" id="sEmail" name="company_email" class="form-control"
+                               value="{{ settings.get('company_email', '') }}" placeholder="rekini@piemers.lv">
                     </div>
                     <div class="form-group">
-                        <label>Mājaslapa (uz tāmes)</label>
-                        <input type="text" name="company_website" class="form-control"
-                               value="{{ settings.get('company_website', '') }}" placeholder="www.piemers.lv">
+                        <label for="sPhone">Tālrunis</label>
+                        <input type="text" id="sPhone" name="company_phone" class="form-control"
+                               value="{{ settings.get('company_phone', '') }}" placeholder="+371 ...">
                     </div>
                 </div>
+                <div class="form-group">
+                    <label for="sWeb">Mājaslapa</label>
+                    <input type="text" id="sWeb" name="company_website" class="form-control"
+                           value="{{ settings.get('company_website', '') }}" placeholder="piemers.lv">
+                    <span class="field-hint">Kontakti ir katra dokumenta kājenē. Neobligāti.</span>
+                </div>
+                {% if branded_offers %}
                 <div class="form-group">
                     <label>Sauklis zem logo (uz tāmes)</label>
                     <input type="text" name="offer_tagline" class="form-control"

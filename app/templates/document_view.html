@@ -294,185 +294,62 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/paper.js?v={{ css_version }}"></script>
 <script>
 const docId = {{ doc.id }};
 let currentTemplate = "{{ selected_template }}";
 const allTemplatesEnabled = {{ 'true' if all_templates else 'false' }};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
+{% set s_own = doc.doc_type != 'buy' %}
+// The paper model for static/js/paper.js, which draws it like the PDF
 const docData = {
-    docTypeName: {{ doc_name | tojson }},
-    docNumber: {{ doc.doc_number | tojson }},
-    displayDate: fmtDate({{ doc.doc_date | tojson }}),
-    displayDueDate: {{ due | tojson }} ? fmtDate({{ due | tojson }}) : '',
+    kind: {{ doc.doc_type | tojson }},
+    title: {{ doc_name | tojson }},
+    number: {{ doc.doc_number | tojson }},
+    date: fmtDate({{ doc.doc_date | tojson }}),
+    due: {{ (due if doc.doc_type != 'offer' else '') | tojson }} ? fmtDate({{ due | tojson }}) : '',
     notes: {{ (doc.notes or '') | tojson }},
-    hasLogo: {{ 'true' if has_logo else 'false' }},
-    accentColor: {{ settings.get('accent_color', '#09090b') | tojson }},
-    electronicDoc: {{ 'true' if settings.get('electronic_doc', '0') == '1' else 'false' }},
+    accent: {{ settings.get('accent_color', '#09090b') | tojson }},
+    electronic: {{ 'true' if settings.get('electronic_doc', '0') == '1' else 'false' }},
+    logo: {{ (('/api/logo?v=' ~ settings.get('logo_filename', '')) if has_logo else '') | tojson }},
     logoWidth: {{ settings.get('logo_width', '100') | int }},
-    entityType: {{ settings.get('entity_type', 'business') | tojson }},
+    contacts: {{ [settings.get('company_email', ''), settings.get('company_phone', ''), settings.get('company_website', '')] | tojson }},
+    free: {{ 'true' if tier == 'free' else 'false' }},
     supplier: {
-        {% set s_own = doc.doc_type != 'buy' %}
         name: {{ (settings.get('company_name', '') if s_own else client.name) | tojson }},
         reg: {{ (settings.get('reg_number', '') if s_own else (client.reg_number or '')) | tojson }},
         vat: {{ (settings.get('vat_number', '') if s_own else (client.vat_number or '')) | tojson }},
         addr: {{ (settings.get('legal_address', '') if s_own else (client.legal_address or '')) | tojson }},
         bank: {{ (settings.get('bank_name', '') if s_own else (client.bank_name or '')) | tojson }},
         account: {{ (settings.get('bank_account', '') if s_own else (client.bank_account or '')) | tojson }},
-        isOwn: {{ 'true' if s_own else 'false' }}
+        person: {{ 'true' if (settings.get('entity_type') == 'individual' if s_own else client.client_type == 'individual') else 'false' }}
     },
     buyer: {
         name: {{ (client.name if s_own else settings.get('company_name', '')) | tojson }},
         reg: {{ ((client.reg_number or '') if s_own else settings.get('reg_number', '')) | tojson }},
         vat: {{ ((client.vat_number or '') if s_own else settings.get('vat_number', '')) | tojson }},
         addr: {{ ((client.legal_address or '') if s_own else settings.get('legal_address', '')) | tojson }},
-        bank: {{ ((client.bank_name or '') if s_own else settings.get('bank_name', '')) | tojson }},
-        account: {{ ((client.bank_account or '') if s_own else settings.get('bank_account', '')) | tojson }},
-        isOwn: {{ 'false' if s_own else 'true' }}
+        bank: '', account: '',
+        person: {{ 'true' if (client.client_type == 'individual' if s_own else settings.get('entity_type') == 'individual') else 'false' }}
     },
     items: [
         {% for item in items %}
-        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: {{ item.quantity | tojson }}, price: {{ item.price_per_unit | tojson }}, total: {{ (item.quantity * item.price_per_unit) | tojson }}, included: {{ 'true' if item.get('included_in_price') else 'false' }} },
+        { name: {{ item.product_name | tojson }}, unit: {{ item.unit | tojson }}, qty: {{ item.quantity | tojson }}, price: {{ item.price_per_unit | tojson }}, included: {{ 'true' if item.get('included_in_price') else 'false' }} },
         {% endfor %}
     ],
     subtotal: {{ subtotal | tojson }},
     vatRate: {{ doc.vat_rate | tojson }},
-    vatAmount: {{ vat_amount | tojson }},
-    total: {{ total | tojson }},
-    isVatPayer: {{ 'true' if settings.get('is_vat_payer', '1') == '1' else 'false' }},
+    vat: {{ (0 if doc.reverse_charge else vat_amount) | tojson }},
+    total: {{ (subtotal if doc.reverse_charge else total) | tojson }},
+    vatPayer: {{ 'true' if settings.get('is_vat_payer', '1') == '1' else 'false' }},
     reverseCharge: {{ 'true' if doc.reverse_charge else 'false' }}
 };
 
-function logoHtml(invert) {
-    if (!docData.hasLogo) return '';
-    const w = Math.round(160 * docData.logoWidth / 100), h = Math.round(50 * docData.logoWidth / 100);
-    return `<img src="/api/logo" alt="Logo" style="max-height:${h}px;max-width:${w}px;display:block;${invert ? 'filter:brightness(0) invert(1);' : ''}">`;
-}
-function partyLines(info) {
-    let html = '<strong>' + esc(info.name) + '</strong>';
-    if (info.reg) {
-        const regLabel = info.isOwn ? (docData.entityType === 'individual' ? 'P.k.:' : 'Reģ.Nr.:') : 'Reģ.Nr. / P.k.:';
-        html += '<br>' + regLabel + ' ' + esc(info.reg);
-    }
-    if (docData.isVatPayer && info.vat) html += '<br>PVN Nr.: ' + esc(info.vat);
-    if (info.addr) html += '<br>' + esc(info.addr);
-    if (info.bank) html += '<br>Banka: ' + esc(info.bank);
-    if (info.account) html += '<br>Konts: ' + esc(info.account);
-    return html;
-}
-// Free-plan invoices carry one small line at the foot, as the PDF does
-const FREE_PLAN_FOOTER = {{ 'true' if tier == 'free' else 'false' }};
-function signatureHtml(style) {
-    const foot = FREE_PLAN_FOOTER ? '<div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8">Sagatavots ar V-Rēķini · v-rekini.lv</div>' : '';
-    return signatureHtmlOnly(style) + foot;
-}
-function signatureHtmlOnly(style) {
-    const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
-    if (docData.electronicDoc) {
-        return `<div style="margin-top:32px;font-size:${style === 'minimal' ? '11px' : '12px'};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
-    }
-    const b = style === 'minimal' ? ['', ''] : ['<strong>', '</strong>'];
-    return `<div class="preview-signatures" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;font-size:${style === 'minimal' ? '11px' : '12px'};color:${color}">
-        <div>${b[0]}Izsniedza:${b[1]} ________________________</div>
-        <div>${b[0]}Saņēma:${b[1]} ________________________</div>
-    </div>`;
-}
-function itemsTableHtml(items, style) {
-    return items.map((item, i) => {
-        const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
-        const priceCell = item.included ? 'Iekļauts cenā' : fmtNum(item.price);
-        const totalCell = item.included ? 'Iekļauts cenā' : fmtNum(item.total);
-        return `<tr style="${bg}">
-            <td style="padding:8px 12px">${i + 1}</td>
-            <td style="padding:8px 12px">${esc(item.name)}</td>
-            <td style="padding:8px 12px">${esc(item.unit)}</td>
-            <td style="padding:8px 12px;text-align:right">${fmtQty(item.qty)}</td>
-            <td style="padding:8px 12px;text-align:right">${priceCell}</td>
-            <td style="padding:8px 12px;text-align:right">${totalCell}</td>
-        </tr>`;
-    }).join('');
-}
-function totalsHtml(d, style) {
-    const muted = style === 'minimal' ? '#9ca3af' : '#6b7280';
-    const vatLabel = d.reverseCharge ? 'Nodokļa apgrieztā maksāšana' : 'PVN (' + fmtQty(d.vatRate) + '%)';
-    const big = { classic: ['16px', '0.75px solid #1f2937', 'Kopā'], modern: ['17px', '1px solid #111827', 'KOPĀ'], minimal: ['15px', '0.5px solid #111827', 'Kopā'] }[style];
-    return `<div style="text-align:right;font-size:13px">
-        ${d.isVatPayer ? `<div style="color:${muted}">Summa bez PVN: <strong style="color:#111827">${fmtEur(d.subtotal)}</strong></div>
-        <div style="color:${muted}">${vatLabel}: <strong style="color:#111827">${d.reverseCharge ? '—' : fmtEur(d.vatAmount)}</strong></div>` : ''}
-        <div style="font-size:${big[0]};font-weight:800;color:#111827;margin-top:6px;padding-top:6px;border-top:${big[1]};display:inline-block">${big[2]}: ${fmtEur(d.total)}</div>
-    </div>`;
-}
-function tableHtml(d, style, ac) {
-    const th = style === 'modern'
-        ? 'padding:8px 12px;font-size:10px;color:white;font-weight:700'
-        : style === 'minimal'
-            ? 'padding:7px 12px;font-size:9px;font-weight:700;color:#9ca3af;border-bottom:0.5px solid #6b7280'
-            : 'padding:8px 12px;font-size:11px;color:#1f2937;border-bottom:0.75px solid #374151;font-weight:700';
-    const head = style === 'minimal' ? ['#', 'PRECE / PAKALPOJUMS', 'MĒRV.', 'DAUDZ.', 'CENA', 'SUMMA'] : ['Nr.', 'Nosaukums', 'Mērv.', 'Daudz.', 'Cena', 'Summa'];
-    const trStyle = style === 'modern' ? `background:${ac}` : (style === 'classic' ? 'background:#f9fafb' : '');
-    return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:12px;min-width:500px;table-layout:fixed">
-        <colgroup><col style="width:6%"><col><col style="width:10%"><col style="width:12%"><col style="width:14%"><col style="width:16%"></colgroup>
-        <thead><tr style="${trStyle}">${head.map((h, i) => `<th style="${th};text-align:${i > 2 ? 'right' : 'left'}">${h}</th>`).join('')}</tr></thead>
-        <tbody style="font-size:13px">${itemsTableHtml(d.items, style)}</tbody></table></div>`;
-}
-function partiesHtml(d, labelSize, labelColor, gap) {
-    const lab = `font-size:${labelSize};font-weight:700;color:${labelColor};letter-spacing:0.5px;margin-bottom:6px`;
-    return `<div class="preview-parties" style="display:grid;grid-template-columns:1fr 1fr;gap:${gap};margin-bottom:16px">
-        <div><div style="${lab}">PIEGĀDĀTĀJS / PĀRDEVĒJS</div><div style="font-size:13px;line-height:1.6">${partyLines(d.supplier)}</div></div>
-        <div><div style="${lab}">SAŅĒMĒJS / PIRCĒJS</div><div style="font-size:13px;line-height:1.6">${partyLines(d.buyer)}</div></div>
-    </div>`;
-}
-function notesHtml(d) { return d.notes ? '<div style="margin-top:12px;font-size:13px;color:#6b7280"><strong>Piezīmes:</strong> ' + esc(d.notes) + '</div>' : ''; }
-
-function renderClassic(d) {
-    return `
-        ${logoHtml() ? '<div style="text-align:center;margin-bottom:12px">' + logoHtml().replace('display:block', 'display:inline-block') + '</div>' : ''}
-        <div style="text-align:center;margin-bottom:4px">
-            <div style="font-size:20px;font-weight:700;color:#111827">${esc(d.docTypeName)}</div>
-            <div style="font-size:14px;color:#374151;margin-top:3px">Nr. ${esc(d.docNumber)}</div>
-            <div style="font-size:13px;color:#6b7280;margin-top:2px">Datums: ${d.displayDate}</div>
-            ${d.displayDueDate ? '<div style="font-size:13px;color:#6b7280;margin-top:1px">Apmaksas termiņš: ' + d.displayDueDate + '</div>' : ''}
-        </div>
-        <hr style="border:none;border-top:0.5px solid #e5e7eb;margin:12px 0 16px">
-        ${partiesHtml(d, '10px', '#6b7280', '20px')}
-        ${tableHtml(d, 'classic')}
-        ${totalsHtml(d, 'classic')}
-        ${notesHtml(d)}
-        ${signatureHtml('classic')}`;
-}
-function renderModern(d) {
-    const ac = docData.accentColor || '#09090b';
-    return `
-        <div class="preview-modern-header" style="background:${esc(ac)};color:white;padding:20px 24px;display:flex;justify-content:space-between;align-items:center">
-            <div>${docData.hasLogo ? logoHtml(false).replace('display:block;', 'display:block;margin-bottom:8px;') : ''}<div style="font-size:22px;font-weight:700">${esc(d.docTypeName)}</div></div>
-            <div style="font-size:13px;color:rgba(255,255,255,0.7);text-align:right">Nr. ${esc(d.docNumber)}<br>Datums: ${d.displayDate}${d.displayDueDate ? '<br>Apmaksas termiņš: ' + d.displayDueDate : ''}</div>
-        </div>
-        <div>
-            ${partiesHtml(d, '10px', '#6b7280', '20px')}
-            ${tableHtml(d, 'modern', esc(ac))}
-            ${totalsHtml(d, 'modern')}
-            ${notesHtml(d)}
-            ${signatureHtml('modern')}
-        </div>`;
-}
-function renderMinimal(d) {
-    return `
-        ${logoHtml() ? '<div style="margin-bottom:16px">' + logoHtml() + '</div>' : ''}
-        <div style="font-size:18px;font-weight:700;color:#111827;margin-bottom:3px">${esc(d.docTypeName)}</div>
-        <div style="font-size:13px;color:#9ca3af;margin-bottom:14px">Nr. ${esc(d.docNumber)} &nbsp;&middot;&nbsp; ${d.displayDate}${d.displayDueDate ? ' &nbsp;&middot;&nbsp; Apmaksas termiņš: ' + d.displayDueDate : ''}</div>
-        <hr style="border:none;border-top:0.25px solid #e5e7eb;margin:0 0 16px">
-        ${partiesHtml(d, '9px', '#9ca3af', '24px')}
-        ${tableHtml(d, 'minimal')}
-        ${totalsHtml(d, 'minimal')}
-        ${notesHtml(d)}
-        ${signatureHtml('minimal')}`;
-}
 function renderPreview(template) {
     const preview = document.getElementById('docPreview');
     if (!preview) return;
-    const fn = template === 'modern' ? renderModern : template === 'minimal' ? renderMinimal : renderClassic;
-    preview.className = 'doc-view-preview doc-view-' + (['modern', 'minimal'].includes(template) ? template : 'classic');
-    preview.innerHTML = fn(docData);
+    vrPaper.render(preview, Object.assign({}, docData, { template: template }));
 }
 
 function selectTemplate(key, btn) {

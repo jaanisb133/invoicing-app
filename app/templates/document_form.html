@@ -134,10 +134,6 @@
 .rail-meta { font-size: 12px; color: var(--muted); margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; }
 .paper-frame { position: relative; display: block; width: 100%; border: 0; padding: 0; background: none; cursor: zoom-in; text-align: left; }
 .paper-frame .invoice-preview-wrapper {
-    padding: 18px;
-    font-size: 11px;
-    line-height: 1.45;
-    max-height: 62vh;
     overflow: hidden;
     border-radius: 4px;
     border: 1px solid var(--border);
@@ -147,7 +143,7 @@
 .paper-frame:hover::after, .paper-frame:focus-visible::after { opacity: 1; }
 .preview-modal .modal { max-width: 860px; padding: 0; overflow: hidden; }
 .preview-modal .modal-header { position: sticky; top: 0; background: var(--surface); z-index: 1; }
-.preview-modal .invoice-preview-wrapper { padding: 40px 48px; font-size: 14px; line-height: 1.5; zoom: 1.3; }
+.preview-modal .invoice-preview-wrapper { border-radius: 4px; }
 .preview-modal .scroll { max-height: calc(100vh - 120px); overflow-y: auto; background: var(--raised); padding: 20px; }
 
 /* Phone: one column, the lines become two-row blocks, total pinned above the bottom bar */
@@ -205,7 +201,6 @@
     .page-body.editor-body { padding-bottom: 96px; }
     .page-header .btn-group:not(:has(.segmented)) { display: none; }
     .preview-modal .scroll { padding: 8px; }
-    .preview-modal .invoice-preview-wrapper { zoom: 1; padding: 20px 16px; font-size: 12px; }
 }
 </style>
 
@@ -562,6 +557,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/paper.js?v={{ css_version }}"></script>
 <script>
 const products = {{ products | tojson }};
 const clientsData = {{ clients | tojson }};
@@ -750,6 +746,7 @@ function setDue(days) {
     if (!dueDateInput) return;
     dueDateInput.value = (days === '' || days == null) ? '' : addDays(dateInput.value, Number(days));
     paintDueChips();
+    if (typeof updatePreview === 'function') updatePreview();
 }
 if (dueDateInput) {
     if (!editMode && !dueDateInput.value && paymentDueDays) setDue(paymentDueDays);
@@ -1064,203 +1061,58 @@ form.addEventListener('submit', e => {
 });
 
 /* -------------------------------------------------------------- preview */
+// The paper model for static/js/paper.js, which draws it like the PDF
+const FREE_PLAN_FOOTER = {{ 'true' if tier == 'free' else 'false' }};
 function getPreviewData() {
     const clientId = document.getElementById('clientSelect').value;
-    const docDate = dateInput.value;
     const vatRate = currentVatRate();
-    const notes = document.getElementById('notesInput').value;
-    const template = document.getElementById('templateSelect').value;
     const clientInfo = clientId ? clientsData.find(c => c.id == clientId) : null;
 
-    let docTypeName;
-    if (docType === 'buy') docTypeName = companySettings.buy_doc_name || 'Rēķins';
-    else if (docType === 'offer') docTypeName = companySettings.offer_doc_name || 'Piedāvājums';
-    else docTypeName = companySettings.sell_doc_name || 'Rēķins';
+    let title;
+    if (docType === 'buy') title = companySettings.buy_doc_name || 'Rēķins';
+    else if (docType === 'offer') title = companySettings.offer_doc_name || 'Piedāvājums';
+    else title = companySettings.sell_doc_name || 'Rēķins';
 
     const company = {
-        name: companySettings.company_name || '(Jūsu uzņēmums)',
+        name: companySettings.company_name || 'Jūsu uzņēmums',
         reg: companySettings.reg_number || '', vat: companySettings.vat_number || '',
         addr: companySettings.legal_address || '', bank: companySettings.bank_name || '',
-        account: companySettings.bank_account || '', isOwn: true,
+        account: companySettings.bank_account || '', person: entityType === 'individual',
     };
     const client = clientInfo ? {
         name: clientInfo.name, reg: clientInfo.reg_number || '', vat: clientInfo.vat_number || '',
         addr: clientInfo.legal_address || '', bank: clientInfo.bank_name || '',
-        account: clientInfo.bank_account || '', isOwn: false,
-    } : { name: '—', reg: '', vat: '', addr: '', bank: '', account: '', isOwn: false };
+        account: clientInfo.bank_account || '', person: clientInfo.client_type === 'individual',
+    } : { name: '—', reg: '', vat: '', addr: '', bank: '', account: '', person: false };
 
     const items = [];
     let subtotal = 0;
     document.querySelectorAll('.item-row').forEach(row => {
         const v = lineValues(row);
-        const total = v.included ? 0 : v.qty * v.price;
-        subtotal += total;
-        if (v.name) items.push({ name: esc(v.name), unit: esc(v.unit), qty: v.qty, price: v.price, total, included: v.included });
+        subtotal += v.included ? 0 : v.qty * v.price;
+        if (v.name) items.push({ name: v.name, unit: v.unit, qty: v.qty, price: v.price, included: v.included });
     });
-    const vatAmount = subtotal * (vatRate / 100);
     const rcCb = document.getElementById('reverseCharge');
+    const reverse = !!(rcCb && rcCb.checked);
+    const vat = reverse ? 0 : subtotal * (vatRate / 100);
+    const dueEl = document.getElementById('paymentDueDate');
+    const due = docType === 'sell' && dueEl && dueEl.value ? fmtDate(dueEl.value) : '';
     return {
-        template, docTypeName, docNumber: editMode ? editDocNumber : '(automātiski)',
-        displayDate: fmtDate(docDate),
+        template: document.getElementById('templateSelect').value, kind: docType,
+        title, number: editMode ? editDocNumber : '(automātiski)',
+        date: fmtDate(dateInput.value), due,
         supplier: docType === 'buy' ? client : company,
         buyer: docType === 'buy' ? company : client,
-        items, subtotal, vatRate, vatAmount, total: subtotal + vatAmount,
-        notes: esc(notes), isVatPayer, reverseCharge: !!(rcCb && rcCb.checked),
+        items, subtotal, vatRate, vat, total: subtotal + vat,
+        vatPayer: isVatPayer, reverseCharge: reverse,
+        notes: document.getElementById('notesInput').value,
+        electronic: companySettings.electronic_doc === '1',
+        accent: companySettings.accent_color || '#09090b',
+        logo: companySettings.logo_filename ? '/api/logo?v=' + encodeURIComponent(companySettings.logo_filename) : '',
+        logoWidth: companySettings.logo_width || 100,
+        contacts: [companySettings.company_email, companySettings.company_phone, companySettings.company_website],
+        free: FREE_PLAN_FOOTER,
     };
-}
-
-function partyLines(info, showVat) {
-    let html = '<strong>' + esc(info.name) + '</strong>';
-    if (info.reg) {
-        const regLabel = info.isOwn ? (entityType === 'individual' ? 'P.k.:' : 'Reģ.Nr.:') : 'Reģ.Nr. / P.k.:';
-        html += '<br>' + regLabel + ' ' + esc(info.reg);
-    }
-    if (showVat && info.vat) html += '<br>PVN Nr.: ' + esc(info.vat);
-    if (info.addr) html += '<br>' + esc(info.addr);
-    if (info.bank) html += '<br>Banka: ' + esc(info.bank);
-    if (info.account) html += '<br>Konts: ' + esc(info.account);
-    return html;
-}
-
-function itemsTableHtml(items, style) {
-    if (!items.length) return '<tr><td colspan="6" style="text-align:center;color:#6b7280;padding:12px">Nav pievienotu rindu</td></tr>';
-    return items.map((item, i) => {
-        const bg = (style === 'modern' && i % 2 === 1) ? 'background:#f9fafb;' : '';
-        const priceCell = item.included ? 'Iekļauts cenā' : fmtNum(item.price);
-        const totalCell = item.included ? 'Iekļauts cenā' : fmtNum(item.total);
-        return `<tr style="${bg}">
-            <td style="padding:5px 8px">${i + 1}</td>
-            <td style="padding:5px 8px">${item.name}</td>
-            <td style="padding:5px 8px">${item.unit}</td>
-            <td style="padding:5px 8px;text-align:right">${fmtQty(item.qty)}</td>
-            <td style="padding:5px 8px;text-align:right">${priceCell}</td>
-            <td style="padding:5px 8px;text-align:right">${totalCell}</td>
-        </tr>`;
-    }).join('');
-}
-
-function vatLines(d, muted) {
-    if (!d.isVatPayer) return '';
-    const c = muted ? '#9ca3af' : '#6b7280';
-    const label = d.reverseCharge ? 'Nodokļa apgrieztā maksāšana' : 'PVN (' + fmtQty(d.vatRate) + '%)';
-    return `<div style="color:${c}">Summa bez PVN: <strong style="color:#111827">${fmtEur(d.subtotal)}</strong></div>
-            <div style="color:${c}">${label}: <strong style="color:#111827">${d.reverseCharge ? '—' : fmtEur(d.vatAmount)}</strong></div>`;
-}
-
-// Free-plan invoices carry one small line at the foot, as the PDF does
-const FREE_PLAN_FOOTER = {{ 'true' if tier == 'free' else 'false' }};
-function previewSignatureHtml(style) {
-    const foot = FREE_PLAN_FOOTER ? '<div style="margin-top:24px;text-align:center;font-size:8px;color:#94a3b8">Sagatavots ar V-Rēķini · v-rekini.lv</div>' : '';
-    return previewSignatureHtmlOnly(style) + foot;
-}
-function previewSignatureHtmlOnly(style) {
-    if (companySettings.electronic_doc === '1') {
-        const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
-        return `<div style="margin-top:20px;font-size:${style === 'minimal' ? '8px' : '9px'};color:${color};font-style:italic">Dokuments ir sagatavots elektroniski un ir derīgs bez paraksta.</div>`;
-    }
-    const color = style === 'minimal' ? '#9ca3af' : '#6b7280';
-    const b = style === 'minimal' ? ['', ''] : ['<strong>', '</strong>'];
-    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;font-size:${style === 'minimal' ? '8px' : '9px'};color:${color}">
-        <div>${b[0]}Izsniedza:${b[1]} ____________________</div>
-        <div>${b[0]}Saņēma:${b[1]} ____________________</div>
-    </div>`;
-}
-
-const thStyle = 'padding:5px 8px;font-size:9px;color:#1f2937;border-bottom:0.75px solid #374151';
-function renderClassicPreview(d) {
-    return `
-        <div style="text-align:center;margin-bottom:2px">
-            <div style="font-size:15px;font-weight:700;color:#111827">${d.docTypeName}</div>
-            <div style="font-size:11px;color:#374151;margin-top:2px">Nr. ${d.docNumber}</div>
-            <div style="font-size:10px;color:#6b7280;margin-top:1px">Datums: ${d.displayDate || '—'}</div>
-        </div>
-        <hr style="border:none;border-top:0.5px solid #e5e7eb;margin:8px 0 10px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
-            <div><div style="font-size:8px;font-weight:700;color:#6b7280;letter-spacing:0.5px;margin-bottom:3px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                 <div style="font-size:10px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div></div>
-            <div><div style="font-size:8px;font-weight:700;color:#6b7280;letter-spacing:0.5px;margin-bottom:3px">SAŅĒMĒJS / PIRCĒJS</div>
-                 <div style="font-size:10px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div></div>
-        </div>
-        <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
-            <thead><tr style="background:#f9fafb">
-                <th style="${thStyle};text-align:left">Nr.</th><th style="${thStyle};text-align:left">Nosaukums</th>
-                <th style="${thStyle};text-align:left">Mērv.</th><th style="${thStyle};text-align:right">Daudz.</th>
-                <th style="${thStyle};text-align:right">Cena</th><th style="${thStyle};text-align:right">Summa</th>
-            </tr></thead>
-            <tbody>${itemsTableHtml(d.items, 'classic')}</tbody>
-        </table>
-        <div style="text-align:right;font-size:10px">
-            ${vatLines(d)}
-            <div style="font-size:12px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:0.75px solid #1f2937;display:inline-block">Kopā: ${fmtEur(d.total)}</div>
-        </div>
-        ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        ${previewSignatureHtml('classic')}`;
-}
-
-function renderModernPreview(d) {
-    const ac = (companySettings && companySettings.accent_color) || '#09090b';
-    const th = 'padding:6px 8px;font-size:8px;color:white';
-    return `
-        <div style="background:${ac};color:white;padding:14px 16px;border-radius:4px;margin:-1px -1px 12px -1px;display:flex;justify-content:space-between;align-items:center">
-            <div style="font-size:16px;font-weight:700">${d.docTypeName}</div>
-            <div style="font-size:10px;color:rgba(255,255,255,0.7);text-align:right">Nr. ${d.docNumber}<br>Datums: ${d.displayDate || '—'}</div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;padding:0 4px">
-            <div><div style="font-size:8px;font-weight:700;color:#6b7280;letter-spacing:0.5px;margin-bottom:3px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                 <div style="font-size:10px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div></div>
-            <div><div style="font-size:8px;font-weight:700;color:#6b7280;letter-spacing:0.5px;margin-bottom:3px">SAŅĒMĒJS / PIRCĒJS</div>
-                 <div style="font-size:10px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div></div>
-        </div>
-        <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
-            <thead><tr style="background:${ac}">
-                <th style="${th};text-align:left">Nr.</th><th style="${th};text-align:left">Nosaukums</th>
-                <th style="${th};text-align:left">Mērv.</th><th style="${th};text-align:right">Daudz.</th>
-                <th style="${th};text-align:right">Cena</th><th style="${th};text-align:right">Summa</th>
-            </tr></thead>
-            <tbody>${itemsTableHtml(d.items, 'modern')}</tbody>
-        </table>
-        <div style="text-align:right;font-size:10px;padding:0 4px">
-            ${vatLines(d)}
-            <div style="font-size:13px;font-weight:800;color:#111827;margin-top:4px;padding-top:4px;border-top:1px solid #111827;display:inline-block">KOPĀ: ${fmtEur(d.total)}</div>
-        </div>
-        ${d.notes ? '<div style="margin-top:8px;font-size:9px;color:#6b7280;padding:0 4px"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-        ${previewSignatureHtml('modern')}`;
-}
-
-function renderMinimalPreview(d) {
-    const th = 'padding:5px 8px;font-size:7px;font-weight:700;color:#9ca3af;border-bottom:0.5px solid #6b7280';
-    return `
-        <div style="padding:0 8px">
-            <div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:2px">${d.docTypeName}</div>
-            <div style="font-size:10px;color:#9ca3af;margin-bottom:10px">Nr. ${d.docNumber} &nbsp;&middot;&nbsp; ${d.displayDate || '—'}</div>
-            <hr style="border:none;border-top:0.25px solid #e5e7eb;margin:0 0 10px">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px">
-                <div><div style="font-size:7px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;margin-bottom:2px">PIEGĀDĀTĀJS / PĀRDEVĒJS</div>
-                     <div style="font-size:9.5px;line-height:1.5">${partyLines(d.supplier, d.isVatPayer)}</div></div>
-                <div><div style="font-size:7px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;margin-bottom:2px">SAŅĒMĒJS / PIRCĒJS</div>
-                     <div style="font-size:9.5px;line-height:1.5">${partyLines(d.buyer, d.isVatPayer)}</div></div>
-            </div>
-            <table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:8px">
-                <thead><tr>
-                    <th style="${th};text-align:left">#</th><th style="${th};text-align:left">PRECE</th>
-                    <th style="${th};text-align:left">MĒRV.</th><th style="${th};text-align:right">DAUDZ.</th>
-                    <th style="${th};text-align:right">CENA</th><th style="${th};text-align:right">SUMMA</th>
-                </tr></thead>
-                <tbody>${itemsTableHtml(d.items, 'minimal')}</tbody>
-            </table>
-            <div style="text-align:right;font-size:10px">
-                ${vatLines(d, true)}
-                <div style="font-size:11px;font-weight:800;color:#111827;margin-top:3px;padding-top:3px;border-top:0.5px solid #111827;display:inline-block">Kopā: ${fmtEur(d.total)}</div>
-            </div>
-            ${d.notes ? '<hr style="border:none;border-top:0.15px solid #e5e7eb;margin:8px 0 4px"><div style="font-size:9px;color:#6b7280"><strong>Piezīmes:</strong> ' + d.notes + '</div>' : ''}
-            ${previewSignatureHtml('minimal')}
-        </div>`;
-}
-
-function renderPreview(d) {
-    if (d.template === 'modern') return renderModernPreview(d);
-    if (d.template === 'minimal') return renderMinimalPreview(d);
-    return renderClassicPreview(d);
 }
 
 function updatePreview() {
@@ -1272,27 +1124,24 @@ function paintPreview() {
     if (brandedFlag && brandedFlag.value === '1') return;
     const d = getPreviewData();
     document.getElementById('previewTemplateLabel').textContent = templateLabels[d.template] || d.template;
-    const html = renderPreview(d);
-    const small = document.getElementById('invoicePreview');
-    small.className = 'invoice-preview-wrapper preview-' + d.template;
-    small.innerHTML = html;
-    const big = document.getElementById('invoicePreviewBig');
-    if (document.getElementById('previewModal').classList.contains('active')) big.innerHTML = html;
+    vrPaper.render(document.getElementById('invoicePreview'), d);
+    if (document.getElementById('previewModal').classList.contains('active')) vrPaper.render(document.getElementById('invoicePreviewBig'), getPreviewData());
 }
 function openPreview() {
     const brandedFlag = document.getElementById('offerBranded');
     const big = document.getElementById('invoicePreviewBig');
+    big.classList.remove('pp-fit');
+    big.style.height = '';
     if (brandedFlag && brandedFlag.value === '1') {
         big.innerHTML = '<img src="/static/img/tame_sample.jpg?v={{ css_version }}" alt="Tāmes dizaina paraugs" style="width:100%">';
     } else {
-        const d = getPreviewData();
-        big.className = 'invoice-preview-wrapper preview-' + d.template;
-        big.innerHTML = renderPreview(d);
+        vrPaper.render(big, getPreviewData());
     }
     document.getElementById('previewModalTitle').textContent = 'Priekšskatījums · ' + (templateLabels[document.getElementById('templateSelect').value] || '');
     document.getElementById('previewModal').classList.add('active');
 }
 document.getElementById('templateSelect').addEventListener('change', updatePreview);
+if (document.getElementById('paymentDueDate')) document.getElementById('paymentDueDate').addEventListener('change', updatePreview);
 document.getElementById('notesInput').addEventListener('input', updatePreview);
 
 /* ------------------------------------------------------ quick add client */

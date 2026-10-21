@@ -59,7 +59,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "50"
+CSS_VERSION = "55"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -2409,6 +2409,7 @@ async def save_settings(
     invoice_number_digits: str = Form("3"),
     invoice_number_start: str = Form("1"),
     email_template: str = Form(""),
+    company_email: str = Form(""),
     company_phone: str = Form(""),
     company_website: str = Form(""),
     offer_tagline: str = Form(""),
@@ -2472,8 +2473,8 @@ async def save_settings(
         "invoice_number_digits": invoice_number_digits,
         "invoice_number_start": str(start_int),
         "email_template": email_template,
-        # Branded offer header contacts + tagline (harmless keys when the
-        # feature is off — the standard templates never read them)
+        # Contacts for the document footer (and the branded offer header)
+        "company_email": company_email.strip(),
         "company_phone": company_phone,
         "company_website": company_website,
         "offer_tagline": offer_tagline,
