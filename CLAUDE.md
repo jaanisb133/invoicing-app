@@ -203,11 +203,15 @@ can't kill the main form logic.
 ## Vendored skills (`.claude/skills/`, `.claude/agents/`)
 Committed to the repo because cloud sessions never install plugins; sources,
 versions and local patches are in `.claude/skills/VENDORED.md`.
-- **taste-skill** (`design-taste-frontend`) — use it for **review and polish**, not
-  to re-art-direct the app. Its drawn "directions" do not override the project's
-  own tokens in `style.css`; propose a direction change to the user, never apply
-  one. App screens use its `--app` mode. In cloud sessions run the inspector with
-  `CHROME_PATH=/opt/pw-browsers/chromium`.
+- **design-taste-frontend** (taste-skill v2) — the main design skill. The user
+  approved a full redesign driven by it (2026-10-21), colours included, so its
+  directions may replace the current tokens. App screens use its `--app` mode
+  (`references/app-screens.md`). In cloud sessions run its scripts with
+  `CHROME_PATH=/opt/pw-browsers/chromium`; working files go to `.taste-skill/` (gitignored).
+- **high-end-visual-design** — opt-in classic (marketing-site look: big whitespace,
+  scroll reveals, pill CTAs). Model invocation is disabled upstream, so read its
+  `SKILL.md` directly. Fits the public landing page; too slow and airy for work
+  screens like the invoice form, where design-taste-frontend's app rules win.
 - **claude-seo** (`seo`, `seo-*` + 19 agents) — for the public pages (landing,
   pricing, legal). The app is server-rendered Jinja, so rendered-page (Chromium)
   features aren't needed; its runtime runs fine without them. First use in a session
