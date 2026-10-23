@@ -381,6 +381,15 @@ can't kill the main form logic.
   (`cancel_at_period_end`; `_apply_trial` and the daily `expire_cancelled_subscriptions` make
   it free after); lifetime can't be cancelled. A renewal charge that times out is looked up
   (`charge_mit`), never retried blind.
+- **Plan changes are prorated** (`_unused_credit`, `_plan_quote` before `/billing/checkout`):
+  the unused part of a card-paid period is credited. `due = price − credit`; ≥ 1 € (always for
+  lifetime) is charged and starts a full period today; below that the plan switches with no
+  payment (`db.change_plan`) and the credit buys `floor(credit ÷ daily price)` days. Every
+  period records `_period_value` / `_period_start` (`_start_period`: activation, renewal,
+  switch), so credit is value × days left ÷ length: exact, never more than was paid, and
+  floors mean switching back and forth can't gain. Checkout stores `_pending_amount`, which
+  is what EveryPay must say was paid. Trials and admin-set plans (no payment ref) earn none.
+  The pricing page shows each change's cost today (`quotes`), incl. the current plan's other cycle.
 - **Tenancy: every id from a form is checked.** `db.client_belongs` / `db.own_items` on document
   and recurring forms; `get_client(id, account_id)` / `get_product(id, account_id)` on every
   read for a document (pass `doc["user_id"]`), and `get_document` joins products by account.

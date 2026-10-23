@@ -25,6 +25,9 @@
     {% if request.query_params.get('success') == 'subscription_cancelled' %}
     <div class="alert alert-success">Abonements atcelts: karte vairs netiks iekasēta.{% if current_user.plan_tier != 'free' and current_user.subscription_end %} Plāns darbojas līdz {{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}, pēc tam konts pāriet uz bezmaksas plānu.{% endif %}</div>
     {% endif %}
+    {% if request.query_params.get('success') == 'plan_switched' %}
+    <div class="alert alert-success">Plāns nomainīts bez maksas: iepriekšējā plāna neizmantotais periods sedz {{ tier_label }}{% if current_user.subscription_end %} līdz {{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}{% endif %}.</div>
+    {% endif %}
     {% if request.query_params.get('error') == 'lifetime_no_cancel' %}
     <div class="alert alert-danger">Mūža licence ir vienreizējs pirkums, tai nav ko atcelt.</div>
     {% endif %}

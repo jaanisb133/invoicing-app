@@ -8,6 +8,26 @@
 {% set h = pricing_heading | default("h2") %}
 {% set signed_in = current_user is not none and current_user %}
 {% set my_plan = current_user.plan_tier if signed_in else none %}
+{% set q_all = quotes | default({}) %}
+{% set credit = plan_credit | default(0) %}
+{# One plan button for one cycle: what it costs today, with the unused period credited #}
+{% macro change_button(key, cyc, label) -%}
+{% set q = q_all.get(key, {}).get(cyc) %}
+{% if q %}
+<form method="post" action="/billing/checkout"{% if q.mode == 'switch' %} onsubmit="return confirm('Pāriet uz {{ plans[key].label }} tūlīt? Maksa nav vajadzīga: neizmantotais periods ({{ q.credit | eur }}) sedz {{ plans[key].label }} līdz {{ q.until[8:10] }}.{{ q.until[5:7] }}.{{ q.until[:4] }}.')"{% endif %}>
+    <input type="hidden" name="tier" value="{{ key }}">
+    <input type="hidden" name="cycle" value="{{ cyc }}">
+    <button type="submit" class="btn btn-primary px-btn">{% if q.mode == 'switch' %}Pāriet bez maksas{% else %}{{ label }}{% endif %}</button>
+</form>
+{% if q.mode == 'switch' %}
+<p class="px-quote">Neizmantotais periods sedz {{ plans[key].label }} līdz {{ q.until[8:10] }}.{{ q.until[5:7] }}.{{ q.until[:4] }}.</p>
+{% elif q.credit %}
+<p class="px-quote">Šodien {{ q.due | eur }}: ieskaitīts {{ q.credit | eur }} par neizmantoto periodu.</p>
+{% endif %}
+{% else %}
+<span class="px-current">Pašreizējais plāns</span>
+{% endif %}
+{%- endmacro %}
 {% set blurbs = {
     'free': 'Lai izrakstītu dažus rēķinus mēnesī un iepazītu programmu.',
     'mini': 'Pašnodarbinātajiem un sīkuzņēmumiem.',
@@ -60,10 +80,19 @@
                     {% else %}
                     <a href="/register?plan={{ key }}&cycle=monthly" class="btn btn-primary px-btn" data-plan-link="{{ key }}">Izvēlēties {{ p.label }}</a>
                     {% endif %}
-                {% elif my_plan == key %}
+                {% elif my_plan == 'lifetime' and key != 'free' %}
+                    <span class="px-current muted">Iekļauts mūža licencē</span>
+                {% elif my_plan == key and key == 'free' %}
                     <span class="px-current">{% if current_user.on_trial %}Pēc izmēģinājuma{% else %}Pašreizējais plāns{% endif %}</span>
                 {% elif key == 'free' %}
-                    <span class="px-current muted">Pēc izmēģinājuma</span>
+                    <span class="px-current muted">{% if my_plan == 'free' %}Pēc izmēģinājuma{% else %}Bezmaksas{% endif %}</span>
+                {% elif q_all %}
+                    {# one button per cycle: the current plan's other cycle is a change too #}
+                    {% for cyc in ('monthly', 'yearly') %}
+                    <div data-cycle-only="{{ cyc }}"{% if cyc != 'monthly' %} hidden{% endif %}>
+                        {{ change_button(key, cyc, ('Pāriet uz gada maksu' if cyc == 'yearly' else 'Pāriet uz mēneša maksu') if my_plan == key else 'Izvēlēties ' ~ p.label) }}
+                    </div>
+                    {% endfor %}
                 {% else %}
                     <form method="post" action="/billing/checkout">
                         <input type="hidden" name="tier" value="{{ key }}">
@@ -91,6 +120,8 @@
                 <span class="px-current">Pašreizējais plāns</span>
             {% elif not signed_in %}
                 <a href="/register?plan=lifetime" class="btn btn-primary px-btn">Iegādāties</a>
+            {% elif q_all %}
+                {{ change_button('lifetime', 'lifetime', 'Iegādāties') }}
             {% else %}
                 <form method="post" action="/billing/checkout">
                     <input type="hidden" name="tier" value="lifetime">
@@ -102,7 +133,7 @@
     </section>
     {% endif %}
 
-    <p class="px-note">Apmaksa ar Visa, Mastercard, Google Pay vai Apple Pay; maksājumus apstrādā EveryPay un SEB. Plānu var mainīt jebkurā brīdī.</p>
+    <p class="px-note">Apmaksa ar Visa, Mastercard, Google Pay vai Apple Pay; maksājumus apstrādā EveryPay un SEB. Plānu var mainīt jebkurā brīdī: {% if credit %}šī perioda neizmantotā daļa ({{ credit | eur }}) tiek ieskaitīta{% else %}apmaksātā perioda neizmantotā daļa tiek ieskaitīta jaunajā plānā{% endif %}.</p>
 </div>
 
 <style>
@@ -130,13 +161,14 @@
 .px-feat li { padding-left: 18px; position: relative; line-height: 1.4; }
 .px-feat li::before { content: ""; position: absolute; left: 2px; top: .5em; width: 7px; height: 4px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); opacity: .7; }
 .px-card.is-main { background: var(--ink-field, var(--primary)); color: var(--on-ink, var(--on-primary)); border-color: transparent; }
-.px-card.is-main .px-for, .px-card.is-main .px-price span { color: var(--on-ink-muted, color-mix(in srgb, var(--on-primary) 70%, transparent)); }
+.px-card.is-main .px-for, .px-card.is-main .px-price span, .px-card.is-main .px-quote { color: var(--on-ink-muted, color-mix(in srgb, var(--on-primary) 70%, transparent)); }
 .px-card.is-main .px-btn { background: var(--ink-btn, var(--on-primary)); color: var(--ink-btn-ink, var(--primary)); }
 .px-life { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-top: 12px; padding: 22px; border-radius: 8px; background: var(--surface); }
 .px-life h3 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
 .px-life p { margin: 0; color: var(--muted); font-size: 15px; max-width: 60ch; }
 .px-life-buy { display: flex; align-items: center; gap: 16px; }
 .px-life-buy b { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.px-quote { margin: 8px 0 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 .px-note { margin: 18px 0 0; color: var(--muted); font-size: 14px; max-width: 72ch; }
 @media (max-width: 1100px) { .px-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) {
@@ -154,6 +186,7 @@
             root.querySelectorAll('.px-cycle button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
             root.querySelectorAll('[data-monthly]').forEach(function (el) { el.innerHTML = el.dataset[cycle]; });
             root.querySelectorAll('.cycle-input').forEach(function (el) { el.value = cycle; });
+            root.querySelectorAll('[data-cycle-only]').forEach(function (el) { el.hidden = el.dataset.cycleOnly !== cycle; });
             root.querySelectorAll('[data-plan-link]').forEach(function (a) { a.href = '/register?plan=' + a.dataset.planLink + '&cycle=' + cycle; });
         });
     });
