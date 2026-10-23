@@ -1037,6 +1037,10 @@ async def _process_subscription_renewals():
     await asyncio.sleep(60)
     while True:
         try:
+            db.expire_cancelled_subscriptions()
+        except Exception:
+            logger.exception("subscriptions: expiring cancelled plans failed")
+        try:
             due = db.get_users_due_for_renewal()
             if due:
                 logger.info("renewal: %d user(s) due for renewal", len(due))
@@ -2086,14 +2090,13 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
 async def billing_return(request: Request, payment_reference: str = ""):
     """Handle customer return from EveryPay payment page."""
     user = request.state.user
-    settings = db.get_all_user_settings(user["account_id"])
-    pending_ref = settings.get("_pending_payment_ref", "")
-    pending_tier = settings.get("_pending_tier", "")
-    pending_cycle = settings.get("_pending_cycle", "")
+    account_id = user["account_id"]
+    pending = _pending_order(account_id)
+    pending_tier, pending_cycle = pending["tier"], pending["cycle"]
 
-    if not payment_reference or payment_reference != pending_ref:
+    if not payment_reference or payment_reference != pending["payment_ref"]:
         # EveryPay's server-to-server callback can get here first and close the order
-        account = db.get_user(user["account_id"]) or {}
+        account = db.get_user(account_id) or {}
         if payment_reference and account.get("everypay_payment_ref") == payment_reference \
                 and account.get("subscription_status") == "active":
             ctx = _base_context(request)
@@ -2108,10 +2111,14 @@ async def billing_return(request: Request, payment_reference: str = ""):
         return RedirectResponse("/pricing?error=payment_error", status_code=303)
 
     payment_state = status.get("payment_state", "")
+    if not _payment_matches_order(status, payment_reference, pending):
+        logger.warning("Billing return refused: payment %s does not match the order for account %s",
+                       payment_reference, account_id)
+        return RedirectResponse("/pricing?error=invalid_payment", status_code=303)
 
     if payment_state == "settled":
         # Extract card token for future recurring payments
-        cc_details = status.get("cc_details", {})
+        cc_details = status.get("cc_details", {}) or {}
         card_token = cc_details.get("token", "")
 
         # Calculate subscription end date
@@ -2124,7 +2131,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
 
         # Activate subscription
         db.update_user_subscription(
-            user["id"], pending_tier,
+            account_id, pending_tier,
             billing_cycle=pending_cycle,
             everypay_token=card_token,
             everypay_payment_ref=payment_reference,
@@ -2134,31 +2141,26 @@ async def billing_return(request: Request, payment_reference: str = ""):
         # Set subscription end date
         conn = db.get_connection()
         conn.execute("UPDATE users SET subscription_end = ? WHERE id = ?",
-                     (end_date, user["id"]))
+                     (end_date, account_id))
         conn.commit()
         conn.close()
 
         # Generate subscription invoice and email to user (idempotent — runs once)
-        pending_order_ref = settings.get("_pending_order_ref", "")
-        amount = db.get_plan_price(pending_tier, pending_cycle)
+        settings = db.get_all_user_settings(account_id)
+        amount = pending["amount"]
         already_invoiced = settings.get("_subscription_invoiced_ref", "") == payment_reference
         if amount and not already_invoiced:
             _generate_subscription_invoice(
-                user, pending_tier, pending_cycle, amount,
-                pending_order_ref, payment_reference,
+                db.get_user(account_id) or user, pending_tier, pending_cycle, amount,
+                pending["order_ref"], payment_reference,
             )
 
         # Clean up pending settings and mark invoiced
-        db.save_all_user_settings(user["account_id"], {
-            "_pending_payment_ref": "",
-            "_pending_order_ref": "",
-            "_pending_tier": "",
-            "_pending_cycle": "",
-            "_subscription_invoiced_ref": payment_reference,
-        })
+        _clear_pending(account_id)
+        db.save_all_user_settings(account_id, {"_subscription_invoiced_ref": payment_reference})
 
         logger.info("User %s upgraded to %s (%s) via EveryPay",
-                     user["id"], pending_tier, pending_cycle)
+                     account_id, pending_tier, pending_cycle)
 
         ctx = _base_context(request)
         ctx["page"] = "billing"
@@ -2175,71 +2177,103 @@ async def billing_return(request: Request, payment_reference: str = ""):
 
     else:
         # Payment failed or abandoned
-        db.save_all_user_settings(user["account_id"], {
-            "_pending_payment_ref": "",
-            "_pending_order_ref": "",
-            "_pending_tier": "",
-            "_pending_cycle": "",
-        })
+        _clear_pending(account_id)
         return RedirectResponse("/pricing?error=payment_failed", status_code=303)
 
 
-def _payment_matches_order(status, payment_reference, order_reference, user_id, tier, cycle):
+_PENDING_KEYS = ("_pending_payment_ref", "_pending_order_ref", "_pending_tier", "_pending_cycle")
+
+
+def _pending_order(account_id):
+    """What checkout started for this account: payment and order references, plan, and
+    that plan's price, which is what EveryPay must say was paid."""
+    st = db.get_all_user_settings(account_id)
+    tier, cycle = st.get("_pending_tier", ""), st.get("_pending_cycle", "")
+    return {"payment_ref": st.get("_pending_payment_ref", ""), "order_ref": st.get("_pending_order_ref", ""),
+            "tier": tier, "cycle": cycle, "amount": db.get_plan_price(tier, cycle)}
+
+
+def _clear_pending(account_id):
+    db.save_all_user_settings(account_id, dict.fromkeys(_PENDING_KEYS, ""))
+
+
+def _payment_matches_order(status, payment_reference, pending):
     """A payment activates an order only if checkout started it for that order and
     EveryPay says it was for that order and that amount."""
-    if not payment_reference or payment_reference != db.get_user_setting(user_id, "_pending_payment_ref", ""):
+    if not payment_reference or payment_reference != pending["payment_ref"] or not pending["amount"]:
+        return False
+    if pending["tier"] not in ("mini", "starter", "business", "lifetime"):
         return False
     paid_order = status.get("order_reference")
-    if paid_order and paid_order != order_reference:
+    if paid_order and paid_order != pending["order_ref"]:
         return False
-    price = db.get_plan_price(tier, cycle)
-    paid = status.get("initial_amount")
+    # EveryPay reports the charged amount as initial_amount; a different amount never
+    # activates. Its absence alone doesn't refuse a payment the order itself started.
+    paid = next((status[k] for k in ("initial_amount", "standing_amount", "amount") if status.get(k) is not None), None)
+    if paid is None:
+        logger.warning("EveryPay status for %s has no amount; trusting the order binding", payment_reference)
+        return True
     try:
-        if paid is not None and abs(float(paid) - price) > 0.005:
-            return False
+        return abs(float(paid) - pending["amount"]) <= 0.005
     except (TypeError, ValueError):
         return False
-    return bool(price)
 
 
-@app.get("/everypay/callback")
-async def everypay_callback(request: Request,
-                            payment_reference: str = "",
-                            order_reference: str = "",
-                            event_name: str = ""):
-    """Handle EveryPay callback notifications (server-to-server)."""
-    if not payment_reference:
+_EVERYPAY_REF = re.compile(r"[A-Za-z0-9_-]{1,100}")
+
+
+@app.api_route("/everypay/callback", methods=["GET", "POST"])
+async def everypay_callback(request: Request):
+    """EveryPay's server-to-server notice. Anyone can call this URL, so it only ever
+    trusts EveryPay's own answer about a payment this app started for that order."""
+    params = dict(request.query_params)
+    if request.method == "POST":
+        try:
+            if "json" in request.headers.get("content-type", ""):
+                body = await request.json()
+                params.update({k: v for k, v in body.items() if isinstance(v, str)} if isinstance(body, dict) else {})
+            else:
+                params.update({k: v for k, v in (await request.form()).items() if isinstance(v, str)})
+        except Exception:
+            pass
+    payment_reference = str(params.get("payment_reference", ""))
+    order_reference = str(params.get("order_reference", ""))
+    event_name = str(params.get("event_name", ""))
+    if not _EVERYPAY_REF.fullmatch(payment_reference) or not _EVERYPAY_REF.fullmatch(order_reference):
         raise HTTPException(status_code=400, detail="Missing payment_reference")
 
     logger.info("EveryPay callback: ref=%s event=%s order=%s",
                 payment_reference, event_name, order_reference)
 
-    try:
-        status = everypay.get_payment_status(payment_reference)
-    except Exception as e:
-        logger.exception("Failed to verify payment status from callback")
-        raise HTTPException(status_code=500, detail="Payment verification failed")
-
-    payment_state = status.get("payment_state", "")
-
-    # Look up user by pending order reference
-    pending = db.find_user_by_pending_order_ref(order_reference) if order_reference else None
-    if not pending:
+    # Look up the order before asking EveryPay anything, so a stranger can't make this
+    # server query the payment API at will
+    found = db.find_user_by_pending_order_ref(order_reference)
+    if not found:
         return JSONResponse({"status": "ok", "note": "unknown order_reference"})
-    user_id = pending["user_id"]
-    tier = pending["tier"]
-    cycle = pending["cycle"]
-
-    # Anyone can call this URL, so the payment must be the one this order started, for
-    # this order's price. Without this, a settled 2 € payment named next to an unpaid
-    # lifetime order activated the lifetime licence.
-    if not _payment_matches_order(status, payment_reference, order_reference, user_id, tier, cycle):
-        logger.warning("EveryPay callback refused: payment %s does not match order %s",
+    user_id = found["user_id"]
+    pending = _pending_order(user_id)
+    if payment_reference != pending["payment_ref"]:
+        logger.warning("EveryPay callback refused: payment %s was not started for order %s",
                        payment_reference, order_reference)
         return JSONResponse({"status": "ok", "note": "payment does not match order"})
 
-    if event_name == "status_updated" and payment_state == "settled":
-        cc_details = status.get("cc_details", {})
+    try:
+        status = everypay.get_payment_status(payment_reference)
+    except Exception:
+        logger.exception("Failed to verify payment status from callback")
+        raise HTTPException(status_code=500, detail="Payment verification failed")
+
+    # Without this, a settled 2 € payment named next to an unpaid lifetime order
+    # activated the lifetime licence (fixed 2026-10-23)
+    if not _payment_matches_order(status, payment_reference, pending):
+        logger.warning("EveryPay callback refused: payment %s does not match order %s",
+                       payment_reference, order_reference)
+        return JSONResponse({"status": "ok", "note": "payment does not match order"})
+    tier, cycle, amount = pending["tier"], pending["cycle"], pending["amount"]
+    payment_state = status.get("payment_state", "")
+
+    if payment_state == "settled":
+        cc_details = status.get("cc_details", {}) or {}
         card_token = cc_details.get("token", "")
 
         if cycle == "yearly":
@@ -2266,17 +2300,13 @@ async def everypay_callback(request: Request,
         logger.info("User %s subscription activated via callback: %s (%s)",
                      user_id, tier, cycle)
         # The order is spent: a replayed callback must not extend the plan again
-        db.save_all_user_settings(user_id, {
-            "_pending_payment_ref": "", "_pending_order_ref": "",
-            "_pending_tier": "", "_pending_cycle": "",
-        })
+        _clear_pending(user_id)
 
         # Generate subscription invoice + email now (idempotent on payment_reference).
         # /billing/return runs the same guard so we never double-invoice.
         paying_user = db.get_user(user_id)
         user_settings = db.get_all_user_settings(user_id)
         already_invoiced = user_settings.get("_subscription_invoiced_ref", "") == payment_reference
-        amount = db.get_plan_price(tier, cycle)
         if paying_user and amount and not already_invoiced:
             _generate_subscription_invoice(
                 paying_user, tier, cycle, amount,
@@ -2299,18 +2329,24 @@ async def billing_cancel(request: Request):
     gate = _owner_only(user)
     if gate:
         return gate
-    if user.get("plan_tier", user.get("tier", "free")) == "free":
+    plan = user.get("plan_tier", user.get("tier", "free"))
+    if plan == "free":
         return RedirectResponse("/account?error=no_subscription", status_code=303)
+    # A one-off purchase has nothing to stop; one click must not throw away 199 €
+    if plan == "lifetime":
+        return RedirectResponse("/account?error=lifetime_no_cancel", status_code=303)
 
     # Deactivate the stored card token so no more recurring charges
-    token = user.get("everypay_token", "")
+    account = db.get_user(user["account_id"]) or user
+    token = account.get("everypay_token", "")
     if token:
         try:
             everypay.deactivate_token(token)
         except Exception:
             logger.warning("Failed to deactivate EveryPay token for user %s", user["id"])
 
-    db.cancel_user_subscription(user["id"])
+    # The plan runs to the end of what was paid for, then the account becomes free
+    db.cancel_at_period_end(user["account_id"])
     logger.info("User %s cancelled subscription", user["id"])
     return RedirectResponse("/account?success=subscription_cancelled", status_code=303)
 

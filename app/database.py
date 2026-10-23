@@ -1650,6 +1650,16 @@ def _apply_trial(conn, user):
     user["plan_tier"] = user.get("tier") or "free"
     user["on_trial"] = False
     user["trial_until"] = None
+    # A cancelled plan works until the time paid for runs out, even before the daily job
+    # writes the downgrade
+    if user["plan_tier"] not in ("free", "admin", "lifetime") and user.get("subscription_status") == "cancelled":
+        try:
+            ended = not user.get("subscription_end") or \
+                datetime.date.fromisoformat(user["subscription_end"]) < datetime.date.today()
+        except ValueError:
+            ended = True
+        if ended:
+            user["tier"] = user["plan_tier"] = "free"
     if user["plan_tier"] != "free":
         return user
     row = conn.execute("SELECT value FROM user_settings WHERE user_id = ? AND key = 'trial_until'",
@@ -2642,6 +2652,38 @@ def cancel_user_subscription(user_id: int):
     )
     conn.commit()
     conn.close()
+
+
+def cancel_at_period_end(user_id: int):
+    """Stop renewing: the card is forgotten and the plan runs to subscription_end.
+    With no paid time left the account becomes free now."""
+    conn = get_connection()
+    row = conn.execute("SELECT subscription_end FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    try:
+        ends = datetime.date.fromisoformat(row["subscription_end"]) if row and row["subscription_end"] else None
+    except ValueError:
+        ends = None
+    if not ends or ends < datetime.date.today():
+        cancel_user_subscription(user_id)
+    conn = get_connection()
+    conn.execute("UPDATE users SET subscription_status = 'cancelled', everypay_token = '' WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def expire_cancelled_subscriptions():
+    """Cancelled plans whose paid time is over become free."""
+    conn = get_connection()
+    ids = [r["id"] for r in conn.execute(
+        """SELECT id FROM users WHERE subscription_status = 'cancelled'
+           AND tier NOT IN ('free', 'admin', 'lifetime')
+           AND (subscription_end IS NULL OR subscription_end < ?)""",
+        (datetime.date.today().isoformat(),)).fetchall()]
+    conn.close()
+    for uid in ids:
+        cancel_user_subscription(uid)
+    return len(ids)
 
 
 def get_user_resource_counts(user_id: int) -> dict:
