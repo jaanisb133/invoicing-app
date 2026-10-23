@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
 import json
+import math
 import re
 import secrets
 import urllib.parse
@@ -60,7 +61,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "61"
+CSS_VERSION = "62"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -1014,6 +1015,8 @@ def _charge_subscription_renewal(user: dict) -> bool:
     # Settled — extend subscription, generate invoice + email
     days = 365 if cycle == "yearly" else 30
     new_end = db.extend_subscription(user_id, days, payment_ref)
+    _start_period(user_id, cycle, amount, start=datetime.date.fromisoformat(new_end) - datetime.timedelta(days=days),
+                  end=new_end)
     logger.info("renewal: user %s extended until %s", user_id, new_end)
 
     try:
@@ -1915,6 +1918,13 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
             "upgrade_cycle": cycle,
             "lifetime_sold": db.count_lifetime_users(),
         })
+        # What each change would cost today, with the unused period credited
+        account = db.get_user(user["account_id"]) or user
+        quotes = {t: {c: _plan_quote(account, t, c) for c in ("monthly", "yearly")}
+                  for t in ("mini", "starter", "business")}
+        quotes["lifetime"] = {"lifetime": _plan_quote(account, "lifetime", "lifetime")}
+        ctx.update({"quotes": quotes, "plan_credit": _unused_credit(account),
+                    "my_cycle": account.get("billing_cycle") or ""})
         return templates.TemplateResponse("pricing_auth.html", ctx)
     return templates.TemplateResponse("pricing.html", {
         "request": request,
@@ -1922,6 +1932,84 @@ async def pricing_page(request: Request, upgrade: str = "", cycle: str = "monthl
         "page": "pricing",
         "lifetime_sold": db.count_lifetime_users(),
     })
+
+
+# Changing plan credits what is left of the period already paid for: an upgrade costs
+# the new price minus that, and when the credit covers the new plan (a downgrade, or
+# almost) there is no payment at all: the plan switches now and the credit becomes
+# time on it. Each period records what it was worth (`_period_value`) from when
+# (`_period_start`), so the credit is exact after any number of switches, never more
+# than was paid, and rounding (down, always) can't be farmed by switching back and forth.
+MIN_CHARGE = 1.00          # below this a card payment isn't worth it; the plan switches instead
+PERIOD_DAYS = {"monthly": 30, "yearly": 365}
+
+
+def _floor_cents(x):
+    return math.floor(round(x * 100, 6)) / 100
+
+
+def _unused_credit(account):
+    """Euros left of the current period, if it was paid by card (a trial or a plan the
+    admin set earns nothing)."""
+    tier, cycle = account.get("plan_tier") or account.get("tier"), account.get("billing_cycle")
+    if tier not in ("mini", "starter", "business") or cycle not in PERIOD_DAYS \
+            or not account.get("everypay_payment_ref"):
+        return 0.0
+    try:
+        end = datetime.date.fromisoformat(account.get("subscription_end") or "")
+    except ValueError:
+        return 0.0
+    today = datetime.date.today()
+    left = (end - today).days
+    if left <= 0:
+        return 0.0
+    st = db.get_all_user_settings(account.get("account_id") or account["id"])
+    try:
+        value = float(st.get("_period_value") or 0)
+        start = datetime.date.fromisoformat(st.get("_period_start") or "")
+    except ValueError:
+        value, start = 0.0, None
+    if value > 0 and start and start < end:
+        length = (end - start).days
+    else:   # a period from before this was recorded: the plan's price over its length
+        value, length = db.get_plan_price(tier, cycle), PERIOD_DAYS[cycle]
+    return _floor_cents(value * min(left, length) / length)
+
+
+def _plan_quote(account, tier, cycle):
+    """What moving to tier/cycle costs today, or None for the current plan.
+    mode "pay": a card payment of `due` (price minus credit), a full new period from today.
+    mode "switch": no payment; `days` of the new plan bought by the credit."""
+    if tier == "lifetime":
+        cycle = "lifetime"
+    current = account.get("plan_tier") or "free"
+    if current == "lifetime" or (tier == current and cycle == account.get("billing_cycle")):
+        return None
+    price = db.get_plan_price(tier, cycle)
+    if not price:
+        return None
+    credit = _unused_credit(account)
+    due = round(price - credit, 2)
+    if cycle == "lifetime" or due >= MIN_CHARGE:
+        return {"mode": "pay", "price": price, "credit": credit, "due": max(due, MIN_CHARGE)}
+    days = math.floor(credit / (price / PERIOD_DAYS[cycle]))
+    if days < 1:
+        return {"mode": "pay", "price": price, "credit": 0.0, "due": price}
+    return {"mode": "switch", "price": price, "credit": credit, "due": 0.0, "days": days,
+            "until": (datetime.date.today() + datetime.timedelta(days=days)).isoformat()}
+
+
+def _start_period(account_id, cycle, value, start=None, end=None):
+    """Record the period now paid for: its end (unless given) and what it was worth."""
+    start = start or datetime.date.today()
+    if end is None:
+        end = "2099-12-31" if cycle == "lifetime" else (start + datetime.timedelta(days=PERIOD_DAYS.get(cycle, 30))).isoformat()
+        conn = db.get_connection()
+        conn.execute("UPDATE users SET subscription_end = ? WHERE id = ?", (end, account_id))
+        conn.commit()
+        conn.close()
+    db.save_all_user_settings(account_id, {"_period_value": f"{value:.2f}", "_period_start": start.isoformat()})
+    return end
 
 
 @app.post("/billing/checkout")
@@ -1942,7 +2030,19 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
         if lifetime_count >= db.LIFETIME_CAP:
             return RedirectResponse("/pricing?error=lifetime_sold_out", status_code=303)
 
-    amount = db.get_plan_price(tier, cycle)
+    account = db.get_user(user["account_id"]) or user
+    quote = _plan_quote(account, tier, cycle)
+    if not quote:
+        return RedirectResponse("/pricing?error=current_plan", status_code=303)
+    if quote["mode"] == "switch":
+        # The credit covers it: no card payment, the plan changes now and runs `days`
+        db.change_plan(user["account_id"], tier, cycle, quote["until"])
+        _start_period(user["account_id"], cycle, quote["credit"], end=quote["until"])
+        logger.info("User %s switched to %s (%s) on credit %.2f until %s",
+                    user["account_id"], tier, cycle, quote["credit"], quote["until"])
+        return RedirectResponse("/account?success=plan_switched", status_code=303)
+
+    amount = quote["due"]
     if not amount or not everypay.is_configured():
         return RedirectResponse("/pricing?error=payments_not_configured", status_code=303)
 
@@ -1979,12 +2079,14 @@ async def billing_checkout(request: Request, tier: str = Form(...), cycle: str =
         "_pending_order_ref": order_ref,
         "_pending_tier": tier,
         "_pending_cycle": cycle,
+        "_pending_amount": f"{amount:.2f}",
+        "_pending_credit": f"{quote['credit']:.2f}",
     })
 
     return RedirectResponse(payment_link, status_code=303)
 
 
-def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, payment_reference):
+def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, payment_reference, credit=0.0):
     """Create a subscription invoice in the admin account and email it to the paying user.
 
     The invoice flows into the admin's normal document numbering and
@@ -2057,6 +2159,9 @@ def _generate_subscription_invoice(paying_user, tier, cycle, amount, order_ref, 
                 line_desc += f", {start:%d.%m.%Y}–{end - datetime.timedelta(days=1):%d.%m.%Y}"
             except ValueError:
                 pass
+
+        if credit:   # a plan change: the unused part of the old period paid part of this one
+            line_desc += f" (ieskaitīts iepriekšējā plāna neizmantotais periods {fmt.eur(credit)})"
 
         admin_settings = db.get_all_user_settings(admin_id)
         vat_rate = float(admin_settings.get("default_vat_rate", "21"))
@@ -2171,15 +2276,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
         cc_details = status.get("cc_details", {}) or {}
         card_token = cc_details.get("token", "")
 
-        # Calculate subscription end date
-        if pending_cycle == "lifetime":
-            end_date = "2099-12-31"
-        elif pending_cycle == "yearly":
-            end_date = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
-        else:
-            end_date = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
-
-        # Activate subscription
+        # Activate subscription: a full new period from today, worth the plan's price
         db.update_user_subscription(
             account_id, pending_tier,
             billing_cycle=pending_cycle,
@@ -2187,13 +2284,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
             everypay_payment_ref=payment_reference,
             subscription_status="active",
         )
-
-        # Set subscription end date
-        conn = db.get_connection()
-        conn.execute("UPDATE users SET subscription_end = ? WHERE id = ?",
-                     (end_date, account_id))
-        conn.commit()
-        conn.close()
+        _start_period(account_id, pending_cycle, pending["price"])
 
         # Generate subscription invoice and email to user (idempotent — runs once)
         settings = db.get_all_user_settings(account_id)
@@ -2202,7 +2293,7 @@ async def billing_return(request: Request, payment_reference: str = ""):
         if amount and not already_invoiced:
             _generate_subscription_invoice(
                 db.get_user(account_id) or user, pending_tier, pending_cycle, amount,
-                pending["order_ref"], payment_reference,
+                pending["order_ref"], payment_reference, credit=pending["credit"],
             )
 
         # Clean up pending settings and mark invoiced
@@ -2231,16 +2322,25 @@ async def billing_return(request: Request, payment_reference: str = ""):
         return RedirectResponse("/pricing?error=payment_failed", status_code=303)
 
 
-_PENDING_KEYS = ("_pending_payment_ref", "_pending_order_ref", "_pending_tier", "_pending_cycle")
+_PENDING_KEYS = ("_pending_payment_ref", "_pending_order_ref", "_pending_tier", "_pending_cycle",
+                 "_pending_amount", "_pending_credit")
 
 
 def _pending_order(account_id):
     """What checkout started for this account: payment and order references, plan, and
-    that plan's price, which is what EveryPay must say was paid."""
+    the amount it asked for, which is what EveryPay must say was paid."""
     st = db.get_all_user_settings(account_id)
     tier, cycle = st.get("_pending_tier", ""), st.get("_pending_cycle", "")
+    price = db.get_plan_price(tier, cycle)
+    try:   # what checkout asked for: the price, less any credit for an unused period
+        amount = float(st.get("_pending_amount") or price)
+        credit = float(st.get("_pending_credit") or 0)
+    except ValueError:
+        amount, credit = 0.0, 0.0
+    if not price or amount > price + 0.005 or amount < min(MIN_CHARGE, price) - 0.005:
+        amount = 0.0   # nothing checkout could have asked: refuse
     return {"payment_ref": st.get("_pending_payment_ref", ""), "order_ref": st.get("_pending_order_ref", ""),
-            "tier": tier, "cycle": cycle, "amount": db.get_plan_price(tier, cycle)}
+            "tier": tier, "cycle": cycle, "amount": amount, "price": price, "credit": credit}
 
 
 def _clear_pending(account_id):
@@ -2326,13 +2426,6 @@ async def everypay_callback(request: Request):
         cc_details = status.get("cc_details", {}) or {}
         card_token = cc_details.get("token", "")
 
-        if cycle == "yearly":
-            end_date = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
-        elif cycle == "lifetime":
-            end_date = "2099-12-31"
-        else:
-            end_date = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
-
         db.update_user_subscription(
             user_id, tier,
             billing_cycle=cycle,
@@ -2340,12 +2433,8 @@ async def everypay_callback(request: Request):
             everypay_payment_ref=payment_reference,
             subscription_status="active",
         )
-
-        conn = db.get_connection()
-        conn.execute("UPDATE users SET subscription_end = ? WHERE id = ?",
-                     (end_date, user_id))
-        conn.commit()
-        conn.close()
+        # A full new period from today, worth the plan's price (the credit paid part of it)
+        _start_period(user_id, cycle, pending["price"])
 
         logger.info("User %s subscription activated via callback: %s (%s)",
                      user_id, tier, cycle)
@@ -2360,7 +2449,7 @@ async def everypay_callback(request: Request):
         if paying_user and amount and not already_invoiced:
             _generate_subscription_invoice(
                 paying_user, tier, cycle, amount,
-                order_reference, payment_reference,
+                order_reference, payment_reference, credit=pending["credit"],
             )
             db.save_all_user_settings(user_id, {
                 "_subscription_invoiced_ref": payment_reference,

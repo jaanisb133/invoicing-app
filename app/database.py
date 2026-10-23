@@ -2714,6 +2714,20 @@ def cancel_user_subscription(user_id: int):
     conn.close()
 
 
+def change_plan(user_id: int, tier: str, billing_cycle: str, subscription_end: str):
+    """Switch plan without a payment (the unused period pays for it): limits follow the
+    tier; card token, payment reference and status stay, so renewal carries on."""
+    limits = get_tier_limits(tier)
+    conn = get_connection()
+    conn.execute(
+        """UPDATE users SET tier = ?, billing_cycle = ?, subscription_end = ?,
+           max_documents = ?, max_clients = ?, max_products = ? WHERE id = ?""",
+        (tier, billing_cycle, subscription_end, _column_limit(limits["max_documents"]),
+         _column_limit(limits["max_clients"]), _column_limit(limits["max_products"]), user_id))
+    conn.commit()
+    conn.close()
+
+
 def cancel_at_period_end(user_id: int):
     """Stop renewing: the card is forgotten and the plan runs to subscription_end.
     With no paid time left the account becomes free now."""
