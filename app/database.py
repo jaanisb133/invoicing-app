@@ -212,6 +212,20 @@ def init_db():
             FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
         );
         CREATE INDEX IF NOT EXISTS idx_events_user_created ON events(user_id, created_at DESC);
+
+        -- How far each sign-up attempt got (one row per step reached). An attempt is one
+        -- load of /register, named by a random id in the page; no cookie, no IP, no field
+        -- values. user_id is set only on the 'created' row.
+        CREATE TABLE IF NOT EXISTS signup_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            attempt TEXT NOT NULL,
+            step TEXT NOT NULL,
+            detail TEXT NOT NULL DEFAULT '',
+            user_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_signup_steps_once ON signup_steps(attempt, step, detail);
+        CREATE INDEX IF NOT EXISTS idx_signup_steps_created ON signup_steps(created_at);
     """)
 
     conn.commit()
@@ -1886,6 +1900,68 @@ def get_admin_totals(users):
         "docs_month": sum(u["docs_month"] for u in users),
         "emails_month": sum(u["emails_month"] for u in users),
     }
+
+
+def log_signup_step(attempt, step, detail="", user_id=None):
+    """Record that a sign-up attempt reached a step; repeats of the same step are ignored."""
+    conn = get_connection()
+    conn.execute("INSERT OR IGNORE INTO signup_steps (attempt, step, detail, user_id) VALUES (?, ?, ?, ?)",
+                 (attempt, step, detail or "", user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_signup_attempts(since):
+    """Sign-up attempts that began at or after `since` ('YYYY-MM-DD HH:MM:SS', UTC),
+    newest first, each with the steps it reached (also in order, `seq`), and for those that made an account,
+    how far the account has got since: setup, first invoice, first send, paying."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT s.attempt, s.step, s.detail, s.user_id, s.created_at, f.first_at
+           FROM signup_steps s
+           JOIN (SELECT attempt, MIN(created_at) AS first_at FROM signup_steps GROUP BY attempt) f
+             ON f.attempt = s.attempt
+           WHERE f.first_at >= ?
+           ORDER BY f.first_at DESC, s.id""", (since,)).fetchall()
+    attempts = {}
+    for r in rows:
+        a = attempts.setdefault(r["attempt"], {"attempt": r["attempt"], "first_at": r["first_at"],
+                                               "steps": {}, "seq": [], "user_id": None})
+        a["steps"].setdefault(r["step"], []).append(r["detail"])
+        a["seq"].append((r["step"], r["detail"]))
+        if r["user_id"]:
+            a["user_id"] = r["user_id"]
+    ids = [a["user_id"] for a in attempts.values() if a["user_id"]]
+    accounts = {}
+    if ids:
+        marks = ",".join("?" * len(ids))
+        for r in conn.execute(
+                f"""SELECT u.id, u.display_name, u.tier, u.subscription_status,
+                           (SELECT value FROM user_settings WHERE user_id = u.id AND key = 'company_name') AS company,
+                           (SELECT COUNT(*) FROM documents WHERE user_id = u.id AND doc_type = 'sell') AS invoices,
+                           (SELECT COUNT(*) FROM email_log WHERE user_id = u.id) AS emails,
+                           (SELECT COUNT(*) FROM documents WHERE user_id = u.id AND sent_at IS NOT NULL) AS sent
+                    FROM users u WHERE u.id IN ({marks})""", ids).fetchall():
+            accounts[r["id"]] = {
+                "name": r["company"] or r["display_name"] or "",
+                "setup": bool(r["company"]),
+                "invoices": r["invoices"],
+                "sent": bool(r["emails"] or r["sent"]),
+                "paying": r["tier"] not in ("free", "admin") and r["subscription_status"] == "active",
+            }
+    conn.close()
+    out = list(attempts.values())
+    for a in out:
+        a["account"] = accounts.get(a["user_id"])
+    return out
+
+
+def purge_signup_steps(keep_days=400):
+    """Sign-up statistics older than about a year and a month are not kept."""
+    conn = get_connection()
+    conn.execute("DELETE FROM signup_steps WHERE created_at < datetime('now', ?)", (f"-{int(keep_days)} days",))
+    conn.commit()
+    conn.close()
 
 
 def update_user_password(user_id: int, new_password: str):

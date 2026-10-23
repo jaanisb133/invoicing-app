@@ -204,6 +204,16 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   show/hide. Picked plan (`?plan=mini|starter|business|lifetime`) carries through setup to
   checkout. Setup is one screen; payment term defaults to 14 days.
 - Dashboard "Pirmie soļi" (`_first_steps.html`, `get_onboarding_state`) until done or hidden.
+- **Sign-up funnel** (admin: `/users/registracijas`, tab beside Lietotāji): each load of /register
+  is one attempt, named by a random id in a hidden field `su` (no cookie, no IP, no typed
+  values). The page beacons steps to `POST /api/signup-step` (open + source, start, focus,
+  company/email/password filled, click, invalid); `POST /register` logs submit, error codes
+  and `created` (with user_id); setup / first invoice / sent come from the account. Table
+  `signup_steps`, rows older than 400 days purged. Milestones are counted in order, fields
+  on their own; "where they stopped" = last field clicked into and left unfinished. Bots and
+  headless browsers are ignored by user agent, so Playwright tests must set a normal UA.
+  A re-shown form (POST error) continues the attempt and reports no second `open`.
+  Mentioned in the terms (§ 9).
 - Guided tours: page sets `window.VR_TOUR` in `{% block tour %}`; engine in `base.html`;
   seen keys per person in user setting `tours_seen` (`POST /api/tour-seen`). Tours:
   `dashboard`, `editor`. Help page `/palidziba` (`help.html`).

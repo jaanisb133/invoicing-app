@@ -1627,3 +1627,46 @@ td.c-swipe { display: none; }
 .pp-foot b { font-weight: 500; }
 .pp-foot .r { align-items: flex-end; }
 .pp-free { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font-size: 6.6px; color: var(--fa); }
+
+/* ------------------------------------------------------------ admin: sign-up funnel */
+.funnel { list-style: none; margin: 0; padding: 4px 0; }
+.funnel li { display: grid; grid-template-columns: minmax(180px, 1.1fr) 2fr 52px 52px 52px; align-items: center; gap: 16px; padding: 10px var(--card-pad); }
+.funnel li + li { border-top: 1px solid var(--border); }
+.funnel-label { font-size: 14px; min-width: 0; }
+.funnel-label small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.funnel-bar { height: 8px; background: var(--ground); border-radius: 4px; overflow: hidden; }
+.funnel-bar i { display: block; height: 100%; background: var(--data); border-radius: 4px; }
+.funnel-n { text-align: right; font-weight: 600; }
+.funnel-pct { text-align: right; color: var(--muted); font-size: 13px; }
+.funnel-drop { text-align: right; color: var(--negative); font-size: 13px; }
+.funnel li.funnel-sep { display: block; padding: 14px var(--card-pad) 6px; font-size: 12px; color: var(--faint); border-top: 1px solid var(--border); }
+.funnel li.funnel-sep + li { border-top: 0; }
+.funnel li.funnel-field { padding-top: 6px; padding-bottom: 6px; border-top: 0; }
+.funnel li.funnel-field .funnel-label { padding-left: 16px; color: var(--muted); font-size: 13px; }
+.funnel li.funnel-field .funnel-bar { height: 4px; }
+.funnel li.funnel-field .funnel-bar i { background: color-mix(in srgb, var(--data) 45%, transparent); }
+.funnel li.funnel-field .funnel-n { font-weight: 400; color: var(--muted); }
+.funnel li.funnel-field + li:not(.funnel-field) { border-top: 1px solid var(--border); }
+.page-sub .neg { color: var(--negative); font-weight: 500; }
+.signup-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--gap); }
+.signup-table td.when { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+.signup-cols > .card { margin-bottom: var(--gap); }
+.signup-table td.pos { color: var(--positive); }
+.signup-table td.neg { color: var(--negative); }
+.signup-table td.pos b, .signup-table td.neg b { color: var(--text); font-weight: 500; }
+.signup-none, .signup-empty p { color: var(--muted); font-size: 14px; }
+.signup-none { padding: 16px var(--card-pad); margin: 0; }
+.signup-empty b { display: block; margin-bottom: 6px; }
+.signup-privacy { font-size: 12px; color: var(--faint); margin: 8px 0 0; max-width: 70ch; }
+@media (max-width: 768px) {
+    .funnel li { grid-template-columns: 1fr auto auto; gap: 4px 12px; }
+    .funnel-bar { grid-column: 1 / -1; grid-row: 2; }
+    .funnel-pct { display: none; }
+    .signup-cols { grid-template-columns: 1fr; gap: 0; }
+    .signup-recent thead { display: none; }
+    .signup-recent tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 10px var(--card-pad); border-top: 1px solid var(--border); }
+    .signup-recent td { padding: 0; border: 0; }
+    .signup-recent td:nth-child(1) { grid-column: 2; grid-row: 1; color: var(--muted); font-size: 12px; }
+    .signup-recent td:nth-child(2) { grid-column: 1; grid-row: 1; font-weight: 500; }
+    .signup-recent td:nth-child(3) { grid-column: 1 / -1; font-size: 13px; }
+}

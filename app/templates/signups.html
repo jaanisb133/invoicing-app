@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Reģistrācijas</h1>
+        {% if stats.total %}
+        <p class="page-sub finding">{{ stats.total }} atvēra reģistrāciju, {{ stats.created }} izveidoja kontu.{% if stats.top_stop %} Biežāk: <span class="neg">{{ stats.top_stop.count }} {{ stats.top_stop.label }}</span>.{% endif %}</p>
+        {% else %}
+        <p class="page-sub">Cik cilvēku sāk veidot kontu un kur apstājas.</p>
+        {% endif %}
+    </div>
+    <div class="segmented" role="group" aria-label="Periods">
+        {% for d, label in ((7, '7 d.'), (30, '30 d.'), (90, '90 d.'), (365, 'Gads')) %}
+        <a href="?days={{ d }}" class="{% if days == d %}active{% endif %}">{{ label }}</a>
+        {% endfor %}
+    </div>
+</div>
+<div class="page-body">
+    <nav class="tabs" aria-label="Administrēšana">
+        <a href="/users">Lietotāji</a>
+        <a href="/users/registracijas" class="active">Reģistrācijas</a>
+    </nav>
+
+    {% if not stats.total %}
+    <section class="card">
+        <div class="card-body signup-empty">
+            <b>Šajā periodā neviens vēl nav atvēris reģistrāciju.</b>
+            <p>Skaitīšana sākās ar šo versiju. Katrs, kas atver <a href="/register" target="_blank" rel="noopener">/register</a>, te parādīsies ar soli, līdz kuram tika.</p>
+        </div>
+    </section>
+    {% else %}
+    <div class="kpi-strip" style="--kpi-cols: 4">
+        <div class="kpi"><div class="kpi-label">Atvēra reģistrāciju</div><div class="kpi-value lead">{{ stats.total }}</div></div>
+        <div class="kpi"><div class="kpi-label">Sāka aizpildīt</div><div class="kpi-value">{{ stats.started }}</div>
+            <div class="kpi-foot">{{ (100 * stats.started / stats.total) | round | int }} % no atvērušajiem</div></div>
+        <div class="kpi"><div class="kpi-label">Izveidoja kontu</div><div class="kpi-value">{{ stats.created }}</div>
+            <div class="kpi-foot">{{ (100 * stats.created / stats.total) | round | int }} % no atvērušajiem</div></div>
+        <div class="kpi"><div class="kpi-label">Izrakstīja rēķinu</div><div class="kpi-value">{{ stats.invoiced }}</div>
+            <div class="kpi-foot">{% if stats.created %}{{ (100 * stats.invoiced / stats.created) | round | int }} % no kontiem{% else %}—{% endif %}</div></div>
+    </div>
+
+    <section class="card">
+        <div class="card-header">Soļi <span class="hint">— cik tika līdz katram solim; lauki skaitīti atsevišķi</span></div>
+        <div class="card-body flush">
+            <ol class="funnel">
+                {% for f in stats.rows %}
+                {% if f.key == 'setup' %}<li class="funnel-sep">Pēc reģistrācijas</li>{% endif %}
+                <li{% if f.field %} class="funnel-field"{% endif %}>
+                    <span class="funnel-label">{{ f.label }}{% if f.note %}<small>{{ f.note }}</small>{% endif %}</span>
+                    <span class="funnel-bar" aria-hidden="true"><i style="width: {{ f.pct }}%"></i></span>
+                    <span class="funnel-n num">{{ f.count }}</span>
+                    <span class="funnel-pct num">{{ f.pct }} %</span>
+                    <span class="funnel-drop num">{% if f.drop %}−{{ f.drop }}{% endif %}</span>
+                </li>
+                {% endfor %}
+            </ol>
+        </div>
+    </section>
+
+    <div class="signup-cols">
+        <section class="card">
+            <div class="card-header">Kur apstājās <span class="hint">— kas kontu neizveidoja</span></div>
+            <div class="card-body flush">
+                {% if stats.stops %}
+                <table class="signup-table">
+                    <tbody>
+                        {% for r in stats.stops %}
+                        <tr><td>{{ r.label | capitalize }}</td><td class="num">{{ r.count }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="signup-none">Visi, kas atvēra, izveidoja kontu.</p>
+                {% endif %}
+            </div>
+        </section>
+        <section class="card">
+            <div class="card-header">Kas atteica</div>
+            <div class="card-body flush">
+                {% if stats.reasons %}
+                <table class="signup-table">
+                    <thead><tr><th>Iemesls</th><th class="num">Reizes</th><th class="num">Pēc tam izveidoja</th></tr></thead>
+                    <tbody>
+                        {% for r in stats.reasons %}
+                        <tr><td>{{ r.label }}</td><td class="num">{{ r.count }}</td><td class="num">{{ r.then_created }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="signup-none">Neviena atteikuma: kas nospieda „Izveidot kontu”, tam izdevās.</p>
+                {% endif %}
+            </div>
+        </section>
+        <section class="card">
+            <div class="card-header">No kurienes</div>
+            <div class="card-body flush">
+                <table class="signup-table">
+                    <thead><tr><th>Avots</th><th class="num">Atvēra</th><th class="num">Izveidoja</th></tr></thead>
+                    <tbody>
+                        {% for r in stats.sources %}
+                        <tr><td>{{ r.label }}</td><td class="num">{{ r.opened }}</td><td class="num">{{ r.created }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <section class="card">
+        <div class="card-header">Pēdējie mēģinājumi <span class="hint">— katrs ir viena reģistrācijas lapas atvēršana</span></div>
+        <div class="card-body flush">
+            <table class="signup-table signup-recent">
+                <thead><tr><th>Laiks</th><th>Avots</th><th>Iznākums</th></tr></thead>
+                <tbody>
+                    {% for r in stats.recent %}
+                    <tr>
+                        <td class="when">{{ r.when }}</td>
+                        <td>{{ r.source }}{% if r.plan %} · {{ r.plan }}{% endif %}</td>
+                        <td class="{% if r.tone == 'pos' %}pos{% elif r.tone == 'neg' %}neg{% endif %}">{% if r.account %}<b>{{ r.account }}</b> · {% endif %}{{ r.outcome }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    <p class="signup-privacy">Skaita tikai soļus: ne ievadīto tekstu, ne IP adresi, bez sīkdatnēm. Mēģinājums ir viena lapas atvēršana, tāpēc pārlādēta lapa skaitās kā jauns mēģinājums. Dati vecāki par 400 dienām tiek dzēsti.</p>
+</div>
+{% endblock %}
