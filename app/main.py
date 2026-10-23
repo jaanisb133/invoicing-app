@@ -2092,6 +2092,13 @@ async def billing_return(request: Request, payment_reference: str = ""):
     pending_cycle = settings.get("_pending_cycle", "")
 
     if not payment_reference or payment_reference != pending_ref:
+        # EveryPay's server-to-server callback can get here first and close the order
+        account = db.get_user(user["account_id"]) or {}
+        if payment_reference and account.get("everypay_payment_ref") == payment_reference \
+                and account.get("subscription_status") == "active":
+            ctx = _base_context(request)
+            ctx["page"] = "billing"
+            return templates.TemplateResponse("billing_success.html", ctx)
         return RedirectResponse("/pricing?error=invalid_payment", status_code=303)
 
     try:
@@ -2177,6 +2184,24 @@ async def billing_return(request: Request, payment_reference: str = ""):
         return RedirectResponse("/pricing?error=payment_failed", status_code=303)
 
 
+def _payment_matches_order(status, payment_reference, order_reference, user_id, tier, cycle):
+    """A payment activates an order only if checkout started it for that order and
+    EveryPay says it was for that order and that amount."""
+    if not payment_reference or payment_reference != db.get_user_setting(user_id, "_pending_payment_ref", ""):
+        return False
+    paid_order = status.get("order_reference")
+    if paid_order and paid_order != order_reference:
+        return False
+    price = db.get_plan_price(tier, cycle)
+    paid = status.get("initial_amount")
+    try:
+        if paid is not None and abs(float(paid) - price) > 0.005:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return bool(price)
+
+
 @app.get("/everypay/callback")
 async def everypay_callback(request: Request,
                             payment_reference: str = "",
@@ -2205,6 +2230,14 @@ async def everypay_callback(request: Request,
     tier = pending["tier"]
     cycle = pending["cycle"]
 
+    # Anyone can call this URL, so the payment must be the one this order started, for
+    # this order's price. Without this, a settled 2 € payment named next to an unpaid
+    # lifetime order activated the lifetime licence.
+    if not _payment_matches_order(status, payment_reference, order_reference, user_id, tier, cycle):
+        logger.warning("EveryPay callback refused: payment %s does not match order %s",
+                       payment_reference, order_reference)
+        return JSONResponse({"status": "ok", "note": "payment does not match order"})
+
     if event_name == "status_updated" and payment_state == "settled":
         cc_details = status.get("cc_details", {})
         card_token = cc_details.get("token", "")
@@ -2232,6 +2265,11 @@ async def everypay_callback(request: Request,
 
         logger.info("User %s subscription activated via callback: %s (%s)",
                      user_id, tier, cycle)
+        # The order is spent: a replayed callback must not extend the plan again
+        db.save_all_user_settings(user_id, {
+            "_pending_payment_ref": "", "_pending_order_ref": "",
+            "_pending_tier": "", "_pending_cycle": "",
+        })
 
         # Generate subscription invoice + email now (idempotent on payment_reference).
         # /billing/return runs the same guard so we never double-invoice.

@@ -371,6 +371,11 @@ can't kill the main form logic.
   `/favicon.ico` is a real route (Bing and feed readers ask for it).
 - **The service worker is cache-first for `/static/`** (`static/sw.js`) and never revalidates:
   a changed file only reaches app users under a new URL (`?v=`) or after `CACHE` is bumped.
+- **The EveryPay callback is a public URL** (`/everypay/callback`): it activates an order only
+  if the payment is the one checkout started for it (`_pending_payment_ref`), EveryPay's own
+  `order_reference` matches and `initial_amount` is the plan's price (`_payment_matches_order`);
+  then it closes the order so a replay can't extend the plan. Before 2026-10-23 a settled 2 €
+  payment named next to an unpaid lifetime order activated the lifetime licence.
 - **Phone lists act by swipe** (`static/js/swipe.js`): the ⋯ menu is hidden ≤ 768px, so rows
   carry `data-swipe` and the page passes their actions to `vrSwipe.attach`. Delete and
   restore answer JSON when asked (`Accept: application/json`) so the swipe can offer undo.
