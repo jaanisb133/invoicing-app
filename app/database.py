@@ -704,9 +704,13 @@ def get_product_last_prices(user_id, doc_type="sell"):
     return {r["product_id"]: r["price_per_unit"] for r in rows}
 
 
-def get_product(product_id):
+def get_product(product_id, account_id=None):
+    """A product; with account_id, only if it is that account's."""
     conn = get_connection()
-    row = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    if account_id is None:
+        row = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    else:
+        row = conn.execute("SELECT * FROM products WHERE id = ? AND user_id = ?", (product_id, account_id)).fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -813,9 +817,15 @@ def get_converted_offer_ids(user_id):
     return {r["oid"] for r in rows}
 
 
-def get_client(client_id):
+def get_client(client_id, account_id=None):
+    """A client; with account_id, only if it is that account's. Every read for a
+    document passes the document's account, so a client id stored from another
+    account shows nothing."""
     conn = get_connection()
-    row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+    if account_id is None:
+        row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+    else:
+        row = conn.execute("SELECT * FROM clients WHERE id = ? AND user_id = ?", (client_id, account_id)).fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -1111,6 +1121,8 @@ def create_document(user_id, doc_type, client_id, doc_date, items, vat_rate=21.0
         )
         doc_id = cursor.lastrowid
         _insert_items(conn, doc_id, items, totals["lines"])
+        if doc_type != "offer":
+            _count_made_this_month(conn, user_id)
 
         conn.commit()
         return doc_id, doc_number
@@ -1244,6 +1256,7 @@ def get_document(doc_id):
                   COALESCE(p.name, di.description, '') as product_name
            FROM document_items di
            LEFT JOIN products p ON di.product_id = p.id
+                AND p.user_id = (SELECT user_id FROM documents WHERE id = di.document_id)
            WHERE di.document_id = ?""",
         (doc_id,)
     ).fetchall()
@@ -1650,6 +1663,16 @@ def _apply_trial(conn, user):
     user["plan_tier"] = user.get("tier") or "free"
     user["on_trial"] = False
     user["trial_until"] = None
+    # A cancelled plan works until the time paid for runs out, even before the daily job
+    # writes the downgrade
+    if user["plan_tier"] not in ("free", "admin", "lifetime") and user.get("subscription_status") == "cancelled":
+        try:
+            ended = not user.get("subscription_end") or \
+                datetime.date.fromisoformat(user["subscription_end"]) < datetime.date.today()
+        except ValueError:
+            ended = True
+        if ended:
+            user["tier"] = user["plan_tier"] = "free"
     if user["plan_tier"] != "free":
         return user
     row = conn.execute("SELECT value FROM user_settings WHERE user_id = ? AND key = 'trial_until'",
@@ -1719,6 +1742,53 @@ def get_user(user_id: int):
     user = _with_account(conn, row) if row else None
     conn.close()
     return user
+
+
+def client_belongs(account_id, client_id):
+    """True when the client is this account's (the id arrives from a form)."""
+    conn = get_connection()
+    row = conn.execute("SELECT 1 FROM clients WHERE id = ? AND user_id = ?", (client_id, account_id)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def own_items(account_id, items):
+    """Line items with any other account's product id dropped (the line keeps its text)."""
+    ids = {i.get("product_id") for i in items if i.get("product_id")}
+    mine = set()
+    if ids:
+        conn = get_connection()
+        marks = ",".join("?" * len(ids))
+        mine = {r["id"] for r in conn.execute(
+            f"SELECT id FROM products WHERE user_id = ? AND id IN ({marks})", (account_id, *ids))}
+        conn.close()
+    return [dict(i, product_id=i["product_id"] if i.get("product_id") in mine else None) for i in items]
+
+
+def member_within_seats(user):
+    """A member may work only while the account's plan has a seat for them: the
+    oldest members keep theirs when a plan with fewer seats takes over."""
+    if user.get("is_account_owner", True):
+        return True
+    seats = get_tier_limits(user.get("tier", "free")).get("max_users", 1)
+    if seats is None:
+        return True
+    conn = get_connection()
+    allowed = [r["id"] for r in conn.execute(
+        "SELECT id FROM users WHERE account_owner_id = ? ORDER BY created_at, id LIMIT ?",
+        (user["account_id"], max(0, seats - 1)))]
+    conn.close()
+    return user["id"] in allowed
+
+
+def recurring_within_plan(user_id, max_recurring):
+    """Ids of the active schedules the plan pays for: the oldest ones."""
+    conn = get_connection()
+    q = "SELECT id FROM recurring_invoices WHERE user_id = ? AND active = 1 ORDER BY id"
+    rows = conn.execute(q + (" LIMIT ?" if max_recurring is not None else ""),
+                        (user_id, max_recurring) if max_recurring is not None else (user_id,)).fetchall()
+    conn.close()
+    return {r["id"] for r in rows}
 
 
 def get_account_members(owner_id: int):
@@ -2644,20 +2714,72 @@ def cancel_user_subscription(user_id: int):
     conn.close()
 
 
+def cancel_at_period_end(user_id: int):
+    """Stop renewing: the card is forgotten and the plan runs to subscription_end.
+    With no paid time left the account becomes free now."""
+    conn = get_connection()
+    row = conn.execute("SELECT subscription_end FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    try:
+        ends = datetime.date.fromisoformat(row["subscription_end"]) if row and row["subscription_end"] else None
+    except ValueError:
+        ends = None
+    if not ends or ends < datetime.date.today():
+        cancel_user_subscription(user_id)
+    conn = get_connection()
+    conn.execute("UPDATE users SET subscription_status = 'cancelled', everypay_token = '' WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def expire_cancelled_subscriptions():
+    """Cancelled plans whose paid time is over become free."""
+    conn = get_connection()
+    ids = [r["id"] for r in conn.execute(
+        """SELECT id FROM users WHERE subscription_status = 'cancelled'
+           AND tier NOT IN ('free', 'admin', 'lifetime')
+           AND (subscription_end IS NULL OR subscription_end < ?)""",
+        (datetime.date.today().isoformat(),)).fetchall()]
+    conn.close()
+    for uid in ids:
+        cancel_user_subscription(uid)
+    return len(ids)
+
+
+_MONTH_COUNT_KEY = "_docs_made_month"
+
+
+def _count_made_this_month(conn, user_id):
+    """One more document made this month. Kept apart from the rows, which can be
+    trashed and purged: deleting an invoice must not give its slot back."""
+    month = datetime.date.today().strftime("%Y-%m")
+    row = conn.execute("SELECT value FROM user_settings WHERE user_id = ? AND key = ?",
+                       (user_id, _MONTH_COUNT_KEY)).fetchone()
+    seen, _, n = (row["value"] if row else "").partition(":")
+    value = f"{month}:{int(n) + 1 if seen == month and n.isdigit() else 1}"
+    conn.execute("INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) "
+                 "ON CONFLICT(user_id, key) DO UPDATE SET value = ?", (user_id, _MONTH_COUNT_KEY, value, value))
+
+
 def get_user_resource_counts(user_id: int) -> dict:
     """Get current usage counts for a user.
-    Documents are counted per calendar month; clients/products are totals."""
+    Documents are counted per calendar month (made, not still present: trashed and
+    purged ones still count); clients/products are totals."""
     conn = get_connection()
     month_start = datetime.date.today().replace(day=1).isoformat()
     docs = conn.execute(
-        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND deleted_at IS NULL AND doc_type != 'offer' AND created_at >= ?",
+        "SELECT COUNT(*) as cnt FROM documents WHERE user_id = ? AND doc_type != 'offer' AND created_at >= ?",
         (user_id, month_start)
     ).fetchone()
+    made = conn.execute("SELECT value FROM user_settings WHERE user_id = ? AND key = ?",
+                        (user_id, _MONTH_COUNT_KEY)).fetchone()
     clients = conn.execute("SELECT COUNT(*) as cnt FROM clients WHERE user_id = ? AND active = 1 AND one_time = 0", (user_id,)).fetchone()
     products = conn.execute("SELECT COUNT(*) as cnt FROM products WHERE user_id = ? AND active = 1", (user_id,)).fetchone()
     conn.close()
+    seen, _, n = ((made["value"] if made else "") or "").partition(":")
+    made_n = int(n) if seen == datetime.date.today().strftime("%Y-%m") and n.isdigit() else 0
     return {
-        "documents": docs["cnt"] if docs else 0,
+        "documents": max(docs["cnt"] if docs else 0, made_n),
         "clients": clients["cnt"] if clients else 0,
         "products": products["cnt"] if products else 0,
     }

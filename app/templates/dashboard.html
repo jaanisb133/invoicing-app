@@ -478,7 +478,7 @@
     });
 })();
 
-var dashRangeStats = {{ range_stats_json | safe }};
+var dashRangeStats = {{ range_stats_json | safe }};   // escaped for a <script> in main.py
 
 /* ------------------------------------------------------------------ chart */
 var _chartGrain = 'auto';

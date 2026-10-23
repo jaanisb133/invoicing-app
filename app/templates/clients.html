@@ -448,12 +448,14 @@ async function registrySearch(q) {
         const resp = await fetch('/api/registry/search?q=' + encodeURIComponent(q));
         const data = await resp.json();
         if (!data.length) { acDropdown.classList.remove('active'); return; }
+        // Registry data comes from outside: escape it like any other text
+        const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
         acDropdown.innerHTML = data.map(b => `
-            <div class="registry-item" data-regcode="${b.regcode}" data-name="${b.name.replace(/"/g, '&quot;')}"
-                 data-address="${(b.address||'').replace(/"/g, '&quot;')}" data-type="${(b.type_text||'').replace(/"/g, '&quot;')}">
-                <div class="registry-item-name">${b.name}</div>
-                <div class="registry-item-details"><span class="registry-item-regcode">${b.regcode}</span> <span class="registry-item-type">${b.type_text || ''}</span></div>
-                ${b.address ? '<div class="registry-item-details">' + b.address + '</div>' : ''}
+            <div class="registry-item" data-regcode="${esc(b.regcode)}" data-name="${esc(b.name)}"
+                 data-address="${esc(b.address)}" data-type="${esc(b.type_text)}">
+                <div class="registry-item-name">${esc(b.name)}</div>
+                <div class="registry-item-details"><span class="registry-item-regcode">${esc(b.regcode)}</span> <span class="registry-item-type">${esc(b.type_text)}</span></div>
+                ${b.address ? '<div class="registry-item-details">' + esc(b.address) + '</div>' : ''}
             </div>
         `).join('');
         acDropdown.querySelectorAll('.registry-item').forEach(el => {

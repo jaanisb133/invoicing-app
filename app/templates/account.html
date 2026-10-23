@@ -22,6 +22,18 @@
     {% if request.query_params.get('error') == 'too_short' %}
     <div class="alert alert-danger">Parolei jābūt vismaz 6 simbolus garai.</div>
     {% endif %}
+    {% if request.query_params.get('success') == 'subscription_cancelled' %}
+    <div class="alert alert-success">Abonements atcelts: karte vairs netiks iekasēta.{% if current_user.plan_tier != 'free' and current_user.subscription_end %} Plāns darbojas līdz {{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}, pēc tam konts pāriet uz bezmaksas plānu.{% endif %}</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'lifetime_no_cancel' %}
+    <div class="alert alert-danger">Mūža licence ir vienreizējs pirkums, tai nav ko atcelt.</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'email_taken' %}
+    <div class="alert alert-danger">Šis e-pasts jau pieder citam kontam.</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'no_subscription' %}
+    <div class="alert alert-danger">Jums nav aktīva abonementa.</div>
+    {% endif %}
 
     <div class="split">
         <div>
@@ -92,7 +104,7 @@
                         {% elif current_user.subscription_status == 'cancelled' %}
                         <span class="pill pill-danger">Atcelts</span>
                         {% endif %}
-                        {% if current_user.billing_cycle %}
+                        {% if current_user.billing_cycle in ('monthly', 'yearly') %}
                         <span style="font-size:12px;color:var(--text-light)">
                             ({{ 'mēneša' if current_user.billing_cycle == 'monthly' else 'gada' }} plāns)
                         </span>
@@ -130,9 +142,9 @@
                             Mans abonements
                         </a>
                         {% endif %}
-                        {% if current_user.plan_tier != 'free' and has_payments %}
+                        {% if current_user.plan_tier not in ('free', 'lifetime', 'admin') and current_user.subscription_status != 'cancelled' and has_payments %}
                         <form method="post" action="/billing/cancel" style="display:inline"
-                              onsubmit="return confirm('Vai tiešām vēlaties atcelt abonementu?')">
+                              onsubmit="return confirm('Atcelt abonementu? Karte vairs netiks iekasēta, un plāns darbosies līdz apmaksātā perioda beigām.')">
                             <button type="submit" class="btn btn-outline btn-sm" style="color:var(--danger)">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                                 Atcelt abonementu
@@ -142,8 +154,10 @@
                     </div>
 
                     <div style="margin-top:16px;padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--text-light)">
-                        {% if current_user.subscription_end and current_user.plan_tier != 'free' %}
-                        <div style="margin-bottom:6px">Nākamais apmaksas datums: <strong style="color:var(--text)">{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong></div>
+                        {% if current_user.plan_tier == 'lifetime' %}
+                        <div style="margin-bottom:6px">Mūža licence: <strong style="color:var(--text)">bez termiņa</strong></div>
+                        {% elif current_user.subscription_end and current_user.plan_tier not in ('free', 'admin') %}
+                        <div style="margin-bottom:6px">{{ 'Darbojas līdz' if current_user.subscription_status == 'cancelled' else 'Nākamais apmaksas datums' }}: <strong style="color:var(--text)">{{ current_user.subscription_end[8:10] }}.{{ current_user.subscription_end[5:7] }}.{{ current_user.subscription_end[:4] }}</strong></div>
                         {% endif %}
                         Konts izveidots: <strong style="color:var(--text)">{{ current_user.created_at[:10] if current_user.created_at else 'N/A' }}</strong>
                     </div>

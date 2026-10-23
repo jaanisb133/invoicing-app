@@ -176,14 +176,20 @@ def charge_mit(
         },
     }
 
-    resp = httpx.post(
-        f"{API_URL}/payments/charge",
-        json=charge_payload,
-        auth=_auth(),
-        timeout=30,
-    )
-    resp.raise_for_status()
-    charge_data = resp.json()
+    try:
+        resp = httpx.post(
+            f"{API_URL}/payments/charge",
+            json=charge_payload,
+            auth=_auth(),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        charge_data = resp.json()
+    except Exception:
+        # A timeout doesn't mean the card wasn't charged. Ask before reporting a
+        # failure, or tomorrow's retry charges the customer a second time.
+        logger.exception("MIT charge request failed: ref=%s, asking for its status", payment_reference)
+        charge_data = get_payment_status(payment_reference)
     logger.info("MIT charge completed: ref=%s state=%s",
                 payment_reference, charge_data.get("payment_state"))
     return charge_data

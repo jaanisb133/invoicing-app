@@ -108,7 +108,7 @@ def _get_einvoice_data(doc_id):
     doc, items = db.get_document(doc_id)
     if not doc:
         raise ValueError(f"Dokuments ar ID {doc_id} nav atrasts")
-    client = db.get_client(doc["client_id"]) or {}
+    client = db.get_client(doc["client_id"], doc["user_id"]) or {}
     user_id = doc.get("user_id", 0)
     settings = db.get_all_user_settings(user_id) if user_id else db.get_all_settings()
     user = (db.get_user(user_id) if user_id else None) or {}
