@@ -17,6 +17,7 @@
 <form method="post" action="/register" id="regForm" novalidate>
     <input type="hidden" name="plan" value="{{ plan or '' }}">
     <input type="hidden" name="cycle" value="{{ cycle or 'monthly' }}">
+    <input type="hidden" name="su" value="{{ su }}">
 
     <div class="seg" role="radiogroup" aria-label="Kas izraksta rēķinus">
         <label><input type="radio" name="entity_type" value="business" {% if et == 'business' %}checked{% endif %}>Uzņēmums</label>
@@ -86,6 +87,47 @@
     var regNo = document.getElementById('regNumber'), addr = document.getElementById('regAddress'), vat = document.getElementById('regVat');
     var vatPayer = document.getElementById('regVatPayer'), found = document.getElementById('regFound');
 
+    // How far this sign-up gets, for the admin's Reģistrācijas page: which steps were
+    // reached, never what was typed. The id lives only in this page (no cookie).
+    var su = form.elements.su ? form.elements.su.value : '', reported = {};
+    function step(name, detail) {
+        var key = name + ':' + (detail || '');
+        if (!su || reported[key]) return;
+        reported[key] = 1;
+        var body = JSON.stringify({ a: su, s: name, d: detail || '' });
+        try {
+            if (!(navigator.sendBeacon && navigator.sendBeacon('/api/signup-step', new Blob([body], { type: 'application/json' }))))
+                fetch('/api/signup-step', { method: 'POST', body: body, keepalive: true, headers: { 'Content-Type': 'application/json' } }).catch(function () {});
+        } catch (e) {}
+    }
+    function source() {
+        var q = new URLSearchParams(location.search), src = 'direct';
+        if (q.get('reg_number') || q.get('display_name')) src = 'landing-form';
+        else if (document.referrer) {
+            try {
+                var r = new URL(document.referrer), p = r.pathname;
+                if (r.origin === location.origin) src = p === '/' ? 'landing' : p.indexOf('/pricing') === 0 ? 'pricing' : p.indexOf('/celvedis') === 0 ? 'guide' : 'site';
+                else if (/(^|\.)(google|bing|duckduckgo|yahoo|yandex|ecosia)\./.test(r.hostname)) src = 'search';
+                else if (/(^|\.)(facebook|instagram|linkedin|twitter|tiktok|youtube)\.|^(t\.co|x\.com)$/.test(r.hostname)) src = 'social';
+                else src = 'external';
+            } catch (e) {}
+        }
+        var plan = form.elements.plan.value;
+        return src + (/^(mini|starter|business|lifetime)$/.test(plan) ? ':' + plan : '');
+    }
+    if ({{ 'false' if request.method == 'POST' else 'true' }}) {   // a re-shown form continues its attempt
+        step('open', source());
+        if (document.getElementById('regNumber').value) step('company', 'prefilled');
+    }
+    form.addEventListener('focusin', function (e) {   // which field someone was at when they left
+        var id = e.target.id;
+        if (id === 'regName' || id === 'regFirst' || id === 'regLast') step('focus', 'company');
+        else if (id === 'regEmail') step('focus', 'email');
+        else if (id === 'regPass') step('focus', 'password');
+    });
+    form.addEventListener('input', function () { step('start'); });
+    form.addEventListener('change', function () { step('start'); });
+
     function entity() { return form.querySelector('input[name="entity_type"]:checked').value; }
     function syncEntity() {
         var isBiz = entity() === 'business';
@@ -119,10 +161,22 @@
         document.getElementById('regFoundName').textContent = r.name;
         document.getElementById('regFoundMeta').textContent = 'Reģ. Nr. ' + r.regcode + (r.address ? ' · ' + r.address : '');
         found.hidden = false; close();
+        picked = true; step('company', 'registry');
     }
+    var picked = false;
+    nameIn.addEventListener('change', function () { if (!picked && nameIn.value.trim().length >= 2) step('company', 'typed'); });
+    ['regFirst', 'regLast'].forEach(function (id) {
+        document.getElementById(id).addEventListener('change', function () {
+            if (document.getElementById('regFirst').value.trim() && document.getElementById('regLast').value.trim()) step('company', 'person');
+        });
+    });
+    document.getElementById('regEmail').addEventListener('change', function () {
+        if (/^\S+@\S+\.\S+$/.test(this.value.trim())) step('email');
+    });
+    document.getElementById('regPass').addEventListener('input', function () { if (this.value.length >= 6) step('password'); });
     nameIn.addEventListener('input', function () {
         var q = nameIn.value.trim(); clearTimeout(timer);
-        found.hidden = true;
+        found.hidden = true; picked = false;
         if (q.length < 2) { items = []; close(); return; }
         var mine = ++seq;
         timer = setTimeout(function () {
@@ -149,6 +203,7 @@
     // Say what is missing next to the field, not in a browser bubble
     form.addEventListener('submit', function (e) {
         var bad = null;
+        step('click');
         form.querySelectorAll('.f .err').forEach(function (n) { n.remove(); });
         function need(input, msg) {
             if (!bad && !input.disabled && !input.value.trim()) {
@@ -163,7 +218,10 @@
         if (!bad && !/^\S+@\S+\.\S+$/.test(email.value.trim())) { need({ value: '', disabled: false, closest: function () { return email.closest('.f'); } }, 'Pārbaudiet e-pasta adresi.'); bad = email; }
         var pass = document.getElementById('regPass');
         if (!bad && pass.value.length < 6) { need({ value: '', disabled: false, closest: function () { return pass.closest('.f'); } }, 'Parolei jābūt vismaz 6 simbolus garai.'); bad = pass; }
-        if (bad) { e.preventDefault(); bad.focus(); }
+        if (bad) {
+            e.preventDefault(); bad.focus();
+            step('invalid', bad.id === 'regEmail' ? 'email' : bad.id === 'regPass' ? 'password' : 'company');
+        }
     });
 })();
 </script>

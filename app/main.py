@@ -60,7 +60,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "60"
+CSS_VERSION = "61"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -644,7 +644,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if (path.startswith("/static") or path.startswith("/celvedis") or path in ("/login", "/register", "/forgot", "/reset", "/pricing", "/contacts", "/terms", "/license",
                                                     "/robots.txt", "/sitemap.xml", "/favicon.ico")
-                or path == "/everypay/callback" or path == "/api/registry/search"):
+                or path == "/everypay/callback" or path == "/api/registry/search" or path == "/api/signup-step"):
             return await call_next(request)
 
         # Offline mode: require valid license before anything else
@@ -1161,6 +1161,58 @@ async def login(request: Request, username: str = Form(...), password: str = For
     return _set_session_cookie(response, user["id"])
 
 
+# Sign-up funnel: each load of /register is one attempt with a random id in the page
+# (hidden field "su"); the page reports the steps it reaches, the server the outcome.
+# Only which step was reached is stored, never what was typed, and no cookie or IP.
+SIGNUP_CLIENT_STEPS = {
+    "open": None,   # detail: the source, checked by _signup_source_ok
+    "start": {""},
+    "company": {"registry", "typed", "prefilled", "person"},
+    "email": {""},
+    "password": {""},
+    "click": {""},
+    "invalid": {"company", "email", "password"},
+    "focus": {"company", "email", "password"},   # a field clicked into, filled or not
+}
+SIGNUP_SOURCES = ("landing", "landing-form", "pricing", "guide", "site", "search", "social", "external", "direct")
+_BOT_UA = re.compile(r"bot|crawl|spider|slurp|preview|headless|lighthouse|pingdom|monitor|curl|wget|python|go-http", re.I)
+
+
+def _signup_attempt(value=""):
+    """The attempt id from a form or beacon, or a new one."""
+    return value if re.fullmatch(r"[0-9a-f]{16}", value or "") else secrets.token_hex(8)
+
+
+def _signup_source_ok(detail):
+    source, _, plan = detail.partition(":")
+    return source in SIGNUP_SOURCES and plan in ("", "mini", "starter", "business", "lifetime")
+
+
+def _signup_step(attempt, step, detail="", user_id=None):
+    try:
+        db.log_signup_step(attempt, step, detail, user_id)
+    except Exception:  # statistics never break sign-up
+        logger.exception("signup step not recorded")
+
+
+@app.post("/api/signup-step")
+async def signup_step(request: Request):
+    """Beacon from the sign-up page: which step an attempt reached. Always 204."""
+    if _BOT_UA.search(request.headers.get("user-agent", "")) or \
+            not _rate_limiter.is_allowed(f"signup-step:{_get_client_ip(request)}", 120, 3600):
+        return Response(status_code=204)
+    try:
+        body = json.loads((await request.body())[:2048] or b"{}")
+    except ValueError:
+        return Response(status_code=204)
+    attempt, step, detail = str(body.get("a", "")), str(body.get("s", "")), str(body.get("d", ""))[:40]
+    allowed = SIGNUP_CLIENT_STEPS.get(step, ())
+    if re.fullmatch(r"[0-9a-f]{16}", attempt) and step in SIGNUP_CLIENT_STEPS and (
+            _signup_source_ok(detail) if step == "open" else detail in allowed):
+        _signup_step(attempt, step, detail)
+    return Response(status_code=204)
+
+
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request, error: str = "", plan: str = "", cycle: str = "monthly",
                         entity_type: str = "business", display_name: str = "", reg_number: str = "",
@@ -1174,6 +1226,7 @@ async def register_page(request: Request, error: str = "", plan: str = "", cycle
         "request": request,
         "error": error,
         "page": "register",
+        "su": _signup_attempt(),
         "plan": plan,
         "cycle": cycle,
         "entity_type": "individual" if entity_type == "individual" else "business",
@@ -1200,13 +1253,17 @@ async def register(request: Request,
                    reg_number: str = Form(""),
                    vat_number: str = Form(""),
                    legal_address: str = Form(""),
-                   is_vat_payer: str = Form("0")):
+                   is_vat_payer: str = Form("0"),
+                   su: str = Form("")):
+    su = _signup_attempt(su)
+    _signup_step(su, "submit")
     # Rate limit: 5 registrations per hour per IP
     ip = _get_client_ip(request)
     if not _rate_limiter.is_allowed(f"register:{ip}", 5, 3600):
+        _signup_step(su, "error", "rate_limit")
         return templates.TemplateResponse("register.html", {
             "request": request, "page": "register", "plan": plan, "cycle": cycle,
-            "entity_type": entity_type, "email": email,
+            "entity_type": entity_type, "email": email, "su": su,
             "error": "Pārāk daudz reģistrāciju. Lūdzu, mēģiniet vēlāk.",
         })
 
@@ -1220,22 +1277,26 @@ async def register(request: Request,
         "plan": plan, "cycle": cycle, "entity_type": entity_type,
         "first_name": first_name, "last_name": last_name,
         "reg_number": reg_number, "vat_number": vat_number,
-        "legal_address": legal_address, "is_vat_payer": is_vat_payer,
+        "legal_address": legal_address, "is_vat_payer": is_vat_payer, "su": su,
     }
 
     if not display_name:
+        _signup_step(su, "error", "no_name")
         err = "Lūdzu norādiet vārdu un uzvārdu." if entity_type == "individual" else "Lūdzu norādiet uzņēmuma nosaukumu."
         return templates.TemplateResponse("register.html", {**error_ctx, "error": err})
 
     # The form has one password field with a show/hide toggle; a second field
     # is only compared when a client still sends one.
     if confirm_password and password != confirm_password:
+        _signup_step(su, "error", "password_mismatch")
         return templates.TemplateResponse("register.html", {**error_ctx, "error": "Paroles nesakrīt."})
 
     if len(password) < 6:
+        _signup_step(su, "error", "password_short")
         return templates.TemplateResponse("register.html", {**error_ctx, "error": "Parolei jābūt vismaz 6 simbolus garai."})
 
     if db.get_user_by_email(email):
+        _signup_step(su, "error", "email_taken")
         return templates.TemplateResponse("register.html", {**error_ctx, "error": "E-pasts jau reģistrēts."})
 
     # Auto-generate username from email
@@ -1288,6 +1349,7 @@ async def register(request: Request,
     # Every new account tries the paid features first, then keeps the free plan
     if not OFFLINE_MODE:
         db.start_trial(user_id)
+    _signup_step(su, "created", user_id=user_id)
 
     # Always redirect to dashboard → onboarding gate will send to /setup
     response = RedirectResponse("/", status_code=303)
@@ -1693,7 +1755,7 @@ SITEMAP_PAGES = [
     ("/", "2026-10-21"),
     ("/pricing", "2026-10-21"),
     ("/contacts", "2026-10-21"),
-    ("/terms", "2026-10-21"),
+    ("/terms", "2026-10-23"),
 ]
 
 
@@ -2239,6 +2301,168 @@ async def users_page(request: Request, error: str = "", success: str = ""):
                         if db.get_user_setting(u["id"], "branded_offers") == "1"},
     })
     return templates.TemplateResponse("users.html", ctx)
+
+
+# The admin's sign-up funnel. Milestones come in order; the form's fields are counted on
+# their own (people fill them in any order), and each attempt that did not end in an
+# account gets one place where it stopped.
+SIGNUP_MILESTONES = [
+    ("open", "Atvēra reģistrāciju"),
+    ("start", "Sāka aizpildīt"),
+    ("click", "Nospieda „Izveidot kontu”"),
+    ("created", "Konts izveidots"),
+    ("setup", "Iestatījumi pabeigti"),
+    ("invoice", "Pirmais rēķins"),
+    ("sent", "Rēķins nosūtīts"),
+]
+SIGNUP_FIELDS = [("company", "Uzņēmums vai vārds"), ("email", "E-pasts"), ("password", "Parole")]
+SIGNUP_STOPS = {
+    "nothing": "atvēra un neko neaizpildīja",
+    "company": "apstājās pie uzņēmuma nosaukuma",
+    "email": "apstājās pie e-pasta",
+    "password": "apstājās pie paroles",
+    "button": "aizpildīja, bet nenospieda „Izveidot kontu”",
+    "refused": "nospieda, bet forma vai serveris atteica",
+    "unknown": "nospieda, bet konts netika izveidots",
+}
+SIGNUP_REASONS = {
+    ("invalid", "company"): "Nav uzņēmuma vai vārda",
+    ("error", "no_name"): "Nav uzņēmuma vai vārda",
+    ("invalid", "email"): "Nederīgs e-pasts",
+    ("error", "email_taken"): "E-pasts jau reģistrēts",
+    ("invalid", "password"): "Parole par īsu",
+    ("error", "password_short"): "Parole par īsu",
+    ("error", "password_mismatch"): "Paroles nesakrīt",
+    ("error", "rate_limit"): "Pārāk daudz mēģinājumu no vienas adreses",
+}
+SIGNUP_SOURCE_LABELS = {
+    "landing": "Sākumlapa", "landing-form": "Sākumlapas forma", "pricing": "Cenas", "guide": "Ceļvedis",
+    "site": "Cita lapa vietnē", "search": "Meklētājs", "social": "Sociālie tīkli",
+    "external": "Cita vietne", "direct": "Tieši", "": "Nav zināms",
+}
+SIGNUP_COMPANY_LABELS = {"registry": "no reģistra", "prefilled": "no sākumlapas", "typed": "ierakstīts",
+                         "person": "privātpersona"}
+
+
+def _riga_time(stamp):
+    """'dd.mm. HH:MM' in Latvian time for a UTC timestamp from SQLite."""
+    try:
+        from zoneinfo import ZoneInfo
+        t = datetime.datetime.fromisoformat(stamp).replace(tzinfo=datetime.timezone.utc)
+        return t.astimezone(ZoneInfo("Europe/Riga")).strftime("%d.%m. %H:%M")
+    except Exception:
+        return (stamp or "")[8:10] + "." + (stamp or "")[5:7] + ". " + (stamp or "")[11:16]
+
+
+def _signup_stop(steps, seq):
+    """Where an attempt that made no account stopped."""
+    if "click" in steps or "submit" in steps or "invalid" in steps or "error" in steps:
+        return "refused" if ("invalid" in steps or "error" in steps) else "unknown"
+    filled = [k for k, _ in SIGNUP_FIELDS if k in steps]
+    if "start" not in steps and not filled:
+        return "nothing"
+    # the last field clicked into and left unfinished, else the first one not filled
+    for step, detail in reversed(seq):
+        if step == "focus" and detail not in steps:
+            return detail
+    return next((k for k, _ in SIGNUP_FIELDS if k not in steps), "button")
+
+
+def _signup_stats(days):
+    """Sign-up attempts of the last `days` days: milestones, fields, stops, reasons, sources."""
+    since = (datetime.datetime.utcnow() - datetime.timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    attempts = db.get_signup_attempts(since)
+    order = [k for k, _ in SIGNUP_MILESTONES]
+    reach = dict.fromkeys(order, 0)
+    fields = dict.fromkeys([k for k, _ in SIGNUP_FIELDS], 0)
+    stops, reasons, sources, company_how, recent = {}, {}, {}, {}, []
+    for a in attempts:
+        steps, acc = a["steps"], a["account"]
+        got = {"open"}
+        if set(steps) & {"start", "company", "email", "password", "click", "invalid", "submit", "error", "created"}:
+            got.add("start")
+        if set(steps) & {"click", "invalid", "submit", "error", "created"}:
+            got.add("click")
+        if "created" in steps or acc:
+            got.add("created")
+        if acc:
+            got |= {k for k, ok in (("setup", acc["setup"]), ("invoice", acc["invoices"]), ("sent", acc["sent"])) if ok}
+        furthest = max(i for i, k in enumerate(order) if k in got)
+        for k in order[:furthest + 1]:
+            reach[k] += 1
+        for k in fields:
+            fields[k] += k in steps
+        how = steps.get("company") or []
+        for pref in ("registry", "prefilled", "person", "typed"):
+            if pref in how:
+                company_how[pref] = company_how.get(pref, 0) + 1
+                break
+        made = "created" in got
+        source, _, plan = (steps.get("open") or [""])[0].partition(":")
+        src = sources.setdefault(source, {"label": SIGNUP_SOURCE_LABELS.get(source, source), "opened": 0, "created": 0})
+        src["opened"] += 1
+        src["created"] += made
+        said = []
+        for kind in ("invalid", "error"):
+            for d in steps.get(kind, []):
+                label = SIGNUP_REASONS.get((kind, d), d)
+                if label not in said:
+                    said.append(label)
+        for label in said:
+            r = reasons.setdefault(label, {"label": label, "count": 0, "then_created": 0})
+            r["count"] += 1
+            r["then_created"] += made
+        if made:
+            parts = ["konts"]
+            if acc:
+                parts += (["iestatīts"] if acc["setup"] else []) + \
+                         ([f"{acc['invoices']} rēķin{'s' if acc['invoices'] % 10 == 1 and acc['invoices'] % 100 != 11 else 'i'}"]
+                          if acc["invoices"] else []) + \
+                         (["nosūtīts"] if acc["sent"] else []) + (["maksā"] if acc["paying"] else [])
+            outcome, tone = " · ".join(parts), "pos"
+        else:
+            stop = _signup_stop(steps, a["seq"])
+            stops[stop] = stops.get(stop, 0) + 1
+            outcome = SIGNUP_STOPS[stop] + (": " + ", ".join(said).lower() if said else "")
+            tone = "neg" if said else ""
+        if len(recent) < 40:
+            recent.append({"when": _riga_time(a["first_at"]), "source": SIGNUP_SOURCE_LABELS.get(source, source),
+                           "plan": db.TIER_LIMITS.get(plan, {}).get("label", "") if plan else "",
+                           "account": (acc or {}).get("name", ""), "outcome": outcome, "tone": tone})
+    total = reach["open"]
+    pct = lambda n: round(100 * n / total) if total else 0
+    rows, prev = [], None
+    for key, label in SIGNUP_MILESTONES:
+        rows.append({"key": key, "label": label, "count": reach[key], "pct": pct(reach[key]),
+                     "drop": prev - reach[key] if prev is not None else 0, "after_signup": key in ("setup", "invoice", "sent")})
+        prev = reach[key]
+        if key == "start":   # the fields, inside the form
+            for fkey, flabel in SIGNUP_FIELDS:
+                note = " · ".join(f"{SIGNUP_COMPANY_LABELS[k]} {v}" for k, v in
+                                  sorted(company_how.items(), key=lambda kv: -kv[1])) if fkey == "company" else ""
+                rows.append({"key": fkey, "label": flabel, "count": fields[fkey], "pct": pct(fields[fkey]),
+                             "drop": 0, "field": True, "note": note})
+    stop_list = sorted(({"key": k, "label": SIGNUP_STOPS[k], "count": v} for k, v in stops.items()),
+                       key=lambda r: -r["count"])
+    return {
+        "total": total, "rows": rows, "started": reach["start"], "created": reach["created"],
+        "invoiced": reach["invoice"], "stops": stop_list, "top_stop": stop_list[0] if stop_list else None,
+        "reasons": sorted(reasons.values(), key=lambda r: -r["count"]),
+        "sources": sorted(sources.values(), key=lambda r: (-r["opened"], r["label"])),
+        "recent": recent,
+    }
+
+
+@app.get("/users/registracijas", response_class=HTMLResponse)
+async def signup_stats_page(request: Request, days: int = 30):
+    """How many people start an account and where they stop. Admin only."""
+    if not request.state.user["is_admin"]:
+        raise HTTPException(status_code=404)
+    days = days if days in (7, 30, 90, 365) else 30
+    db.purge_signup_steps()
+    ctx = _base_context(request)
+    ctx.update({"page": "users", "days": days, "stats": _signup_stats(days)})
+    return templates.TemplateResponse("signups.html", ctx)
 
 
 @app.post("/users/add")
