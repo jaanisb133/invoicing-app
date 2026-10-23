@@ -366,15 +366,24 @@ def _get_current_user(request: Request):
         return None
     try:
         s = _get_serializer()
-        user_id = s.loads(cookie, max_age=SESSION_MAX_AGE)
-        return db.get_user(user_id)
+        data = s.loads(cookie, max_age=SESSION_MAX_AGE)
+        user = db.get_user(int(data["u"]))
     except Exception:
         return None
+    # The session names the password it was made with: changing the password ends
+    # every other session (a stolen cookie included)
+    if not user or user["password_hash"][-16:] != data.get("h"):
+        return None
+    # A member whose seat the account's current plan no longer has is signed out
+    if user and not db.member_within_seats(user):
+        return None
+    return user
 
 
 def _set_session_cookie(response, user_id):
     s = _get_serializer()
-    token = s.dumps(user_id)
+    user = db.get_user(user_id) or {}
+    token = s.dumps({"u": user_id, "h": (user.get("password_hash") or "")[-16:]})
     response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_MAX_AGE,
                         httponly=True, samesite="lax")
     return response
@@ -440,8 +449,8 @@ def _with_document_client(clients, uid, doc):
         return clients
     if any(c["id"] == doc["client_id"] for c in clients):
         return clients
-    own = db.get_client(doc["client_id"])
-    if own and own.get("user_id") == uid:
+    own = db.get_client(doc["client_id"], uid)
+    if own:
         return list(clients) + [own]
     return clients
 
@@ -578,6 +587,12 @@ def _check_tier_limit(user, resource_type):
 def _is_owner(user):
     """True when this user owns the account rather than being a member of it."""
     return bool(user) and user.get("is_account_owner", True)
+
+
+def _local_path(value, default):
+    """A redirect target from a request, kept to this site's own pages."""
+    value = (value or "").strip()
+    return value if value.startswith("/") and not value.startswith("//") and "\\" not in value else default
 
 
 def _owner_only(user):
@@ -724,6 +739,9 @@ class HeadAndSecurityHeaders:
                 present = {k.lower() for k, _ in headers}
                 extra = self._HEADERS + ([(b"strict-transport-security", b"max-age=31536000")] if https else [])
                 headers += [(k, v) for k, v in extra if k not in present]
+                if https:   # the session cookie never travels over plain HTTP
+                    headers = [(k, v + b"; Secure") if k.lower() == b"set-cookie" and b"secure" not in v.lower() else (k, v)
+                               for k, v in headers]
                 message = dict(message, headers=headers)
             elif is_head and message["type"] == "http.response.body":
                 message = dict(message, body=b"")
@@ -821,6 +839,7 @@ async def _process_recurring_invoices():
         try:
             today = datetime.date.today().isoformat()
             due = db.get_due_recurring_invoices(today)
+            within_plan = {}   # account -> ids of the schedules its plan pays for
 
             for rec in due:
                 try:
@@ -837,7 +856,17 @@ async def _process_recurring_invoices():
                         allowed, _, _ = _check_tier_limit(rec_user, "documents")
                         if not allowed:
                             continue
+                        # After a move to a smaller plan only its number of schedules run
+                        if rec["user_id"] not in within_plan:
+                            within_plan[rec["user_id"]] = db.recurring_within_plan(
+                                rec["user_id"], db.get_tier_limits(rec_user.get("tier", "free")).get("max_recurring"))
+                        if rec["id"] not in within_plan[rec["user_id"]]:
+                            continue
 
+                    if not db.client_belongs(rec["user_id"], rec["client_id"]):
+                        logger.warning("Recurring #%s skipped: its client is not this account's", rec["id"])
+                        continue
+                    items = db.own_items(rec["user_id"], items)
                     due_days = db.recurring_due_days(rec)
                     due_date = ((datetime.date.today() + datetime.timedelta(days=due_days)).isoformat()
                                 if due_days and rec["doc_type"] == "sell" else None)
@@ -845,7 +874,7 @@ async def _process_recurring_invoices():
                         rec["user_id"], rec["doc_type"], rec["client_id"],
                         today, items, rec["vat_rate"], rec["notes"],
                         payment_due_date=due_date or "",
-                        buyer_reference=(db.get_client(rec["client_id"]) or {}).get("buyer_reference") or "",
+                        buyer_reference=(db.get_client(rec["client_id"], rec["user_id"]) or {}).get("buyer_reference") or "",
                     )
 
                     # Log document_created event (recurring source)
@@ -860,9 +889,13 @@ async def _process_recurring_invoices():
                     template = rec.get("template", "minimal")
                     filepath = generate_invoice_pdf(doc_id, template=template)
 
-                    # Send email if enabled
-                    if rec["send_email"] and (SMTP_PASS or BREVO_API_KEY):
-                        client = db.get_client(rec["client_id"])
+                    # Send email if enabled, within the plan's monthly e-mail cap
+                    cap = db.get_tier_limits((rec_user or {}).get("tier", "free")).get("max_emails_month")
+                    over_cap = cap is not None and db.get_emails_sent_this_month(rec["user_id"]) >= cap
+                    if over_cap and rec["send_email"]:
+                        logger.info("Recurring #%s: e-mail cap reached, invoice made but not sent", rec["id"])
+                    if rec["send_email"] and not over_cap and (SMTP_PASS or BREVO_API_KEY):
+                        client = db.get_client(rec["client_id"], rec["user_id"])
                         if client and client.get("email"):
                             settings = db.get_all_user_settings(rec["user_id"])
                             company_name = settings.get("company_name", "")
@@ -903,8 +936,11 @@ async def _process_recurring_invoices():
                             except Exception:
                                 logger.exception("Failed to log document_sent event (recurring)")
 
-                    # Calculate next run
+                    # Calculate next run: always into the future, so a missed stretch
+                    # (or an old start date) makes one invoice, not one an hour
                     next_run = _calc_next_run(rec["next_run"], rec["frequency"])
+                    while next_run <= datetime.date.today():
+                        next_run = _calc_next_run(next_run.isoformat(), rec["frequency"])
                     db.update_recurring_next_run(rec["id"], next_run.isoformat())
                     logger.info(f"Recurring #{rec['id']}: created doc #{doc_id}, next run {next_run}")
 
@@ -1153,6 +1189,15 @@ async def login(request: Request, username: str = Form(...), password: str = For
         return templates.TemplateResponse("login.html", {
             "request": request,
             "error": "Nepareizs e-pasts vai parole.",
+            "username": username,
+            "page": "login",
+        })
+
+    full = db.get_user(user["id"])
+    if full and not db.member_within_seats(full):
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Konta pašreizējais plāns neparedz šo lietotāju. Sazinieties ar konta īpašnieku.",
             "username": username,
             "page": "login",
         })
@@ -1682,6 +1727,10 @@ async def update_profile(request: Request,
                          email: str = Form(""),
                          phone: str = Form("")):
     user = request.state.user
+    email = (email or "").strip()
+    other = db.get_user_by_email(email) if email else None
+    if other and other["id"] != user["id"]:
+        return RedirectResponse("/account?error=email_taken", status_code=303)
     db.update_user_profile(user["id"], display_name=display_name, email=email, phone=phone)
     return RedirectResponse("/account?saved=profile", status_code=303)
 
@@ -1703,7 +1752,8 @@ async def change_password(request: Request,
         return RedirectResponse("/account?error=too_short", status_code=303)
 
     db.update_user_password(user["id"], new_password)
-    return RedirectResponse("/account?saved=password", status_code=303)
+    # Other sessions end with the old password; this one carries on
+    return _set_session_cookie(RedirectResponse("/account?saved=password", status_code=303), user["id"])
 
 
 # =============================================================================
@@ -2687,7 +2737,9 @@ async def dashboard(request: Request, date_from: str = "", date_to: str = "", co
         "recent_events": recent_events,
         "date_from": date_from,
         "date_to": date_to,
-        "range_stats_json": _json.dumps(range_stats, default=str),
+        # inside a <script>: a client named "</script>…" must not end it
+        "range_stats_json": _json.dumps(range_stats, default=str)
+                            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"),
         "einvoice_enabled": _check_tier_feature(user, "einvoice"),
         "recurring_enabled": _check_tier_feature(user, "recurring"),
         "email_enabled": _email_enabled(user),
@@ -2862,15 +2914,25 @@ async def upload_logo(request: Request, logo: UploadFile = File(...)):
     if old_path and os.path.exists(old_path):
         os.remove(old_path)
 
+    content = await logo.read(5 * 1024 * 1024 + 1)
+    # A real, reasonably small image: anything else would only break this account's PDFs
+    # (or fill the disk)
+    try:
+        from PIL import Image as PILImage
+        import io as _io
+        if len(content) > 5 * 1024 * 1024:
+            raise ValueError("too large")
+        PILImage.open(_io.BytesIO(content)).verify()
+    except Exception:
+        return RedirectResponse("/settings?error=logo_type", status_code=303)
     filename = f"{uid}_logo{ext}"
     filepath = os.path.join(logo_dir, filename)
-    content = await logo.read()
     with open(filepath, "wb") as f:
         f.write(content)
 
     db.set_user_setting(uid, "logo_filename", filename)
     # Support redirect back to setup/onboarding
-    redirect = request.query_params.get("redirect", "/settings?saved=1")
+    redirect = _local_path(request.query_params.get("redirect", ""), "/settings?saved=1")
     return RedirectResponse(redirect, status_code=303)
 
 
@@ -2885,7 +2947,7 @@ async def delete_logo(request: Request):
     if path and os.path.exists(path):
         os.remove(path)
     db.set_user_setting(uid, "logo_filename", "")
-    redirect = request.query_params.get("redirect", "/settings?saved=1")
+    redirect = _local_path(request.query_params.get("redirect", ""), "/settings?saved=1")
     return RedirectResponse(redirect, status_code=303)
 
 
@@ -3323,7 +3385,10 @@ def _followup_source(uid, doc_id):
         return None
     doc, items = db.get_document(doc_id)
     if (not doc or doc.get("user_id") != uid or doc.get("doc_type") != "sell"
-            or doc.get("status") in ("cancelled", "replaced") or doc.get("deleted_at")):
+            or doc.get("status") in ("cancelled", "replaced") or doc.get("deleted_at")
+            # an unsent invoice is simply edited; this also stops follow-ups (which the
+            # monthly limit never blocks) from being chained into free invoices
+            or not doc.get("sent_at")):
         return None
     return doc, items
 
@@ -3508,6 +3573,12 @@ async def create_document(request: Request):
         back = (f"/documents/new?{'credits' if doc_type == 'credit' else 'corrects'}={ref_doc['id']}"
                 if ref_doc else f"/documents/new?doc_type={doc_type}")
         return RedirectResponse(f"{back}&error=no_items", status_code=303)
+    # Both ids arrive from the form: another account's client or product must not
+    # end up on (and be readable through) this account's document
+    if client_id and not db.client_belongs(user["account_id"], client_id):
+        return RedirectResponse(f"/documents/new?doc_type={doc_type}&error=" + quote("Klients nav atrasts."),
+                                status_code=303)
+    items = db.own_items(user["account_id"], items)
 
     # Link back to the offer this invoice was built from, but only if that
     # offer really belongs to the user — the id arrives from a form field.
@@ -3567,7 +3638,7 @@ async def edit_document_page(request: Request, doc_id: int):
     user = request.state.user
     uid = user["account_id"]
     doc, items = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != uid:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != uid:
         raise HTTPException(status_code=404, detail="Dokuments nav atrasts")
     if db.is_locked(doc):
         return RedirectResponse(f"/documents/{doc_id}?error={quote(db.SENT_LOCK_MESSAGE)}", status_code=303)
@@ -3621,7 +3692,7 @@ async def update_document(request: Request, doc_id: int):
     user = request.state.user
     form = await request.form()
     current, _ = db.get_document(doc_id)
-    if not current or current.get("user_id") != user["account_id"]:
+    if not current or current.get("deleted_at") or current.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     doc_type = current["doc_type"]
     client_id = int(form.get("client_id", 0))
@@ -3637,6 +3708,9 @@ async def update_document(request: Request, doc_id: int):
 
     if not items:
         return RedirectResponse(f"/documents/{doc_id}/edit?error=no_items", status_code=303)
+    if client_id and client_id != current["client_id"] and not db.client_belongs(user["account_id"], client_id):
+        return RedirectResponse(f"/documents/{doc_id}/edit?error=" + quote("Klients nav atrasts."), status_code=303)
+    items = db.own_items(user["account_id"], items)
 
     offer_meta = None
     if doc_type == "offer" and _branded_offers_enabled(user["account_id"]):
@@ -3667,9 +3741,10 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
     ctx = _base_context(request)
     user = request.state.user
     doc, items = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404, detail="Dokuments nav atrasts")
-    client = db.get_client(doc["client_id"])
+    # a client that isn't this account's (or is gone) shows as blank, never as theirs
+    client = db.get_client(doc["client_id"], doc["user_id"]) or defaultdict(str)
     settings = _user_settings(user["account_id"])
 
     amounts = document_amounts(doc, items)  # stored totals; sets each item's line_amount
@@ -3740,7 +3815,7 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
 async def download_pdf(request: Request, doc_id: int, template: str = "", inline: int = 0):
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     template = _resolve_template(user, template)
     filepath = _generate_doc_pdf(doc_id, template)
@@ -3759,11 +3834,11 @@ async def api_document_email_defaults(request: Request, doc_id: int):
     """
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     settings = _user_settings(user["account_id"])
     subject, body = _build_email_defaults(doc, settings)
-    client = db.get_client(doc["client_id"]) if doc.get("client_id") else None
+    client = db.get_client(doc["client_id"], doc["user_id"]) if doc.get("client_id") else None
     return JSONResponse({
         "subject": subject,
         "body": body,
@@ -3780,6 +3855,8 @@ async def send_document_email(request: Request, doc_id: int):
     recipient_email = form.get("email", "").strip()
     template = _resolve_template(user, form.get("template", ""))
     return_to = form.get("return_to", "").strip()
+    if not return_to.startswith("/") or return_to.startswith("//") or "\\" in return_to:
+        return_to = ""   # only a page of this site
 
     def _redirect_with(qs: str) -> RedirectResponse:
         """Redirect back to return_to if provided, else to the doc view."""
@@ -3791,7 +3868,7 @@ async def send_document_email(request: Request, doc_id: int):
         )
 
     doc, items = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
 
     if not recipient_email:
@@ -3835,7 +3912,7 @@ async def send_document_email(request: Request, doc_id: int):
 
     # Get client and company info for email
     settings = _user_settings(user["account_id"])
-    client = db.get_client(doc["client_id"])
+    client = db.get_client(doc["client_id"], doc["user_id"])
     company_name = settings.get("company_name", "")
     user_email = user.get("email", "")
 
@@ -3911,7 +3988,7 @@ async def mark_document_sent(request: Request, doc_id: int):
     From now on the invoice is changed only by a credit note or a correction."""
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     db.mark_document_sent(user["account_id"], doc_id)
     return RedirectResponse(f"/documents/{doc_id}?marked=1", status_code=303)
@@ -4079,7 +4156,7 @@ async def permanently_delete_document(request: Request, doc_id: int):
 async def toggle_document_status(request: Request, doc_id: int):
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     if doc.get("doc_type") == "credit" or doc.get("status") not in ("issued", "paid"):
         # Credit notes aren't paid; a cancelled or replaced invoice isn't owed
@@ -4101,7 +4178,7 @@ async def set_offer_status(request: Request, doc_id: int):
     """Mark an offer as waiting / accepted / rejected."""
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"] or doc.get("doc_type") != "offer":
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"] or doc.get("doc_type") != "offer":
         raise HTTPException(status_code=404)
     form = await request.form()
     status = form.get("status", "")
@@ -4116,7 +4193,7 @@ async def toggle_document_stats(request: Request, doc_id: int):
     """Toggle whether a document is counted in dashboard analytics and totals."""
     user = request.state.user
     doc, _ = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
     new_excluded = 0 if doc.get("excluded_from_stats", 0) else 1
     db.set_document_excluded(user["account_id"], doc_id, new_excluded)
@@ -4198,7 +4275,7 @@ def _render_recurring_form(request: Request, recurring=None, error: str = ""):
         except (ValueError, TypeError):
             raw_items = []
         for it in raw_items:
-            prod = db.get_product(it.get("product_id"))
+            prod = db.get_product(it.get("product_id"), recurring["user_id"])
             items_pre.append({
                 "product_id": it.get("product_id"),
                 "product_name": prod["name"] if prod else "",
@@ -4213,7 +4290,7 @@ def _render_recurring_form(request: Request, recurring=None, error: str = ""):
     selected_client_name = ""
     selected_client_email = ""
     if recurring:
-        client = db.get_client(recurring.get("client_id"))
+        client = db.get_client(recurring.get("client_id"), recurring["user_id"])
         if client:
             selected_client_name = client.get("name", "")
             selected_client_email = client.get("email", "")
@@ -4265,8 +4342,8 @@ def _sync_client_email(user_id: int, client_id: int, email: str):
     """
     if not email:
         return
-    client = db.get_client(client_id)
-    if not client or client.get("user_id") != user_id:
+    client = db.get_client(client_id, user_id)
+    if not client:
         return
     if (client.get("email") or "").strip() != email:
         db.update_client(user_id, client_id, email=email)
@@ -4283,13 +4360,13 @@ def _parse_due_days(raw):
         return None
 
 
-def _parse_recurring_form(form):
+def _parse_recurring_form(form, account_id):
     """Parse and validate the recurring form. Returns dict or raises ValueError."""
     try:
         client_id = int(form.get("client_id", 0))
     except (ValueError, TypeError):
         client_id = 0
-    if client_id <= 0:
+    if client_id <= 0 or not db.client_belongs(account_id, client_id):
         raise ValueError("Lūdzu, izvēlieties klientu")
 
     doc_type = form.get("doc_type", "sell")
@@ -4316,9 +4393,11 @@ def _parse_recurring_form(form):
         next_run = _calc_next_run(datetime.date.today(), frequency).isoformat()
     else:
         try:
-            datetime.date.fromisoformat(next_run)
+            first = datetime.date.fromisoformat(next_run)
         except ValueError:
             raise ValueError("Nederīgs datums pirmajai izpildei")
+        # A date in the past would make the scheduler catch up one invoice an hour
+        next_run = max(first, datetime.date.today()).isoformat()
 
     send_email = form.get("send_email", "0") == "1"
     email_subject = form.get("email_subject", "").strip()
@@ -4339,7 +4418,7 @@ def _parse_recurring_form(form):
             price = fmt.parse_decimal(form[f"items[{i}][price_per_unit]"])
         except (ValueError, TypeError, KeyError):
             continue
-        if pid > 0 and qty > 0:
+        if pid > 0 and qty > 0 and db.get_product(pid, account_id):
             items.append({
                 "product_id": pid,
                 "quantity": qty,
@@ -4381,7 +4460,7 @@ async def create_recurring(request: Request):
             return RedirectResponse(f"/recurring?error=limit&max={max_rec}", status_code=303)
     form = await request.form()
     try:
-        data = _parse_recurring_form(form)
+        data = _parse_recurring_form(form, user["account_id"])
     except ValueError as e:
         return _render_recurring_form(request, error=str(e))
     data["template"] = _resolve_template(user, data["template"])
@@ -4409,7 +4488,7 @@ async def update_recurring(request: Request, recurring_id: int):
         raise HTTPException(status_code=404)
     form = await request.form()
     try:
-        data = _parse_recurring_form(form)
+        data = _parse_recurring_form(form, user["account_id"])
     except ValueError as e:
         return _render_recurring_form(request, recurring=rec, error=str(e))
     data["template"] = _resolve_template(user, data["template"])
@@ -4447,7 +4526,7 @@ async def create_recurring_from_document(request: Request, doc_id: int):
     next_run = form.get("next_run", "")
 
     doc, items = db.get_document(doc_id)
-    if not doc or doc.get("user_id") != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc.get("user_id") != user["account_id"]:
         raise HTTPException(status_code=404)
 
     if not next_run:
@@ -4566,6 +4645,8 @@ async def export_pdf_bulk(
     import tempfile
 
     user = request.state.user
+    if not _check_tier_feature(user, "einvoice"):   # the export page is a paid feature
+        return RedirectResponse("/pricing", status_code=303)
     template = _resolve_template(user, template)
     docs = db.get_documents(
         user["account_id"],
@@ -4607,7 +4688,7 @@ async def download_einvoice(request: Request, doc_id: int):
     if not _check_tier_feature(user, "einvoice"):
         return RedirectResponse("/pricing", status_code=303)
     doc, _ = db.get_document(doc_id)
-    if not doc or doc["user_id"] != user["account_id"]:
+    if not doc or doc.get("deleted_at") or doc["user_id"] != user["account_id"]:
         raise HTTPException(status_code=404)
     filepath, filename = generate_einvoice_file(doc_id)
     return FileResponse(

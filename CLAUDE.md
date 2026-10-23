@@ -371,11 +371,36 @@ can't kill the main form logic.
   `/favicon.ico` is a real route (Bing and feed readers ask for it).
 - **The service worker is cache-first for `/static/`** (`static/sw.js`) and never revalidates:
   a changed file only reaches app users under a new URL (`?v=`) or after `CACHE` is bumped.
-- **The EveryPay callback is a public URL** (`/everypay/callback`): it activates an order only
-  if the payment is the one checkout started for it (`_pending_payment_ref`), EveryPay's own
-  `order_reference` matches and `initial_amount` is the plan's price (`_payment_matches_order`);
-  then it closes the order so a replay can't extend the plan. Before 2026-10-23 a settled 2 €
-  payment named next to an unpaid lifetime order activated the lifetime licence.
+- **Payments** (security review 2026-10-23). `/everypay/callback` is public and answers GET
+  and POST: it looks up the order and its stored `_pending_payment_ref` *before* asking
+  EveryPay anything, then `_payment_matches_order` requires EveryPay's own `order_reference`
+  and an amount equal to the plan's current price; the order is then closed (`_clear_pending`)
+  so a replay does nothing. `/billing/return` runs the same check and acts on `account_id`.
+  Before this, a settled 2 € payment named beside an unpaid lifetime order bought the licence.
+  Cancel stops renewal (token forgotten) and keeps the plan to `subscription_end`
+  (`cancel_at_period_end`; `_apply_trial` and the daily `expire_cancelled_subscriptions` make
+  it free after); lifetime can't be cancelled. A renewal charge that times out is looked up
+  (`charge_mit`), never retried blind.
+- **Tenancy: every id from a form is checked.** `db.client_belongs` / `db.own_items` on document
+  and recurring forms; `get_client(id, account_id)` / `get_product(id, account_id)` on every
+  read for a document (pass `doc["user_id"]`), and `get_document` joins products by account.
+  A foreign client already on a row shows as blank (`defaultdict(str)` in the view).
+- **Trashed documents are only restored or purged:** every other document route 404s on
+  `deleted_at`. The monthly limit counts documents *made* (rows incl. trashed, and the
+  `_docs_made_month` counter that survives purge). Corrective invoices and credit notes start
+  only from a sent invoice (`_followup_source`), which is also what the UI offers.
+- **Recurring:** a first run in the past is clamped to today; the scheduler moves `next_run`
+  past today in one step, runs only the plan's `max_recurring` oldest schedules, respects the
+  monthly e-mail cap and skips schedules whose client isn't the account's.
+- **Seats:** `db.member_within_seats` in `_get_current_user` and at login: after a downgrade
+  only the oldest members that fit the plan can work.
+- **PDF files** are `data/dokumenti/{account}/{document}/{number}.pdf` (`document_pdf_path`):
+  one shared `{number}.pdf` served other accounts' invoices under concurrent downloads.
+- **Sessions** sign `{u: id, h: password-hash tail}`: a password change ends every other
+  session (the changing one is re-issued). Cookies get `Secure` from `HeadAndSecurityHeaders`
+  over HTTPS. The 2026-10-23 deploy logged everyone out once (old cookies were a bare id).
+- Redirect targets from requests go through `_local_path`; `return_to` on send likewise.
+  Profile e-mail must be unique; logo uploads must be a real image ≤ 5 MB.
 - **Phone lists act by swipe** (`static/js/swipe.js`): the ⋯ menu is hidden ≤ 768px, so rows
   carry `data-swipe` and the page passes their actions to `vrSwipe.attach`. Delete and
   restore answer JSON when asked (`Accept: application/json`) so the swipe can offer undo.

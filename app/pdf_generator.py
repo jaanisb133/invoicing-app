@@ -131,6 +131,15 @@ def _faces():
     return _FACES
 
 
+def document_pdf_path(doc):
+    """Where a document's PDF is written: one folder per account and document, so two
+    accounts' "26-001" never share a file. The file keeps the document number as its
+    name, which is what a download or an e-mail attachment shows."""
+    folder = os.path.join(get_output_dir(), str(doc["user_id"]), str(doc["id"]))
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, f"{_safe_filename(doc['doc_number'])}.pdf")
+
+
 def get_output_dir():
     app_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.join(os.path.dirname(app_dir), "data", "dokumenti")
@@ -244,7 +253,7 @@ def _get_doc_data(doc_id):
     if not doc:
         raise ValueError(f"Dokuments ar ID {doc_id} nav atrasts")
 
-    client = db.get_client(doc["client_id"])
+    client = db.get_client(doc["client_id"], doc["user_id"])
     user_id = doc.get("user_id", 0)
     settings = db.get_all_user_settings(user_id) if user_id else db.get_all_settings()
 
@@ -530,7 +539,7 @@ def _build(doc_id, template):
     accent = _hex_to_color(s.get("accent_color") or DEFAULT_ACCENT)
     width = PAGE_W - 2 * T["margin_x"]
 
-    filepath = os.path.join(get_output_dir(), f"{_safe_filename(doc['doc_number'])}.pdf")
+    filepath = document_pdf_path(doc)
     pdf = BaseDocTemplate(
         filepath, pagesize=A4,
         leftMargin=T["margin_x"], rightMargin=T["margin_x"],

@@ -28,6 +28,9 @@
     {% if request.query_params.get('error') == 'lifetime_no_cancel' %}
     <div class="alert alert-danger">Mūža licence ir vienreizējs pirkums, tai nav ko atcelt.</div>
     {% endif %}
+    {% if request.query_params.get('error') == 'email_taken' %}
+    <div class="alert alert-danger">Šis e-pasts jau pieder citam kontam.</div>
+    {% endif %}
     {% if request.query_params.get('error') == 'no_subscription' %}
     <div class="alert alert-danger">Jums nav aktīva abonementa.</div>
     {% endif %}

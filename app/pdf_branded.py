@@ -28,7 +28,7 @@ from reportlab.lib.utils import simpleSplit
 
 from app import database as db
 from app.pdf_generator import (
-    _register_fonts, _get_doc_data, get_output_dir, _safe_filename,
+    _register_fonts, _get_doc_data, get_output_dir, _safe_filename, document_pdf_path,
 )
 
 PAGE_W, PAGE_H = A4
@@ -979,9 +979,7 @@ def generate_branded_offer_pdf(doc_id):
         meta = {}
 
     fonts = _register_fonts()
-    output_dir = get_output_dir()
-    filename = f"{_safe_filename(doc['doc_number'])}.pdf"
-    filepath = os.path.join(output_dir, filename)
+    filepath = document_pdf_path(doc)
 
     c = rl_canvas.Canvas(filepath, pagesize=A4)
     c.setTitle(f"{data['doc_type_label']} {doc['doc_number']}")
