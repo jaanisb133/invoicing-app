@@ -263,6 +263,15 @@ def _run_migrations():
     for col, sql in migrations.items():
         if col not in cols:
             cursor.execute(sql)
+    if "email_verified" not in cols:
+        # The address a link sent to it has proved (lower case). The app sends
+        # e-mail for an account only once its owner's address is proved. Accounts
+        # already in use (setup done) are trusted as they are; one that only signed
+        # up, which is where scripts stop, gets its link when it finishes setup.
+        cursor.execute("ALTER TABLE users ADD COLUMN email_verified TEXT NOT NULL DEFAULT ''")
+        cursor.execute("""UPDATE users SET email_verified = lower(trim(email))
+                          WHERE is_admin = 1 OR id IN (SELECT user_id FROM user_settings
+                                                       WHERE key = 'company_name' AND value != '')""")
 
     # Check if user_id exists in business tables, add if not
     for table in ["products", "clients", "documents", "doc_sequences", "recycled_numbers"]:
@@ -1615,15 +1624,16 @@ def _check_password(password: str, password_hash: str) -> bool:
 def create_user(username: str, password: str, display_name: str = "",
                 email: str = "", phone: str = "", is_admin: bool = False,
                 must_change_password: bool = False,
-                tier: str = "free") -> int:
+                tier: str = "free", email_verified: bool = False) -> int:
+    """email_verified: the address is vouched for (an admin made the account)."""
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO users (username, email, phone, password_hash, display_name,
-           is_admin, must_change_password, tier, subscription_status, subscription_start)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)""",
+           is_admin, must_change_password, tier, subscription_status, subscription_start, email_verified)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)""",
         (username.lower().strip(), email.strip(), phone.strip(), _hash_password(password),
          display_name, 1 if is_admin else 0, 1 if must_change_password else 0,
-         tier, datetime.date.today().isoformat())
+         tier, datetime.date.today().isoformat(), email.strip().lower() if email_verified else "")
     )
     user_id = cursor.lastrowid
     conn.commit()
@@ -1854,7 +1864,8 @@ def get_user_by_username(username: str):
 
 def get_user_by_email(email: str):
     conn = get_connection()
-    row = conn.execute("SELECT * FROM users WHERE email = ?",
+    # Addresses are stored as typed, so "Janis@…" and "janis@…" are the same person
+    row = conn.execute("SELECT * FROM users WHERE lower(email) = ?",
                        (email.strip().lower(),)).fetchone()
     user = _with_account(conn, row) if row else None
     conn.close()
@@ -1884,7 +1895,7 @@ def get_admin_user_overview():
     users = [dict(r) for r in conn.execute(
         """SELECT id, username, email, display_name, is_admin, tier,
                   subscription_status, subscription_end, billing_cycle,
-                  must_change_password, account_owner_id, created_at
+                  must_change_password, account_owner_id, created_at, email_verified
            FROM users ORDER BY created_at DESC"""
     ).fetchall()]
 
@@ -1930,6 +1941,7 @@ def get_admin_user_overview():
         # A member's activity is recorded against the owner's account, so the
         # numbers belong to the owner's row, not theirs.
         u["is_member"] = u["account_owner_id"] is not None
+        u["email_ok"] = email_verified(u)
         u["owner_name"] = owner_names.get(u["account_owner_id"], "") if u["is_member"] else ""
         u["team_members"] = members.get(uid, 0)
 
@@ -2052,6 +2064,23 @@ def update_user_profile(user_id: int, display_name: str = None, email: str = Non
         conn.execute("UPDATE users SET phone = ? WHERE id = ?", (phone.strip(), user_id))
     conn.commit()
     conn.close()
+
+
+def email_verified(user) -> bool:
+    """True when the user's current address is the one a link proved."""
+    email = (user.get("email") or "").strip().lower()
+    return bool(email) and (user.get("email_verified") or "") == email
+
+
+def set_email_verified(user_id: int, email: str) -> bool:
+    """Mark the address proved, if it is still the user's. Returns True if it is."""
+    email = (email or "").strip().lower()
+    conn = get_connection()
+    cur = conn.execute("UPDATE users SET email_verified = ? WHERE id = ? AND lower(trim(email)) = ? AND ? != ''",
+                       (email, user_id, email, email))
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
 
 
 def delete_user(user_id: int):

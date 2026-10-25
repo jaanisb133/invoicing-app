@@ -112,6 +112,9 @@
                                 {% else %}
                                 <span class="pill pill-success">aktīvs</span>
                                 {% endif %}
+                                {% if user.setup_done and not user.is_member and not user.is_admin and not user.email_ok %}
+                                <span class="pill pill-warning" title="Sūtīt e-pastus varēs pēc apstiprināšanas">e-pasts nav apstiprināts</span>
+                                {% endif %}
                                 {% if user.recurring_active %}
                                 <span class="pill pill-neutral" title="Aktīvi periodiskie rēķini">↻ {{ user.recurring_active }}</span>
                                 {% endif %}

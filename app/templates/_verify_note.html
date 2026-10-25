@@ -1,0 +1,14 @@
+{# Inside a send form: the app sends e-mail once the owner's address is proved (_can_send_email) #}
+{% if email_unverified %}
+<div class="verify-note" role="status">
+    {% if is_owner and current_user.email %}
+    <span><b>Apstipriniet e-pastu, un varēsiet sūtīt.</b> Saite ir e-pastā, ko nosūtījām uz {{ current_user.email }}.</span>
+    <button type="submit" class="as-link" formaction="/verify-email/send" formnovalidate
+            name="verify_return" value="{{ request.url.path }}">Sūtīt saiti vēlreiz</button>
+    {% elif is_owner %}
+    <span><b>Norādiet savu e-pastu</b> sadaļā <a href="/account">Mans konts</a>, un pēc apstiprināšanas varēsiet sūtīt.</span>
+    {% else %}
+    <span><b>Sūtīšana vēl nav ieslēgta:</b> konta īpašniekam jāapstiprina savs e-pasts.</span>
+    {% endif %}
+</div>
+{% endif %}

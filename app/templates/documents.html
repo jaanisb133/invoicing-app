@@ -144,6 +144,7 @@
     <div class="modal" style="max-width:560px">
         <div class="modal-title">Nosūtīt pa e-pastu</div>
         <form method="post" id="listSendForm" action="">
+            {% include "_verify_note.html" %}
             <input type="hidden" name="template" value="classic">
             <input type="hidden" name="return_to" id="listSendReturnTo" value="/documents">
             <div class="form-group">
@@ -176,7 +177,7 @@
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('listSendModal').classList.remove('active')">Atcelt</button>
-                <button type="submit" class="btn btn-primary">Nosūtīt</button>
+                <button type="submit" class="btn btn-primary"{% if email_unverified %} disabled{% endif %}>Nosūtīt</button>
             </div>
         </form>
     </div>

@@ -1428,6 +1428,19 @@ span.flatpickr-weekday { color: var(--muted) !important; font-weight: 400 !impor
 }
 .plan-note b { font-weight: 600; }
 .plan-note a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+.plan-note form { margin: 0; }
+/* A button that reads as a link (a POST from inside a sentence) */
+.as-link {
+    background: none; border: 0; padding: 0; font: inherit; color: var(--text); cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px; white-space: nowrap;
+}
+/* In a send dialog while the owner's address is unproved */
+.verify-note {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
+    padding: 12px 14px; margin-bottom: 16px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--ground);
+}
+.verify-note b { font-weight: 600; }
 
 /* ------------------------------------------------------------ help */
 .help { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--gap); align-items: start; }

@@ -18,6 +18,12 @@
     <input type="hidden" name="plan" value="{{ plan or '' }}">
     <input type="hidden" name="cycle" value="{{ cycle or 'monthly' }}">
     <input type="hidden" name="su" value="{{ su }}">
+    <input type="hidden" name="ft" value="{{ ft }}">
+    {# Left empty by people (it is off screen and out of the tab order); scripts fill it #}
+    <div aria-hidden="true" style="position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden">
+        <label for="regWebsite">Mājaslapa</label>
+        <input type="text" id="regWebsite" name="website" value="" tabindex="-1" autocomplete="off">
+    </div>
 
     <div class="seg" role="radiogroup" aria-label="Kas izraksta rēķinus">
         <label><input type="radio" name="entity_type" value="business" {% if et == 'business' %}checked{% endif %}>Uzņēmums</label>
@@ -213,7 +219,16 @@
             }
         }
         if (entity() === 'business') need(nameIn, 'Ierakstiet uzņēmuma nosaukumu.');
-        else { need(document.getElementById('regFirst'), 'Ierakstiet vārdu.'); need(document.getElementById('regLast'), 'Ierakstiet uzvārdu.'); }
+        else {
+            need(document.getElementById('regFirst'), 'Ierakstiet vārdu.'); need(document.getElementById('regLast'), 'Ierakstiet uzvārdu.');
+            ['regFirst', 'regLast'].forEach(function (id) {   // the server's rule: letters, spaces, - ' .
+                var input = document.getElementById(id);
+                if (!bad && !/^\p{L}[\p{L}\p{M} '’.\-]*$/u.test(input.value.trim())) {
+                    need({ value: '', disabled: false, closest: function () { return input.closest('.f'); } }, 'Tikai burti, bez cipariem.');
+                    bad = input;
+                }
+            });
+        }
         var email = document.getElementById('regEmail');
         if (!bad && !/^\S+@\S+\.\S+$/.test(email.value.trim())) { need({ value: '', disabled: false, closest: function () { return email.closest('.f'); } }, 'Pārbaudiet e-pasta adresi.'); bad = email; }
         var pass = document.getElementById('regPass');

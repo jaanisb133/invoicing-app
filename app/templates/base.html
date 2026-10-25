@@ -386,6 +386,26 @@
     })();
     </script>
 
+    {% set verify = request.query_params.get('verify') %}
+    {% if verify in ('sent', 'wait', 'failed', 'done') %}
+    {# The answer to "Sūtīt saiti vēlreiz" (/verify-email/send), on whichever page it was pressed #}
+    <div class="modal-overlay active" id="verifyToast" onclick="if(event.target===this)this.classList.remove('active')">
+        <div class="modal" style="max-width:400px">
+            <div class="modal-title" style="margin-bottom:6px">{{ {'sent': 'Saite nosūtīta', 'wait': 'Saite jau nosūtīta', 'failed': 'Neizdevās nosūtīt', 'done': 'E-pasts jau apstiprināts'}[verify] }}</div>
+            <p class="text-muted" style="margin-bottom:20px">{% if verify == 'sent' %}Atveriet e-pastu {{ current_user.email }} un spiediet saiti tajā. Pēc tam varēsiet sūtīt rēķinus.{% elif verify == 'wait' %}Pēdējā stundā to sūtījām jau trīs reizes. Pārbaudiet arī mēstuļu mapi vai mēģiniet pēc stundas.{% elif verify == 'failed' %}E-pasta serviss šobrīd neatbild. Lūdzu, mēģiniet pēc brīža.{% else %}Varat sūtīt rēķinus.{% endif %}</p>
+            <button type="button" class="btn btn-primary btn-block" onclick="document.getElementById('verifyToast').classList.remove('active')">Labi</button>
+        </div>
+    </div>
+    <script>
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        params.delete('verify');
+        var qs = params.toString();
+        history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
+    })();
+    </script>
+    {% endif %}
+
     {% block scripts %}{% endblock %}
     <script>
     function currentTheme() {

@@ -389,6 +389,7 @@
     <div class="modal" style="max-width:560px">
         <div class="modal-title">Nosūtīt pa e-pastu</div>
         <form method="post" id="dashSendForm" action="">
+            {% include "_verify_note.html" %}
             <input type="hidden" name="template" value="classic">
             <input type="hidden" name="return_to" value="/">
             <div class="form-group">
@@ -421,7 +422,7 @@
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('dashSendModal').classList.remove('active')">Atcelt</button>
-                <button type="submit" class="btn btn-primary">Nosūtīt</button>
+                <button type="submit" class="btn btn-primary"{% if email_unverified %} disabled{% endif %}>Nosūtīt</button>
             </div>
         </form>
     </div>
@@ -449,6 +450,7 @@
             </div>
             <div class="form-group">
                 <label class="check"><input type="checkbox" name="send_email" value="1" id="dashRecSendEmail"> Nosūtīt klientam automātiski</label>
+                {% if email_unverified %}<div class="field-hint">Kamēr konta e-pasts nav apstiprināts, rēķini tiek izveidoti, bet nenosūtīti.</div>{% endif %}
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('dashRecurringModal').classList.remove('active')">Atcelt</button>

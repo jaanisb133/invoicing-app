@@ -4,9 +4,9 @@
     <div>
         <h1>Reģistrācijas</h1>
         {% if stats.total %}
-        <p class="page-sub finding">{{ stats.total }} atvēra reģistrāciju, {{ stats.created }} izveidoja kontu.{% if stats.top_stop %} Biežāk: <span class="neg">{{ stats.top_stop.count }} {{ stats.top_stop.label }}</span>.{% endif %}</p>
+        <p class="page-sub finding">{{ stats.total }} atvēra reģistrāciju, {{ stats.created }} izveidoja kontu.{% if stats.top_stop %} Biežāk: <span class="neg">{{ stats.top_stop.count }} {{ stats.top_stop.label }}</span>.{% endif %}{% if stats.bots %} Robotu mēģinājumi atturēti: {{ stats.bots }}.{% endif %}</p>
         {% else %}
-        <p class="page-sub">Cik cilvēku sāk veidot kontu un kur apstājas.</p>
+        <p class="page-sub">Cik cilvēku sāk veidot kontu un kur apstājas.{% if stats.bots %} Robotu mēģinājumi atturēti: {{ stats.bots }}.{% endif %}</p>
         {% endif %}
     </div>
     <div class="segmented" role="group" aria-label="Periods">
@@ -125,6 +125,6 @@
     </section>
     {% endif %}
 
-    <p class="signup-privacy">Skaita tikai soļus: ne ievadīto tekstu, ne IP adresi, bez sīkdatnēm. Mēģinājums ir viena lapas atvēršana, tāpēc pārlādēta lapa skaitās kā jauns mēģinājums. Dati vecāki par 400 dienām tiek dzēsti.</p>
+    <p class="signup-privacy">Skaita tikai soļus: ne ievadīto tekstu, ne IP adresi, bez sīkdatnēm. Mēģinājums ir viena lapas atvēršana, tāpēc pārlādēta lapa skaitās kā jauns mēģinājums. Robotu mēģinājumi (aizpildīts slēptais lauks, forma nosūtīta bez lapas vai pārāk ātri) netiek skaitīti. Dati vecāki par 400 dienām tiek dzēsti.</p>
 </div>
 {% endblock %}
