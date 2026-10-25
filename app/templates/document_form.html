@@ -650,6 +650,12 @@ function makeCombo(input, dropdown, render, onPick, opts) {
         paint();
     }
     function close() { dropdown.hidden = true; input.setAttribute('aria-expanded', 'false'); hl = -1; }
+    // Rows that arrive later (the registry) re-render the list without moving the user's place
+    function refresh() {
+        const keep = hl;
+        open();
+        if (keep >= 0 && keep < items().length) { hl = keep; paint(); }
+    }
     // Product cells that already hold a name stay quiet until the user types.
     input.addEventListener('focus', () => { if (!opts.focusOpensOnlyWhenEmpty || !input.value.trim()) open(); });
     input.addEventListener('input', open);
@@ -669,12 +675,31 @@ function makeCombo(input, dropdown, render, onPick, opts) {
         onPick(el.dataset);
         close();
     });
-    return { open, close, isOpen: () => !dropdown.hidden };
+    return { open, close, refresh, isOpen: () => !dropdown.hidden };
 }
 
 /* -------------------------------------------------------------- client */
 const clientInput = document.getElementById('clientSearchInput');
 const clientDropdown = document.getElementById('formClientDropdown');
+
+// Companies from the Uzņēmumu reģistrs, by query. They are listed under the account's
+// own clients, so a new client is one pick away instead of a trip through the dialog.
+const regResults = {};
+let regTimer = null;
+function registryLookup(q) {
+    if (q.length < 2 || q in regResults) return;
+    clearTimeout(regTimer);
+    regTimer = setTimeout(async () => {
+        let data = [];
+        try {
+            const resp = await fetch('/api/registry/search?q=' + encodeURIComponent(q));
+            data = resp.ok ? await resp.json() : [];
+        } catch (e) {}
+        regResults[q] = Array.isArray(data) ? data : [];
+        // still the question on screen: show the answers where the user is
+        if (clientInput.value.trim().toLowerCase() === q && clientCombo.isOpen()) clientCombo.refresh();
+    }, 200);
+}
 
 function renderClientList(q) {
     q = (q || '').trim().toLowerCase();
@@ -684,22 +709,77 @@ function renderClientList(q) {
         return a.name.localeCompare(b.name, 'lv');
     });
     if (q) list = list.filter(c => c.name.toLowerCase().includes(q) || String(c.reg_number || '').includes(q));
+    // Registry matches keep the registry's ranking. One that is already a client is that
+    // client (whatever it was saved as), unless the list above already shows it.
+    registryLookup(q);
+    const reg = q.length >= 2 ? regResults[q] : [];
+    const fromRegistry = [];
+    (reg || []).forEach(b => {
+        const known = clientsData.find(c => c.reg_number && String(c.reg_number) === String(b.regcode));
+        if (known && list.includes(known)) return;
+        if (fromRegistry.length < 6) fromRegistry.push({ b, known });
+    });
     let html = list.slice(0, 40).map(c => {
         const last = clientLastBilled[c.id];
         const meta = last ? 'pēdējais ' + fmtDate(last) : (c.reg_number ? 'reģ. ' + esc(c.reg_number) : '');
         return '<div class="search-dropdown-item" role="option" data-action="pick" data-id="' + c.id + '">'
             + '<span>' + esc(c.name) + '</span><span class="meta">' + meta + '</span></div>';
     }).join('');
-    if (!list.length && q) html = '<div class="search-dropdown-empty">Nav tāda klienta sarakstā.</div>';
+    if (fromRegistry.length) {
+        html += '<div class="search-dropdown-label">Uzņēmumu reģistrā</div>' + fromRegistry.map(({ b, known }) => {
+            if (known) return '<div class="search-dropdown-item" role="option" data-action="pick" data-id="' + known.id + '">'
+                + '<span>' + esc(known.name) + '</span><span class="meta">jau klients · ' + esc(b.regcode) + '</span></div>';
+            const town = String(b.address || '').split(',')[0].trim();
+            return '<div class="search-dropdown-item" role="option" data-action="registry" data-regcode="' + esc(b.regcode)
+                + '" data-name="' + esc(b.name) + '"><span>' + esc(b.name) + '</span><span class="meta">'
+                + esc(b.regcode) + (town ? ' · ' + esc(town) : '') + '</span></div>';
+        }).join('');
+    } else if (!list.length && q) {
+        html = '<div class="search-dropdown-empty">' + (reg === undefined ? 'Meklē Uzņēmumu reģistrā…' : 'Nav tāda klienta sarakstā.') + '</div>';
+    }
     html += '<div class="search-dropdown-item create" data-action="create" data-q="' + esc(q) + '">+ Jauns klients'
         + (q ? ' “' + esc(clientInput.value.trim()) + '”' : '') + '</div>';
     return html;
 }
 const clientCombo = makeCombo(clientInput, clientDropdown, renderClientList, data => {
     if (data.action === 'create') { showQuickAddClient(clientInput.value.trim()); return; }
+    if (data.action === 'registry') { addRegistryClient(data.regcode, data.name); return; }
     const c = clientsData.find(x => String(x.id) === String(data.id));
     if (c) selectFormClient(String(c.id), c.name);
 });
+
+// The pick shows at once; the server adds the client from its copy of the registry
+// (with the VAT number only when VIES confirms it) and the card fills in.
+let regAdding = null;
+async function addRegistryClient(regcode, name) {
+    if (regAdding) return;
+    regAdding = regcode;
+    const av = document.getElementById('clientAvatar');
+    av.textContent = initials(name);
+    av.className = 'brand-avatar bg-' + hashHue(name);
+    document.getElementById('clientChosenName').textContent = name;
+    document.getElementById('clientChosenMeta').textContent = 'Pievieno no Uzņēmumu reģistra…';
+    document.getElementById('clientCombo').hidden = true;
+    document.getElementById('clientChosen').hidden = false;
+    document.getElementById('clientError').hidden = true;
+    let client = null, error = 'Neizdevās pievienot klientu. Mēģiniet vēlreiz.';
+    try {
+        const resp = await fetch('/api/clients/from-registry', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ regcode })
+        });
+        const result = await resp.json();
+        if (resp.ok) client = result; else if (result.error) error = result.error;
+    } catch (e) {}
+    const current = regAdding === regcode;   // "Mainīt" in the meantime drops it
+    regAdding = null;
+    if (!current) return;
+    if (client) { _addAndSelectClient(client); return; }
+    clearClient();
+    clientInput.value = name;
+    const err = document.getElementById('clientError');
+    err.textContent = error;
+    err.hidden = false;
+}
 
 function selectFormClient(id, name) {
     const c = clientsData.find(x => String(x.id) === String(id)) || { id, name };
@@ -741,6 +821,7 @@ function fillBuyerRef(c) {
     }
 }
 function clearClient() {
+    regAdding = null;
     document.getElementById('clientSelect').value = '';
     document.getElementById('clientChosen').hidden = true;
     document.getElementById('clientCombo').hidden = false;
@@ -1086,7 +1167,9 @@ form.addEventListener('keydown', e => {
 form.addEventListener('submit', e => {
     if (!document.getElementById('clientSelect').value) {
         e.preventDefault();
-        document.getElementById('clientError').hidden = false;
+        const err = document.getElementById('clientError');
+        err.textContent = 'Izvēlieties klientu, kam izrakstīt dokumentu.';
+        err.hidden = false;
         clientInput.classList.add('invalid');
         clientInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
         clientInput.focus();

@@ -767,6 +767,9 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .search-dropdown-item .meta { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .search-dropdown-item.create { color: var(--text); font-weight: 500; border-top: 1px solid var(--rule); border-radius: 0 0 var(--radius-chip) var(--radius-chip); }
 .search-dropdown-empty { padding: 10px; font-size: 13px; color: var(--muted); }
+/* A group inside the list ("Uzņēmumu reģistrā" under the account's own clients) */
+.search-dropdown-label { padding: 10px 10px 4px; font-size: 12px; color: var(--faint); }
+.search-dropdown-label:not(:first-child) { margin-top: 4px; border-top: 1px solid var(--rule); }
 
 .registry-wrapper { position: relative; }
 .registry-dropdown {
