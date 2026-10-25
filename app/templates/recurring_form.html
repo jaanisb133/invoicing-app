@@ -164,7 +164,8 @@
                         Automātiski nosūtīt klientam pa e-pastu
                     </label>
                     <span style="font-size:12px;color:var(--text-light);margin-left:26px;display:block">
-                        Rēķins tiks izveidots un nosūtīts klienta e-pastā norādītajā izpildes datumā.
+                        Rēķins tiks izveidots un nosūtīts klienta e-pastā norādītajā izpildes datumā.{% if email_unverified %}
+                        Kamēr konta e-pasts nav apstiprināts, rēķini tiek izveidoti, bet nenosūtīti.{% endif %}
                     </span>
                 </div>
                 <div id="emailSection">

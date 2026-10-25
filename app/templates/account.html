@@ -10,6 +10,15 @@
     {% if request.query_params.get('saved') == 'profile' %}
     <div class="alert alert-success">Profils atjaunināts!</div>
     {% endif %}
+    {% if request.query_params.get('saved') == 'profile_verify' %}
+    <div class="alert alert-success">Profils atjaunināts. Uz jauno e-pastu nosūtījām apstiprinājuma saiti: rēķinus varēs sūtīt, kad to atvērsiet.</div>
+    {% endif %}
+    {% if request.query_params.get('saved') == 'email_verified' %}
+    <div class="alert alert-success">E-pasts apstiprināts. Tagad varat sūtīt rēķinus klientiem.</div>
+    {% endif %}
+    {% if request.query_params.get('error') == 'verify_link' %}
+    <div class="alert alert-danger">Apstiprinājuma saite vairs nav derīga. Pieprasiet jaunu pie e-pasta lauka.</div>
+    {% endif %}
     {% if request.query_params.get('saved') == 'password' %}
     <div class="alert alert-success">Parole veiksmīgi nomainīta!</div>
     {% endif %}
@@ -57,6 +66,13 @@
                             <label>E-pasts</label>
                             <input type="email" name="email" class="form-control"
                                    value="{{ current_user.email or '' }}">
+                            {% if is_owner and current_user.email and not offline_mode %}
+                            <div class="field-hint">
+                                {% if email_verified %}Apstiprināts.{% else %}Nav apstiprināts: rēķinus varēs sūtīt, kad atvērsiet saiti, ko nosūtījām uz šo adresi.
+                                <button type="submit" class="as-link" formaction="/verify-email/send" formnovalidate
+                                        name="verify_return" value="/account">Sūtīt saiti vēlreiz</button>{% endif %}
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="form-group">
                             <label>Tālrunis</label>

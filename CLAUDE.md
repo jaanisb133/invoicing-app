@@ -214,6 +214,26 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   headless browsers are ignored by user agent, so Playwright tests must set a normal UA.
   A re-shown form (POST error) continues the attempt and reports no second `open`.
   Mentioned in the terms (§ 9).
+- **Bots** (2026-10-25, after a script made "rz7867 z2of9e"): /register has a honeypot field
+  `website` (off screen, `tabindex=-1`) and a signed stamp `ft` (`_signup_form_token`, salt
+  "signup-form"): no stamp, another attempt's stamp, under `SIGNUP_MIN_SECONDS` (3, stamp is
+  whole seconds so 2–3 s) or a filled trap → the same plain "pārbaudiet datus" re-render, logged
+  `bot_token` / `too_fast` / `bot_trap` (`SIGNUP_BOT_ERRORS`, left out of the funnel and counted
+  as "Robotu mēģinājumi atturēti"). A stamp over a day old is a person: "Lapa bija atvērta
+  pārāk ilgi". A person's name must be letters (`_PERSON_NAME`, NFC first; JS mirrors it);
+  e-mail is checked and stored lower case; `get_user_by_email` ignores case. Tests that POST
+  /register must send `su` + `ft` (`m._signup_form_token(su)`) and set `m.SIGNUP_MIN_SECONDS = 0`.
+- **E-mail verification** (`users.email_verified` = the proved address, lower case): the app
+  sends e-mail for an account (send route, recurring) only when `_can_send_email` — the owner's
+  current address equals it, or the owner is admin, or offline. The link (`/verify-email`,
+  public, 14 days, salt "verify-email") goes out after `/setup` (once, `_verify_sent`), on an
+  owner's address change and from "Sūtīt saiti vēlreiz" (`POST /verify-email/send`, 3/h, answers
+  `?verify=sent|wait|failed|done` in a dialog in `base.html`). A password reset and an admin-made
+  account count as proved. Migration trusted accounts that had finished setup; bare sign-ups get
+  the link at setup. Notes: `_plan_note.html` (dashboard, editor), `_verify_note.html` inside
+  every send dialog (Nosūtīt disabled), Mans konts, recurring forms; `/users` flags set-up
+  accounts with "e-pasts nav apstiprināts". Trial and free accounts also send ≤ 20 e-mails an
+  hour (`send:{account}` in the in-memory limiter).
 - Guided tours: page sets `window.VR_TOUR` in `{% block tour %}`; engine in `base.html`;
   seen keys per person in user setting `tours_seen` (`POST /api/tour-seen`). Tours:
   `dashboard`, `editor`. Help page `/palidziba` (`help.html`).

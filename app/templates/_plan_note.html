@@ -1,6 +1,13 @@
 {# Quiet plan status: trial days left, or the free plan's last invoices this month. #}
 {# The trial is announced in the sidebar; here only once it is about to end #}
-{% if current_user.on_trial and current_user.trial_days_left <= 5 %}
+{% if email_unverified and is_owner and current_user.email %}
+<div class="plan-note">
+    <span><b>Apstipriniet e-pastu</b>, lai varētu sūtīt rēķinus klientiem: saite ir e-pastā, ko nosūtījām uz {{ current_user.email }}.</span>
+    <form method="post" action="/verify-email/send">
+        <button type="submit" class="as-link" name="verify_return" value="{{ request.url.path }}">Sūtīt saiti vēlreiz</button>
+    </form>
+</div>
+{% elif current_user.on_trial and current_user.trial_days_left <= 5 %}
 <div class="plan-note">
     <span><b>Pamata izmēģinājums</b>, vēl {{ current_user.trial_days_left }} {{ current_user.trial_days_left | plural('diena', 'dienas') }}. Pēc tam konts turpinās bezmaksas plānā, un visi dati paliek.</span>
     {% if is_owner %}<a href="/pricing">Izvēlēties plānu</a>{% endif %}

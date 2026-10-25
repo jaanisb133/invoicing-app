@@ -16,6 +16,7 @@ import asyncio
 import logging
 import smtplib
 import time
+import unicodedata
 from collections import defaultdict
 from urllib.parse import quote
 from email.mime.multipart import MIMEMultipart
@@ -30,7 +31,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Match
 from starlette.background import BackgroundTask
-from itsdangerous import URLSafeTimedSerializer
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 logger = logging.getLogger("vrekini")
 # Surface our INFO/WARNING/EXCEPTION logs to journalctl. Without this the
@@ -61,7 +62,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "62"
+CSS_VERSION = "63"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -418,6 +419,8 @@ def _base_context(request):
         "needs_setup": not db.get_user_setting(user["account_id"], "company_name"),
         "company_name": db.get_user_setting(user["account_id"], "company_name"),
         "offline_mode": OFFLINE_MODE,
+        # E-mail goes out only once the owner's address is proved (_can_send_email)
+        "email_unverified": not _can_send_email(user),
         # Members work on someone else's account: no settings, billing or team.
         "is_owner": _is_owner(user),
         # Account-level custom offer design (branded tāmes). Enabled per
@@ -660,7 +663,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if (path.startswith("/static") or path.startswith("/celvedis") or path in ("/login", "/register", "/forgot", "/reset", "/pricing", "/contacts", "/terms", "/license",
                                                     "/robots.txt", "/sitemap.xml", "/favicon.ico")
-                or path == "/everypay/callback" or path == "/api/registry/search" or path == "/api/signup-step"):
+                or path == "/everypay/callback" or path == "/api/registry/search" or path == "/api/signup-step"
+                or path == "/verify-email"):
             return await call_next(request)
 
         # Offline mode: require valid license before anything else
@@ -895,7 +899,10 @@ async def _process_recurring_invoices():
                     over_cap = cap is not None and db.get_emails_sent_this_month(rec["user_id"]) >= cap
                     if over_cap and rec["send_email"]:
                         logger.info("Recurring #%s: e-mail cap reached, invoice made but not sent", rec["id"])
-                    if rec["send_email"] and not over_cap and (SMTP_PASS or BREVO_API_KEY):
+                    verified = bool(rec_user) and _can_send_email(rec_user)
+                    if rec["send_email"] and not verified:
+                        logger.info("Recurring #%s: owner's e-mail not verified, invoice made but not sent", rec["id"])
+                    if rec["send_email"] and not over_cap and verified and (SMTP_PASS or BREVO_API_KEY):
                         client = db.get_client(rec["client_id"], rec["user_id"])
                         if client and client.get("email"):
                             settings = db.get_all_user_settings(rec["user_id"])
@@ -1240,6 +1247,40 @@ def _signup_source_ok(detail):
     return source in SIGNUP_SOURCES and plan in ("", "mini", "starter", "business", "lifetime")
 
 
+# Bot traps on the sign-up form, both invisible to a person: a field kept off screen
+# that only a form-filling script fills in, and a signed stamp of when the page was
+# shown, so a post that never loaded the page, or came within a moment of it, is
+# turned away. Turned-away attempts are kept out of the funnel (SIGNUP_BOT_ERRORS).
+SIGNUP_FORM_MAX_AGE = 24 * 3600
+SIGNUP_MIN_SECONDS = 3      # the stamp is in whole seconds, so this is 2–3 s
+SIGNUP_BOT_ERRORS = ("bot_trap", "bot_token", "too_fast")
+_PERSON_NAME = re.compile(r"[^\W\d_](?:[^\W\d_]|[ '’.\-]){0,59}")
+_EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+
+def _signup_form_token(attempt):
+    return _get_serializer().dumps(attempt, salt="signup-form")
+
+
+def _signup_bot_check(token, attempt, trap):
+    """Why this sign-up post looks automated, "form_expired" for a page left open
+    a day, or "" when it is fine."""
+    if trap:
+        return "bot_trap"
+    try:
+        shown, at = _get_serializer().loads(token, salt="signup-form", max_age=SIGNUP_FORM_MAX_AGE,
+                                            return_timestamp=True)
+    except SignatureExpired:
+        return "form_expired"
+    except BadSignature:
+        return "bot_token"
+    if shown != attempt:
+        return "bot_token"
+    if (datetime.datetime.now(datetime.timezone.utc) - at).total_seconds() < SIGNUP_MIN_SECONDS:
+        return "too_fast"
+    return ""
+
+
 def _signup_step(attempt, step, detail="", user_id=None):
     try:
         db.log_signup_step(attempt, step, detail, user_id)
@@ -1274,11 +1315,13 @@ async def register_page(request: Request, error: str = "", plan: str = "", cycle
     user = _get_current_user(request)
     if user:
         return RedirectResponse("/", status_code=303)
+    su = _signup_attempt()
     return templates.TemplateResponse("register.html", {
         "request": request,
         "error": error,
         "page": "register",
-        "su": _signup_attempt(),
+        "su": su,
+        "ft": _signup_form_token(su),
         "plan": plan,
         "cycle": cycle,
         "entity_type": "individual" if entity_type == "individual" else "business",
@@ -1306,23 +1349,19 @@ async def register(request: Request,
                    vat_number: str = Form(""),
                    legal_address: str = Form(""),
                    is_vat_payer: str = Form("0"),
-                   su: str = Form("")):
+                   su: str = Form(""),
+                   ft: str = Form(""),
+                   website: str = Form("")):
     su = _signup_attempt(su)
     _signup_step(su, "submit")
-    # Rate limit: 5 registrations per hour per IP
-    ip = _get_client_ip(request)
-    if not _rate_limiter.is_allowed(f"register:{ip}", 5, 3600):
-        _signup_step(su, "error", "rate_limit")
-        return templates.TemplateResponse("register.html", {
-            "request": request, "page": "register", "plan": plan, "cycle": cycle,
-            "entity_type": entity_type, "email": email, "su": su,
-            "error": "Pārāk daudz reģistrāciju. Lūdzu, mēģiniet vēlāk.",
-        })
-
+    email = email.strip().lower()
+    entity_type = "individual" if entity_type == "individual" else "business"
+    first_name, last_name = (unicodedata.normalize("NFC", n.strip()) for n in (first_name, last_name))
     # For individuals, build display_name from first + last name
     if entity_type == "individual":
-        display_name = f"{first_name.strip()} {last_name.strip()}".strip()
+        display_name = f"{first_name} {last_name}".strip()
 
+    # Every re-shown form gets a fresh stamp (the password is never sent back)
     error_ctx = {
         "request": request, "page": "register",
         "email": email, "display_name": display_name, "phone": phone,
@@ -1330,7 +1369,29 @@ async def register(request: Request,
         "first_name": first_name, "last_name": last_name,
         "reg_number": reg_number, "vat_number": vat_number,
         "legal_address": legal_address, "is_vat_payer": is_vat_payer, "su": su,
+        "ft": _signup_form_token(su),
     }
+
+    # Rate limit: 5 registrations per hour per IP
+    ip = _get_client_ip(request)
+    if not _rate_limiter.is_allowed(f"register:{ip}", 5, 3600):
+        _signup_step(su, "error", "rate_limit")
+        return templates.TemplateResponse("register.html", {
+            **error_ctx, "error": "Pārāk daudz reģistrāciju. Lūdzu, mēģiniet vēlāk.",
+        })
+
+    # A script gets the same plain answer a person would, and no hint which trap it hit
+    bot = _signup_bot_check(ft, su, website)
+    if bot:
+        _signup_step(su, "error", bot)
+        return templates.TemplateResponse("register.html", {**error_ctx, "error":
+            "Lapa bija atvērta pārāk ilgi. Lūdzu, spiediet „Izveidot kontu” vēlreiz." if bot == "form_expired"
+            else "Lūdzu, pārbaudiet datus un spiediet „Izveidot kontu” vēlreiz."})
+
+    # People's names have no digits ("rz7867 z2of9e" was a script)
+    if entity_type == "individual" and not all(_PERSON_NAME.fullmatch(n) for n in (first_name, last_name) if n):
+        _signup_step(su, "error", "name_invalid")
+        return templates.TemplateResponse("register.html", {**error_ctx, "error": "Vārdā un uzvārdā var būt tikai burti."})
 
     if not display_name:
         _signup_step(su, "error", "no_name")
@@ -1346,6 +1407,10 @@ async def register(request: Request,
     if len(password) < 6:
         _signup_step(su, "error", "password_short")
         return templates.TemplateResponse("register.html", {**error_ctx, "error": "Parolei jābūt vismaz 6 simbolus garai."})
+
+    if len(email) > 254 or not _EMAIL.fullmatch(email):
+        _signup_step(su, "error", "email_invalid")
+        return templates.TemplateResponse("register.html", {**error_ctx, "error": "Pārbaudiet e-pasta adresi."})
 
     if db.get_user_by_email(email):
         _signup_step(su, "error", "email_taken")
@@ -1511,7 +1576,78 @@ async def reset_save(request: Request, token: str = Form(""), new_password: str 
         return templates.TemplateResponse("reset.html", {"request": request, "token": token, "valid": True,
                                                          "error": "Parolei jābūt vismaz 6 simbolus garai."})
     db.update_user_password(user["id"], new_password)
+    db.set_email_verified(user["id"], user["email"])   # the link reached this inbox
     return RedirectResponse("/login?message=" + urllib.parse.quote("Parole nomainīta. Ienāciet ar jauno paroli."), status_code=303)
+
+
+# ---------- E-mail verification ----------
+# The app sends e-mail for an account (invoices, offers, recurring) only once the
+# owner's address is proved by a link sent to it, so a made-up or someone else's
+# address can't use rekini@v-rekini.lv to reach people. The link goes out when
+# setup is done (a script that only signs up never gets one) and when the address
+# changes; a password reset proves the address too. Accounts made before this
+# were trusted as they were (database migration); the admin and offline mode skip it.
+VERIFY_MAX_AGE = 14 * 24 * 3600
+
+
+def _can_send_email(user):
+    owner = user if user["id"] == user["account_id"] else db.get_user(user["account_id"])
+    return OFFLINE_MODE or bool(owner and (owner.get("is_admin") or db.email_verified(owner)))
+
+
+def _send_verify_email(user):
+    """Mail the owner a link that proves their address. Never raises; True if sent.
+    The text is fixed: nothing a user typed goes into it."""
+    email = (user.get("email") or "").strip()
+    if OFFLINE_MODE or not email or not (SMTP_PASS or BREVO_API_KEY):
+        return False
+    token = _get_serializer().dumps({"u": user["id"], "e": email.lower()}, salt="verify-email")
+    try:
+        _send_email(
+            to_email=email,
+            subject="Apstipriniet e-pastu — V-Rēķini",
+            body=("Labdien!\n\nLai no V-Rēķini varētu sūtīt rēķinus klientiem, apstipriniet, "
+                  f"ka šī ir Jūsu e-pasta adrese:\n\n{SITE_URL}/verify-email?token={token}\n\n"
+                  "Saite derīga 14 dienas. Ja V-Rēķini kontu neveidojāt Jūs, šo e-pastu var droši ignorēt.\n\n"
+                  "V-Rēķini\n"),
+            sender_name="V-Rēķini",
+        )
+        return True
+    except Exception:
+        logger.exception("verification e-mail failed for user %s", user.get("id"))
+        return False
+
+
+@app.get("/verify-email")
+async def verify_email(request: Request, token: str = ""):
+    """The link from the e-mail. Public: it is often opened on a phone that isn't signed in."""
+    try:
+        data = _get_serializer().loads(token, salt="verify-email", max_age=VERIFY_MAX_AGE)
+        ok = db.set_email_verified(int(data["u"]), str(data["e"]))
+    except Exception:
+        ok = False
+    if _get_current_user(request):
+        return RedirectResponse("/account?" + ("saved=email_verified" if ok else "error=verify_link"), status_code=303)
+    message = ("E-pasts apstiprināts. Ienāciet, un varēsiet sūtīt rēķinus." if ok else
+               "Saite vairs nav derīga. Ienāciet un sadaļā Mans konts pieprasiet jaunu.")
+    return RedirectResponse("/login?message=" + quote(message), status_code=303)
+
+
+@app.post("/verify-email/send")
+async def verify_email_send(request: Request):
+    """"Sūtīt saiti vēlreiz", from a send dialog, the dashboard note or Mans konts."""
+    user = request.state.user
+    form = await request.form()
+    back = _local_path(form.get("verify_return"), "/account")
+    if not _is_owner(user):
+        return RedirectResponse(back, status_code=303)
+    if db.email_verified(user):
+        result = "done"
+    elif not _rate_limiter.is_allowed(f"verify:{user['id']}", 3, 3600):
+        result = "wait"
+    else:
+        result = "sent" if _send_verify_email(user) else "failed"
+    return RedirectResponse(f"{back}{'&' if '?' in back else '?'}verify={result}", status_code=303)
 
 
 @app.get("/set-password", response_class=HTMLResponse)
@@ -1690,15 +1826,20 @@ async def save_setup(
             "_pending_plan": "",
             "_pending_plan_cycle": "",
         })
-        return RedirectResponse(
+        response = RedirectResponse(
             f"/pricing?upgrade={pending_plan}&cycle={pending_cycle}",
             status_code=303,
         )
-
-    # No pending plan — drop them on the dashboard. Sending someone to the
-    # pricing page before they have made a single invoice asks them to pay for
-    # something they have not seen yet; the plans are one sidebar click away.
-    return RedirectResponse("/", status_code=303)
+    else:
+        # No pending plan — drop them on the dashboard. Sending someone to the
+        # pricing page before they have made a single invoice asks them to pay for
+        # something they have not seen yet; the plans are one sidebar click away.
+        response = RedirectResponse("/", status_code=303)
+    # The address is proved before the first invoice goes out; the link is waiting by then
+    if not db.email_verified(user) and not db.get_user_setting(user["id"], "_verify_sent"):
+        db.set_user_setting(user["id"], "_verify_sent", datetime.date.today().isoformat())
+        response.background = BackgroundTask(_send_verify_email, user)
+    return response
 
 
 # =============================================================================
@@ -1720,6 +1861,7 @@ async def account_page(request: Request):
         "doc_count": usage["documents"],
         "has_payments": everypay.is_configured(),
         "tiers": db.TIER_LIMITS,
+        "email_verified": db.email_verified(user),
     })
     return templates.TemplateResponse("account.html", ctx)
 
@@ -1735,6 +1877,13 @@ async def update_profile(request: Request,
     if other and other["id"] != user["id"]:
         return RedirectResponse("/account?error=email_taken", status_code=303)
     db.update_user_profile(user["id"], display_name=display_name, email=email, phone=phone)
+    # A new address of the account's owner is proved before e-mail goes out again
+    changed = email.lower() != (user.get("email") or "").strip().lower()
+    fresh = db.get_user(user["id"])
+    if changed and email and _is_owner(user) and not db.email_verified(fresh) and not OFFLINE_MODE:
+        response = RedirectResponse("/account?saved=profile_verify", status_code=303)
+        response.background = BackgroundTask(_send_verify_email, fresh)
+        return response
     return RedirectResponse("/account?saved=profile", status_code=303)
 
 
@@ -2547,6 +2696,12 @@ SIGNUP_REASONS = {
     ("error", "password_short"): "Parole par īsu",
     ("error", "password_mismatch"): "Paroles nesakrīt",
     ("error", "rate_limit"): "Pārāk daudz mēģinājumu no vienas adreses",
+    ("error", "email_invalid"): "Nederīgs e-pasts",
+    ("error", "name_invalid"): "Vārdā cipari vai zīmes",
+    ("error", "form_expired"): "Lapa bija atvērta par ilgu",
+    ("error", "too_fast"): "Nospieda pārāk ātri",
+    ("error", "bot_trap"): "Aizpildīts slēptais lauks",
+    ("error", "bot_token"): "Nosūtīts bez reģistrācijas lapas",
 }
 SIGNUP_SOURCE_LABELS = {
     "landing": "Sākumlapa", "landing-form": "Sākumlapas forma", "pricing": "Cenas", "guide": "Ceļvedis",
@@ -2589,8 +2744,13 @@ def _signup_stats(days):
     reach = dict.fromkeys(order, 0)
     fields = dict.fromkeys([k for k, _ in SIGNUP_FIELDS], 0)
     stops, reasons, sources, company_how, recent = {}, {}, {}, {}, []
+    bots = 0
     for a in attempts:
         steps, acc = a["steps"], a["account"]
+        # A post the bot traps turned away is not a person who gave up
+        if "created" not in steps and not acc and set(steps.get("error", ())) & set(SIGNUP_BOT_ERRORS):
+            bots += 1
+            continue
         got = {"open"}
         if set(steps) & {"start", "company", "email", "password", "click", "invalid", "submit", "error", "created"}:
             got.add("start")
@@ -2662,7 +2822,7 @@ def _signup_stats(days):
         "invoiced": reach["invoice"], "stops": stop_list, "top_stop": stop_list[0] if stop_list else None,
         "reasons": sorted(reasons.values(), key=lambda r: -r["count"]),
         "sources": sorted(sources.values(), key=lambda r: (-r["opened"], r["label"])),
-        "recent": recent,
+        "recent": recent, "bots": bots,
     }
 
 
@@ -2695,7 +2855,7 @@ async def add_user(request: Request,
         return RedirectResponse("/users?error=Parolei jābūt vismaz 6 simbolus garai", status_code=303)
 
     new_user_id = db.create_user(username, password, display_name, email=email,
-                                 must_change_password=True)
+                                 must_change_password=True, email_verified=True)
 
     # Set default settings
     db.save_all_user_settings(new_user_id, {
@@ -3966,6 +4126,9 @@ async def send_document_email(request: Request, doc_id: int):
     if not BREVO_API_KEY and not SMTP_PASS:
         return _redirect_with("error=E-pasta serviss nav konfigurēts.")
 
+    if not _can_send_email(user):
+        return _redirect_with("error=" + quote("Vispirms apstipriniet konta e-pastu ar saiti, ko uz to nosūtījām. Pēc tam varēsiet sūtīt."))
+
     # Check email tier limit. None = unlimited, 0 = this tier cannot send.
     limits = db.get_tier_limits(user.get("tier", "free"))
     max_emails = limits.get("max_emails_month")
@@ -3986,6 +4149,12 @@ async def send_document_email(request: Request, doc_id: int):
         doc.get("doc_type") == "offer" or not _check_tier_feature(user, "einvoice")
     ):
         attachment_format = "pdf"
+
+    # A trial or free account sends at most 20 an hour: a burst that size is a
+    # script, not someone's month-end (the monthly cap is checked above)
+    if (user.get("on_trial") or user.get("plan_tier", "free") == "free") and \
+            not _rate_limiter.is_allowed(f"send:{user['account_id']}", 20, 3600):
+        return _redirect_with("error=" + quote("Stundā var nosūtīt līdz 20 e-pastiem. Lūdzu, mēģiniet vēlāk."))
 
     attachment_name = ""
     if attachment_format == "xml":
