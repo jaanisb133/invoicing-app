@@ -122,7 +122,12 @@ the app to feel **"alive" and "cool"**, not just minimal-but-empty.
   picks one: day ≤ 62 days, week ≤ 366, month beyond. Choice persists in localStorage.
 - ✅ **Redesign (2026-10-21)** — new shell (labelled sidebar on the ground, account menu
   with theme toggle, mobile bottom nav with a + button, `N` shortcut for a new invoice).
-  Invoice editor: client combobox (recent first, inline create), payment-term chips,
+  Invoice editor: client combobox (recent first, inline create, and below the account's
+  clients the matching Uzņēmumu reģistrs companies: a pick calls `POST /api/clients/from-registry`,
+  which takes name/address from our registry copy (`registry.get`), returns an existing client
+  with that reg. no. instead of a duplicate, respects the client limit, and fills the VAT number
+  only when VIES confirms it (`_vies_check`: None = no answer, never read as "not a payer");
+  a registry match already saved shows as that client, "jau klients"), payment-term chips,
   spreadsheet lines (Enter walks name → qty → unit → price → new row, Ctrl/⌘+Enter
   submits), product picker that fills unit and last price, live paper preview. Dashboard:
   KPI strip with "pret dd.mm.–dd.mm." deltas, Termiņi due strip, activity. Lists:

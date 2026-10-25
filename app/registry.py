@@ -203,6 +203,19 @@ def search(query, limit=15):
     return [dict(r) for r in rows]
 
 
+def get(regcode):
+    """One active business by its registration number, or None."""
+    if not regcode or not regcode.isdigit():
+        return None
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT regcode, name, type_text, address FROM businesses WHERE regcode = ? AND terminated = ''",
+        (regcode,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def get_record_count():
     """Return the number of businesses in the registry DB."""
     try:

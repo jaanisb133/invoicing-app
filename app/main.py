@@ -62,7 +62,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "63"
+CSS_VERSION = "64"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -5518,6 +5518,34 @@ async def api_add_client(request: Request):
     return JSONResponse(client)
 
 
+@app.post("/api/clients/from-registry")
+async def api_client_from_registry(request: Request):
+    """A company picked from the Uzņēmumu reģistrs in the editor's client box becomes a
+    client in one step. Name and address come from our copy of the registry, not the
+    request. The VAT number is filled only when VIES confirms it: plenty of SIAs are
+    not VAT payers, and a wrong number would print on the invoice and its e-invoice."""
+    user = request.state.user
+    try:
+        data = await request.json()
+    except ValueError:
+        data = {}
+    biz = registry.get(re.sub(r"\D", "", str(data.get("regcode", "")))[:20])
+    if not biz:
+        return JSONResponse({"error": "Uzņēmums reģistrā nav atrasts."}, status_code=404)
+    existing = db.get_client_by_reg_number(user["account_id"], biz["regcode"])
+    if existing:
+        return JSONResponse(existing)
+    allowed, current, maximum = _check_tier_limit(user, "clients")
+    if not allowed:
+        return JSONResponse({"error": f"Klientu limits sasniegts ({current}/{maximum})."}, status_code=403)
+    vies = None if OFFLINE_MODE else await _vies_check("LV", biz["regcode"], timeout=6)
+    vat = f"LV{biz['regcode']}" if vies and vies["valid"] else ""
+    client_id = db.add_client(user["account_id"], name=biz["name"], reg_number=biz["regcode"],
+                              vat_number=vat, vat_payer=1 if vat else 0,
+                              legal_address=biz["address"], client_type="business")
+    return JSONResponse(db.get_client(client_id, user["account_id"]))
+
+
 @app.get("/api/stock/{product_id}")
 async def api_product_stock(request: Request, product_id: int):
     user = request.state.user
@@ -5596,9 +5624,18 @@ async def api_vat_validate(request: Request, vat_number: str = ""):
         country_code = "LV"
         number = vat_number
 
-    try:
-        import httpx
-        soap_body = f"""<?xml version="1.0" encoding="UTF-8"?>
+    result = await _vies_check(country_code, number)
+    if result is None:
+        return JSONResponse({"valid": False, "error": "VIES serviss nav pieejams"})
+    return JSONResponse({"country_code": country_code, "vat_number": number, **result})
+
+
+async def _vies_check(country_code, number, timeout=15):
+    """Ask VIES whether an EU VAT number is registered: {"valid", "name", "address"},
+    or None when VIES gives no answer (it is often down, and a fault is not a "no")."""
+    country_code = re.sub(r"[^A-Z]", "", country_code.upper())[:2]
+    number = re.sub(r"[^0-9A-Za-z]", "", number)[:20]   # goes into the SOAP body as is
+    soap_body = f"""<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:urn="urn:ec.europa.eu:taxud:vies:services:checkVat:types">
     <soapenv:Body>
@@ -5608,41 +5645,23 @@ async def api_vat_validate(request: Request, vat_number: str = ""):
         </urn:checkVat>
     </soapenv:Body>
 </soapenv:Envelope>"""
-
-        async with httpx.AsyncClient(timeout=15) as client:
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 "https://ec.europa.eu/taxation_customs/vies/services/checkVatService",
                 content=soap_body,
                 headers={"Content-Type": "text/xml; charset=utf-8"},
             )
-
-        body = resp.text
-        valid = "<valid>true</valid>" in body.lower() or "<ns2:valid>true</ns2:valid>" in body.lower()
-
-        # Extract name and address from response
-        name = ""
-        address = ""
-        for tag in ["name", "ns2:name"]:
-            start = body.find(f"<{tag}>")
-            end = body.find(f"</{tag}>")
-            if start != -1 and end != -1:
-                name = body[start + len(tag) + 2:end].strip()
-                break
-        for tag in ["address", "ns2:address"]:
-            start = body.find(f"<{tag}>")
-            end = body.find(f"</{tag}>")
-            if start != -1 and end != -1:
-                address = body[start + len(tag) + 2:end].strip()
-                break
-
-        return JSONResponse({
-            "valid": valid,
-            "country_code": country_code,
-            "vat_number": number,
-            "name": name,
-            "address": address,
-        })
-
     except Exception as e:
         logger.error("VIES validation error: %s", e)
-        return JSONResponse({"valid": False, "error": "VIES serviss nav pieejams"})
+        return None
+    body = resp.text
+    answer = re.search(r"<(?:\w+:)?valid>\s*(true|false)\s*</", body, re.I)
+    if not answer:
+        return None
+    found = {}
+    for tag in ("name", "address"):
+        m = re.search(rf"<(?:\w+:)?{tag}>(.*?)</(?:\w+:)?{tag}>", body, re.S)
+        found[tag] = m.group(1).strip() if m else ""
+    return {"valid": answer.group(1).lower() == "true", **found}
