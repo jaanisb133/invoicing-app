@@ -360,6 +360,9 @@
         {%- for q, a in faq %}
         <p data-rise style="--i:{{ loop.index0 % 3 }}"><strong>{{ q }}</strong> {{ a }}{% if q in faq_more %} Sīkāk: <a class="link" href="{{ faq_more[q][0] }}">{{ faq_more[q][1] }}</a>.{% endif %}</p>
         {%- endfor %}
+        {%- if support_email %}
+        <p data-rise><strong>Vēl jautājumi?</strong> Rakstiet uz <a class="link" href="mailto:{{ support_email }}">{{ support_email }}</a>, atbildam darba dienās 24 stundu laikā. Kad konts izveidots, jautāt var arī no programmas: <b>Rakstīt mums</b> izvēlnē.</p>
+        {%- endif %}
     </div>
 </section>
 
@@ -391,7 +394,7 @@
 
 <footer>
     <div class="foot-line">
-        <span>Rēķinu programma Latvijai</span>
+        <span>Rēķinu programma Latvijai{% if support_email %} · <a href="mailto:{{ support_email }}">{{ support_email }}</a>{% endif %}</span>
         <nav aria-label="Kājene">
             <a href="/pricing">Cenas</a>
             <a href="/celvedis">Ceļvedis</a>

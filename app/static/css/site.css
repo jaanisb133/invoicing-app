@@ -406,8 +406,8 @@ img { display: block; max-width: 100%; }
     padding: 120px var(--m) 20px; font-size: var(--s1); color: var(--muted);
 }
 .foot-line nav { display: flex; gap: 24px; }
-.foot-line nav a { color: var(--text); text-decoration: none; }
-.foot-line nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.foot-line a { color: var(--text); text-decoration: none; }
+.foot-line a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .foot-line .right { text-align: right; }
 .pay { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px 22px; padding: 12px var(--m) 28px; }
 .pay img { width: auto; }  /* height comes from each mark's attribute */
@@ -529,7 +529,7 @@ body.auth { min-height: 100svh; display: flex; flex-direction: column; }
 .auth-body h1 { font-size: clamp(28px, 3vw, 34px); letter-spacing: -0.03em; margin-bottom: 8px; }
 .auth-body .sub { color: var(--muted); margin-bottom: 28px; }
 .auth-foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 20px clamp(16px, 4vw, 40px); font-size: var(--s1); color: var(--muted); }
-.auth-foot nav { display: flex; gap: 20px; }
+.auth-foot nav { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .auth-foot a { color: var(--muted); text-decoration: none; }
 .auth-foot a:hover { color: var(--text); }
 

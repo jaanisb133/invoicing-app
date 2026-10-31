@@ -239,6 +239,18 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   every send dialog (Nosūtīt disabled), Mans konts, recurring forms; `/users` flags set-up
   accounts with "e-pasts nav apstiprināts". Trial and free accounts also send ≤ 20 e-mails an
   hour (`send:{account}` in the in-memory limiter).
+- **Questions** go to `SUPPORT_EMAIL` (default info@v-rekini.lv; empty hides all of it; Jinja
+  global `support_email`). In the app: "Rakstīt mums" (sidebar under Palīdzība, phone "Vairāk",
+  help page header + `#rakstit`) opens a dialog in `base.html` that posts by fetch to
+  `POST /api/support`, so the page underneath (a half-written invoice) is untouched. The e-mail
+  carries the message, then who / account / plan / page / screen / user agent, Reply-To = the
+  person (an account without an e-mail is asked for one), optional screenshot (PNG/JPEG/WEBP/GIF
+  ≤ 5 MB, PIL-checked); one-line subject; 5 an hour per person, refused ones don't count; the
+  file picker is our own button (the native one speaks the browser's language). Publicly: the
+  address ends the landing FAQ ("Vēl jautājumi?"), sits in every public footer (landing, pricing
+  and `auth_base.html` have their own footer copies) and on /contacts. The terms keep
+  info@vnmedia.lv (SIA VN Media as operator). No contact form for guests: a public form is
+  what bots find first.
 - Guided tours: page sets `window.VR_TOUR` in `{% block tour %}`; engine in `base.html`;
   seen keys per person in user setting `tours_seen` (`POST /api/tour-seen`). Tours:
   `dashboard`, `editor`. Help page `/palidziba` (`help.html`).

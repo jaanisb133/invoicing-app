@@ -5,10 +5,11 @@
 <div class="page-header">
     <div>
         <h1>Palīdzība</h1>
-        <p class="page-sub">Īsas atbildes uz to, kā izdarīt biežākās lietas.</p>
+        <p class="page-sub">Īsas atbildes uz to, kā izdarīt biežākās lietas.{% if support_email %} Neatradāt? Rakstiet mums, atbildēsim uz Jūsu e-pastu.{% endif %}</p>
     </div>
-    <div class="btn-group hide-mobile">
-        <button type="button" class="btn btn-outline" onclick="window.vrTour && window.vrTour.replay('dashboard')">Parādīt ievadu vēlreiz</button>
+    <div class="btn-group">
+        <button type="button" class="btn btn-outline hide-mobile" onclick="window.vrTour && window.vrTour.replay('dashboard')">Parādīt ievadu vēlreiz</button>
+        {% if support_email %}<button type="button" class="btn btn-primary" onclick="openSupport()">Rakstīt mums</button>{% endif %}
     </div>
 </div>
 <div class="page-body help">
@@ -26,6 +27,7 @@
         <a href="#telefons" class="plain">Telefonā</a>
         <a href="#plani" class="plain">Plāni un izmēģinājums</a>
         <a href="#taustini" class="plain">Īsinājumtaustiņi</a>
+        {% if support_email %}<a href="#rakstit" class="plain">Rakstīt mums</a>{% endif %}
     </nav>
 
     <div class="help-body">
@@ -122,7 +124,15 @@
             </table>
         </section>
 
+        {% if support_email %}
+        <section class="card help-sec" id="rakstit">
+            <h2>Rakstīt mums</h2>
+            <p>Ja kaut kas nestrādā vai nav skaidrs, spiediet <b>Rakstīt mums</b> (izvēlnē zem Palīdzības, telefonā sadaļā <b>Vairāk</b>) vai rakstiet uz <a href="mailto:{{ support_email }}">{{ support_email }}</a>. Ziņai pievienosim lapu, kurā esat, un ierīci, bet ekrānuzņēmums palīdz vēl vairāk. Atbilde pienāks uz Jūsu e-pastu.</p>
+            <p><button type="button" class="btn btn-outline" onclick="openSupport()">Rakstīt mums</button></p>
+        </section>
+        {% else %}
         <p class="help-contact">Neatradāt atbildi? Rakstiet mums: <a href="/contacts">kontakti</a>.</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
