@@ -62,7 +62,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "64"
+CSS_VERSION = "66"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -222,6 +222,10 @@ BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "rekini@v-rekini.lv")
 BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "V-Rēķini")
 # Who hears about every new sign-up. Empty turns the notice off.
 NEW_ACCOUNT_NOTIFY_EMAIL = os.getenv("NEW_ACCOUNT_NOTIFY_EMAIL", "janis@vnmedia.lv").strip()
+# Where questions go: "Rakstīt mums" in the app, and the address on the public pages
+# (landing FAQ, footer, Kontakti). Empty hides it all. Terms keep the operator's own.
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "info@v-rekini.lv").strip()
+templates.env.globals["support_email"] = SUPPORT_EMAIL
 
 # --- EveryPay / SEB E-commerce ---
 from app import everypay
@@ -426,6 +430,8 @@ def _base_context(request):
         # Account-level custom offer design (branded tāmes). Enabled per
         # account by an admin, not tied to a tier.
         "branded_offers": _branded_offers_enabled(user["account_id"]),
+        # "Rakstīt mums" (/api/support)
+        "support_email": "" if OFFLINE_MODE else SUPPORT_EMAIL,
     }
 
 
@@ -1732,6 +1738,91 @@ async def help_page(request: Request):
     return templates.TemplateResponse("help.html", ctx)
 
 
+SUPPORT_SHOT_MAX = 5 * 1024 * 1024
+
+
+@app.post("/api/support")
+async def support_message(request: Request):
+    """"Rakstīt mums": a question from inside the app, e-mailed to SUPPORT_EMAIL with who
+    sent it, from which page and device, and an optional screenshot. Replies go straight
+    to the person. Sent by fetch, so a half-written invoice on the page is not lost."""
+    user = request.state.user
+    form = await request.form()
+    fallback = f" Rakstiet uz {SUPPORT_EMAIL}." if SUPPORT_EMAIL else ""
+    if OFFLINE_MODE or not SUPPORT_EMAIL or not (SMTP_PASS or BREVO_API_KEY):
+        return JSONResponse({"error": "Ziņu šobrīd nevar nosūtīt." + fallback}, status_code=503)
+    text = str(form.get("message") or "").strip()[:5000]
+    if len(text) < 5:
+        return JSONResponse({"error": "Uzrakstiet, ar ko varam palīdzēt."}, status_code=400)
+    reply_to = ((user.get("email") or "").strip() or str(form.get("reply_to") or "").strip()).lower()
+    if not reply_to or len(reply_to) > 254 or not _EMAIL.fullmatch(reply_to):
+        return JSONResponse({"error": "Norādiet e-pastu, uz kuru atbildēt."}, status_code=400)
+
+    shot, shot_name = form.get("screenshot"), ""
+    content = b""
+    if shot is not None and getattr(shot, "filename", ""):
+        content = await shot.read(SUPPORT_SHOT_MAX + 1)
+    if content:
+        try:
+            from PIL import Image as PILImage
+            import io as _io
+            if len(content) > SUPPORT_SHOT_MAX:
+                raise ValueError("too large")
+            img = PILImage.open(_io.BytesIO(content))
+            fmt = (img.format or "").upper()
+            img.verify()
+            if fmt not in ("PNG", "JPEG", "WEBP", "GIF"):
+                raise ValueError(fmt)
+        except Exception:
+            return JSONResponse({"error": "Pievienojiet attēlu (PNG vai JPG) līdz 5 MB."}, status_code=400)
+        shot_name = "ekranuznemums." + {"JPEG": "jpg"}.get(fmt, fmt.lower())
+
+    if not _rate_limiter.is_allowed(f"support:{user['id']}", 5, 3600):
+        return JSONResponse({"error": "Šajā stundā jau nosūtījāt piecas ziņas." + fallback}, status_code=429)
+
+    settings = db.get_all_user_settings(user["account_id"])
+    company = settings.get("company_name", "")
+    name = user.get("display_name") or user.get("username")
+    flat = lambda s, n: re.sub(r"\s+", " ", str(s or "")).strip()[:n]   # one line: headers and context
+    page = _local_path(flat(form.get("page"), 300), "")
+    plan = db.TIER_LIMITS.get(user.get("tier", "free"), {}).get("label", user.get("tier", ""))
+    if user.get("on_trial"):
+        until = db.get_user_setting(user["account_id"], "trial_until", "")
+        plan += f" (izmēģinājums līdz {until[8:10]}.{until[5:7]}.{until[:4]})" if until else " (izmēģinājums)"
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.datetime.now(ZoneInfo("Europe/Riga"))
+    except Exception:
+        now = datetime.datetime.now()
+    body = "\n".join([
+        text, "", "—",
+        f"No: {flat(name, 120)} <{reply_to}>",
+        f"Uzņēmums: {flat(company, 120) or '—'} · konts #{user['account_id']}"
+        + ("" if _is_owner(user) else " · komandas biedrs"),
+        f"Plāns: {plan}",
+        f"Lapa: {SITE_URL}{page}" if page else "Lapa: —",
+        f"Ierīce: {flat(form.get('screen'), 20) or '—'} · {flat(request.headers.get('user-agent'), 300)}",
+        f"Nosūtīts: {now:%d.%m.%Y %H:%M}",
+    ])
+    subject = f"Rakstīt mums: {flat(company or name, 60)} — {flat(text.splitlines()[0], 60)}"
+    path = ""
+    try:
+        if shot_name:
+            import tempfile
+            fd, path = tempfile.mkstemp(suffix="." + shot_name.rsplit(".", 1)[1])
+            with os.fdopen(fd, "wb") as f:
+                f.write(content)
+        _send_email(to_email=SUPPORT_EMAIL, subject=subject, body=body, reply_to=reply_to,
+                    attachment_path=path, attachment_name=shot_name, sender_name="V-Rēķini")
+    except Exception:
+        logger.exception("support message from user %s not sent", user["id"])
+        return JSONResponse({"error": "Neizdevās nosūtīt." + fallback}, status_code=502)
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
+    return JSONResponse({"ok": True, "reply_to": reply_to})
+
+
 @app.post("/trial/start")
 async def trial_start(request: Request):
     """Start the one-time Pamata trial (offered on locked features to free accounts)."""
@@ -1958,9 +2049,9 @@ async def robots_txt():
 # Public, indexable pages and when their content last really changed. Update the
 # date when a page's content changes; a lastmod that moves on every fetch is ignored.
 SITEMAP_PAGES = [
-    ("/", "2026-10-21"),
+    ("/", "2026-10-31"),
     ("/pricing", "2026-10-21"),
-    ("/contacts", "2026-10-21"),
+    ("/contacts", "2026-10-31"),
     ("/terms", "2026-10-23"),
 ]
 

@@ -206,6 +206,12 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17.2v.1"/></svg>
                 Palīdzība
             </a>
+            {% if support_email %}
+            <button type="button" onclick="openSupport()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 0 1-12.3 7.6L3.5 21l1.4-4.5A8.5 8.5 0 1 1 20.5 12z"/></svg>
+                Rakstīt mums
+            </button>
+            {% endif %}
             {% if current_user and current_user.is_admin and not offline_mode %}
             <a href="/users" class="{% if page == 'users' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s8-4 8-10v-7l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -345,6 +351,12 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17.2v.1"/></svg>
                 Palīdzība
             </a>
+            {% if support_email %}
+            <button type="button" onclick="closeMoreSheet();openSupport()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 0 1-12.3 7.6L3.5 21l1.4-4.5A8.5 8.5 0 1 1 20.5 12z"/></svg>
+                Rakstīt mums
+            </button>
+            {% endif %}
             {% if current_user and current_user.is_admin and not offline_mode %}
             <a href="/users" class="{% if page == 'users' %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s8-4 8-10v-7l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -385,6 +397,84 @@
         }
     })();
     </script>
+
+    {% if support_email and current_user %}
+    {# "Rakstīt mums": a question goes to the V-Rēķini mailbox by fetch (/api/support), so the page underneath stays as it was #}
+    <div class="modal-overlay" id="supportModal" onclick="if(event.target===this)closeSupport()">
+        <div class="modal" role="dialog" aria-labelledby="supportTitle" style="max-width:520px">
+            <form id="supportForm" novalidate>
+                <div class="modal-title" id="supportTitle">Rakstīt mums</div>
+                <p class="text-muted" style="margin:-6px 0 16px">Jautājums, kļūda vai ideja: ziņu lasa V-Rēķini veidotājs, un atbilde pienāks {% if current_user.email %}uz {{ current_user.email }}{% else %}uz Jūsu e-pastu{% endif %}.</p>
+                <div class="form-group">
+                    <label for="supportText">Ziņa</label>
+                    <textarea id="supportText" name="message" class="form-control" rows="6" maxlength="5000" placeholder="Kas notika un kur? Piemēram: rēķinā nerādās mans bankas konts."></textarea>
+                </div>
+                {% if not current_user.email %}
+                <div class="form-group">
+                    <label for="supportReply">E-pasts atbildei</label>
+                    <input type="email" id="supportReply" name="reply_to" class="form-control" autocomplete="email">
+                </div>
+                {% endif %}
+                <div class="form-group">
+                    <div class="field-label">Ekrānuzņēmums <span class="text-muted" style="font-weight:400">· nav obligāti</span></div>
+                    {# Our own button: the browser's "Choose File" speaks the browser's language, not Latvian #}
+                    <div class="file-pick">
+                        <input type="file" id="supportShot" name="screenshot" class="sr-only" accept="image/png,image/jpeg,image/webp,image/gif">
+                        <label for="supportShot" class="btn btn-outline btn-sm">Pievienot attēlu</label>
+                        <span id="supportShotName" class="text-muted">nav pievienots</span>
+                    </div>
+                </div>
+                <div class="field-error" id="supportError" role="alert" hidden></div>
+                <p class="field-hint" style="margin:0 0 16px">Ziņai pievienosim lapu, kurā esat, un ierīci, lai kļūdu varētu atrast ātrāk. Var rakstīt arī uz <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeSupport()">Atcelt</button>
+                    <button type="submit" class="btn btn-primary" id="supportSend">Nosūtīt</button>
+                </div>
+            </form>
+            <div id="supportDone" hidden>
+                <div class="modal-title" style="margin-bottom:6px">Paldies, ziņa nosūtīta</div>
+                <p class="text-muted" style="margin-bottom:20px">Atbilde pienāks uz <span id="supportDoneTo"></span>.</p>
+                <button type="button" class="btn btn-primary btn-block" onclick="closeSupport()">Labi</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+        var modal = document.getElementById('supportModal'), form = document.getElementById('supportForm');
+        var done = document.getElementById('supportDone'), err = document.getElementById('supportError');
+        var send = document.getElementById('supportSend'), text = document.getElementById('supportText');
+        var shot = document.getElementById('supportShot'), shotName = document.getElementById('supportShotName');
+        function fail(msg) { err.textContent = msg; err.hidden = false; }
+        function showShot() { shotName.textContent = shot.files.length ? shot.files[0].name : 'nav pievienots'; }
+        shot.addEventListener('change', function () { showShot(); err.hidden = true; });
+        text.addEventListener('input', function () { err.hidden = true; });
+        window.openSupport = function () {
+            form.hidden = false; done.hidden = true; err.hidden = true;
+            modal.classList.add('active');
+            setTimeout(function () { text.focus(); }, 30);
+        };
+        window.closeSupport = function () { modal.classList.remove('active'); };
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            err.hidden = true;
+            if (text.value.trim().length < 5) { fail('Uzrakstiet, ar ko varam palīdzēt.'); text.focus(); return; }
+            var fd = new FormData(form);
+            fd.append('page', location.pathname + location.search);
+            fd.append('screen', innerWidth + '×' + innerHeight);
+            send.disabled = true; send.textContent = 'Sūta…';
+            fetch('/api/support', { method: 'POST', body: fd, headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (res) {
+                    if (!res.ok) { fail(res.d.error || 'Neizdevās nosūtīt.'); return; }
+                    document.getElementById('supportDoneTo').textContent = res.d.reply_to;
+                    form.reset(); showShot(); form.hidden = true; done.hidden = false;
+                })
+                .catch(function () { fail('Neizdevās nosūtīt. Pārbaudiet savienojumu vai rakstiet uz {{ support_email }}.'); })
+                .then(function () { send.disabled = false; send.textContent = 'Nosūtīt'; });
+        });
+    })();
+    </script>
+    {% endif %}
 
     {% set verify = request.query_params.get('verify') %}
     {% if verify in ('sent', 'wait', 'failed', 'done') %}

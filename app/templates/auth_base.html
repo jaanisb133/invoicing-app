@@ -33,7 +33,7 @@
 </main>
 <footer class="auth-foot">
     <span>© {{ current_year() }} SIA „VN Media”</span>
-    <nav aria-label="Kājene"><a href="/pricing">Cenas</a><a href="/celvedis">Ceļvedis</a><a href="/terms">Noteikumi</a><a href="/contacts">Kontakti</a></nav>
+    <nav aria-label="Kājene"><a href="/pricing">Cenas</a><a href="/celvedis">Ceļvedis</a><a href="/terms">Noteikumi</a><a href="/contacts">Kontakti</a>{% if support_email %}<a href="mailto:{{ support_email }}">{{ support_email }}</a>{% endif %}</nav>
 </footer>
 {% block scripts %}{% endblock %}
 <script>

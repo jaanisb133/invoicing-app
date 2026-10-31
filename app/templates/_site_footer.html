@@ -1,7 +1,7 @@
 {# Public footer: one quiet line, then the payment marks SEB requires on public pages. #}
 <footer>
     <div class="foot-line">
-        <span>Rēķinu programma Latvijai</span>
+        <span>Rēķinu programma Latvijai{% if support_email %} · <a href="mailto:{{ support_email }}">{{ support_email }}</a>{% endif %}</span>
         <nav aria-label="Kājene">
             <a href="/">Sākums</a>
             <a href="/pricing">Cenas</a>

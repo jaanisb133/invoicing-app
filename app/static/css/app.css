@@ -949,6 +949,11 @@ td > .empty-state-rich { padding: 40px 16px; }
 .mb-2 { margin-bottom: 8px; } .mb-4 { margin-bottom: 16px; }
 .hide-desktop { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* A file input behind our own button (the native one names itself in the browser's language) */
+.file-pick { display: flex; align-items: center; gap: 10px; min-width: 0; margin-top: 6px; }
+.file-pick label { flex: none; cursor: pointer; }
+.file-pick span { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-pick input:focus-visible + label { outline: 2px solid var(--text); outline-offset: 2px; }
 .page-body a:not(.btn):not(.chip):not([class*="menu-item"]):not(.kpi):not(.row-link):not(.plain) {
     text-decoration: underline;
     text-decoration-color: var(--control);
