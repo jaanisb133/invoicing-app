@@ -201,7 +201,7 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   and in a trial's last 5 days.
 
 ### Sign-up and first run (2026-10-21)
-- Every sign-up e-mails the owner (`NEW_ACCOUNT_NOTIFY_EMAIL`, default janis@vnmedia.lv;
+- Every sign-up e-mails the owner (`NEW_ACCOUNT_NOTIFY_EMAIL`, default info@v-rekini.lv;
   empty turns it off) after the response, so a slow mail server never holds up sign-up.
 - "Ienākt" is a real button: beside "Sākt bez maksas" in the landing hero (owner moved it
   there from the pinned invoice's corner), and top-right in `_site_bar.html` / the pricing header.
@@ -248,9 +248,9 @@ from the app). Idea: a real Latvian invoice stays pinned while the page reads, a
   ≤ 5 MB, PIL-checked); one-line subject; 5 an hour per person, refused ones don't count; the
   file picker is our own button (the native one speaks the browser's language). Publicly: the
   address ends the landing FAQ ("Vēl jautājumi?"), sits in every public footer (landing, pricing
-  and `auth_base.html` have their own footer copies) and on /contacts. The terms keep
-  info@vnmedia.lv (SIA VN Media as operator). No contact form for guests: a public form is
-  what bots find first.
+  and `auth_base.html` have their own footer copies), on /contacts and in the terms (owner's
+  call, 2026-10-31: info@v-rekini.lv is the one address; info@vnmedia.lv is gone from the site).
+  No contact form for guests: a public form is what bots find first.
 - Guided tours: page sets `window.VR_TOUR` in `{% block tour %}`; engine in `base.html`;
   seen keys per person in user setting `tours_seen` (`POST /api/tour-seen`). Tours:
   `dashboard`, `editor`. Help page `/palidziba` (`help.html`).

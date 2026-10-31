@@ -221,7 +221,7 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "rekini@v-rekini.lv")
 BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", "V-Rēķini")
 # Who hears about every new sign-up. Empty turns the notice off.
-NEW_ACCOUNT_NOTIFY_EMAIL = os.getenv("NEW_ACCOUNT_NOTIFY_EMAIL", "janis@vnmedia.lv").strip()
+NEW_ACCOUNT_NOTIFY_EMAIL = os.getenv("NEW_ACCOUNT_NOTIFY_EMAIL", "info@v-rekini.lv").strip()
 # Where questions go: "Rakstīt mums" in the app, and the address on the public pages
 # (landing FAQ, footer, Kontakti). Empty hides it all. Terms keep the operator's own.
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "info@v-rekini.lv").strip()
@@ -2052,7 +2052,7 @@ SITEMAP_PAGES = [
     ("/", "2026-10-31"),
     ("/pricing", "2026-10-21"),
     ("/contacts", "2026-10-31"),
-    ("/terms", "2026-10-23"),
+    ("/terms", "2026-10-31"),
 ]
 
 

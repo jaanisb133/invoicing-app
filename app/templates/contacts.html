@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kontakti | V-Rēķini</title>
-    <meta name="description" content="Sazinieties ar V-Rēķini: e-pasts {{ support_email or 'info@vnmedia.lv' }}, tālrunis +371 27001074 un SIA „VN Media” rekvizīti.">
+    <meta name="description" content="Sazinieties ar V-Rēķini: e-pasts {{ support_email or 'info@v-rekini.lv' }}, tālrunis +371 27001074 un SIA „VN Media” rekvizīti.">
     <link rel="canonical" href="https://v-rekini.lv/contacts">
     <meta name="robots" content="index,follow">
     <meta property="og:type" content="website">
@@ -25,7 +25,7 @@
         "@type": "Organization",
         "@id": "https://v-rekini.lv/#org",
         "name": "SIA \"VN Media\"",
-        "email": "{{ support_email or 'info@vnmedia.lv' }}",
+        "email": "{{ support_email or 'info@v-rekini.lv' }}",
         "telephone": "+37127001074",
         "address": { "@type": "PostalAddress", "streetAddress": "\"Sikšņi 1\", Virešu pag.", "addressRegion": "Smiltenes nov.", "postalCode": "LV-4355", "addressCountry": "LV" }
       }
@@ -41,7 +41,7 @@
         <div class="contact-grid">
             <section class="contact-card" aria-labelledby="cMail">
                 <h2 id="cMail">E-pasts</h2>
-                {% set mail = support_email or 'info@vnmedia.lv' %}
+                {% set mail = support_email or 'info@v-rekini.lv' %}
                 <a class="contact-big" href="mailto:{{ mail }}">{{ mail }}</a>
                 <p>Atbildam darba dienās 24 stundu laikā.</p>
             </section>
