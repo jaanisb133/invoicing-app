@@ -7,7 +7,7 @@ Company details required by SEB:
 - SIA "VN Media"
 - Reg: 40203511357
 - Address: "Sikšņi 1", Virešu pag., Smiltenes nov., LV-4355
-- Email: info@vnmedia.lv
+- Email: info@v-rekini.lv
 - Phone: 27001074
 
 **Action:** Create `contacts.html` template (same structure as pricing.html — public navbar, standalone page). Add route in main.py.
@@ -33,7 +33,7 @@ This single page covers SEB's remaining requirements:
 - **Service delivery** — digital service, instant access after payment
 - **Subscription management** — how to cancel/change
 - **Refund policy** — 14-day cooling-off period per EU distance selling rules
-- **Customer support** — info@vnmedia.lv (response within 24h), phone 27001074 (P-Pk 9:00–17:00, GMT+2)
+- **Customer support** — info@v-rekini.lv (response within 24h), phone 27001074 (P-Pk 9:00–17:00, GMT+2)
 - **Consent clause** — user agrees to terms before completing payment
 
 **Action:** Create `terms.html` template. Add route in main.py.

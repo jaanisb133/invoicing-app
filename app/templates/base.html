@@ -404,7 +404,7 @@
         <div class="modal" role="dialog" aria-labelledby="supportTitle" style="max-width:520px">
             <form id="supportForm" novalidate>
                 <div class="modal-title" id="supportTitle">Rakstīt mums</div>
-                <p class="text-muted" style="margin:-6px 0 16px">Jautājums, kļūda vai ideja: ziņu lasa V-Rēķini veidotājs, un atbilde pienāks {% if current_user.email %}uz {{ current_user.email }}{% else %}uz Jūsu e-pastu{% endif %}.</p>
+                <p class="text-muted" style="margin:-6px 0 16px">Jautājums, kļūda vai ideja: ziņa nonāks uz <b>{{ support_email }}</b>, un atbildēsim uz Jūsu e-pastu{% if current_user.email %} <b>{{ current_user.email }}</b>{% endif %}.</p>
                 <div class="form-group">
                     <label for="supportText">Ziņa</label>
                     <textarea id="supportText" name="message" class="form-control" rows="6" maxlength="5000" placeholder="Kas notika un kur? Piemēram: rēķinā nerādās mans bankas konts."></textarea>
@@ -425,7 +425,7 @@
                     </div>
                 </div>
                 <div class="field-error" id="supportError" role="alert" hidden></div>
-                <p class="field-hint" style="margin:0 0 16px">Ziņai pievienosim lapu, kurā esat, un ierīci, lai kļūdu varētu atrast ātrāk. Var rakstīt arī uz <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+                <p class="field-hint" style="margin:0 0 16px">Ziņai pievienosim lapu, kurā esat, un ierīci, lai kļūdu varētu atrast ātrāk.</p>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-ghost" onclick="closeSupport()">Atcelt</button>
                     <button type="submit" class="btn btn-primary" id="supportSend">Nosūtīt</button>
@@ -433,7 +433,7 @@
             </form>
             <div id="supportDone" hidden>
                 <div class="modal-title" style="margin-bottom:6px">Paldies, ziņa nosūtīta</div>
-                <p class="text-muted" style="margin-bottom:20px">Atbilde pienāks uz <span id="supportDoneTo"></span>.</p>
+                <p class="text-muted" style="margin-bottom:20px">Atbildēsim uz <span id="supportDoneTo"></span>.</p>
                 <button type="button" class="btn btn-primary btn-block" onclick="closeSupport()">Labi</button>
             </div>
         </div>
