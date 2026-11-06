@@ -3311,7 +3311,7 @@ async def get_user_logo(request: Request):
 _TT_SEED_PHOTOS = ["bukulti_2.jpg", "jaunma_rupe_2.jpg", "ju_rmala_1.jpg",
                    "katlakalns_3.jpg", "saulkrasti_1.jpg"]
 _AP_SEED_PHOTOS = ["pvc_aizkars_darbnica.jpg", "pvc_siena_razotne.jpg", "pvc_sloksnu_aizkars.jpg",
-                   "pvc_siena_nojumei.jpg", "pvc_sienas_lauku_nojumei.jpg"]
+                   "pvc_siena_autoserviss.jpg", "pvc_sienas_lauku_nojumei.jpg"]
 
 
 def _offer_presets(uid):
