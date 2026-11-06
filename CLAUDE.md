@@ -373,6 +373,23 @@ conditions strip, photo row). Architecture is three layers:
 - **Per-offer copy** — picking a preset on the offer form copies its content
   into `documents.offer_meta` (JSON); later preset edits never rewrite sent
   offers. `offer_branded` hidden field: absent=keep, "0"=clear, "1"=save.
+- **Brands** (2026-11-06): one layout, several of the client's brands. `pdf_branded.BRANDS`:
+  `tavai_terasei` (assets `custom_assets/tt`, black + gold, "PREMIUM RISINĀJUMS", "TT" mark;
+  tagline and website from settings) and `angaru_pasaule` (`custom_assets/angaru_pasaule`,
+  ink #17191b + orange #dd4f05 from angarupasaule.lv, its wordmark, tagline "Protan Elmark
+  partneris Latvijā", website angarupasaule.lv, badge "PĒC JŪSU IZMĒRIEM", square mark; see
+  that folder's SOURCES.txt). Both are SIA "TT Konstrukcijas", so the header's company rows
+  (name, VAT, reg. no., phone) always come from the account. A brand lives on the preset
+  (`offer_presets.brand`, select on the preset form, kept by duplicate) and travels into
+  `offer_meta.brand` (hidden `offer_brand`); a meta without one renders as Tavai Terasei,
+  pixel-identical to before. Colours go through the page (`pg.dark` / `pg.accent` /
+  `pg.accent_light` / `pg.brand[...]`), never module constants. The offer form's sample
+  picture follows the brand (`static/img/tame_sample[_angaru_pasaule].jpg`, the first page of
+  a real render at 700 px). Samples are seeded by `_offer_presets(uid)` wherever presets are
+  listed: Alumīnija nojume for an account with none, "PVC izstrādājumi" (Angāru Pasaule, from
+  angarupasaule.lv/pvc-produkti) once per account (`tames_seeded_pvc`); a deleted sample
+  stays deleted. Keep sample texts to one line per row: two-line rows push a 4-line offer's
+  photo strip onto a second page.
 Gated by user setting `branded_offers` ("Tāmju dizains" toggle on the admin
 /users page); not tier-tied. `_generate_doc_pdf()` in main.py routes offer
 PDFs (download/send/create/update) to the branded generator when meta is

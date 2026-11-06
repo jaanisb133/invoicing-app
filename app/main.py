@@ -539,6 +539,7 @@ def _parse_offer_meta_form(form, uid):
     preset_raw = (form.get("offer_preset_id") or "").strip()
     return {
         "preset_id": int(preset_raw) if preset_raw.isdigit() else None,
+        "brand": pdf_branded.brand_key(form.get("offer_brand")),
         "title": (form.get("offer_title") or "").strip(),
         "specs": specs[:12],
         "benefits": benefits[:8],
@@ -3309,6 +3310,45 @@ async def get_user_logo(request: Request):
 
 _TT_SEED_PHOTOS = ["bukulti_2.jpg", "jaunma_rupe_2.jpg", "ju_rmala_1.jpg",
                    "katlakalns_3.jpg", "saulkrasti_1.jpg"]
+_AP_SEED_PHOTOS = ["pvc_aizkars_darbnica.jpg", "pvc_siena_razotne.jpg", "pvc_sloksnu_aizkars.jpg",
+                   "pvc_siena_nojumei.jpg", "pvc_sienas_lauku_nojumei.jpg"]
+
+
+def _offer_presets(uid):
+    """The account's presets, after the one-time samples: Alumīnija nojume for an
+    account with none yet, and the Angāru Pasaule PVC one once per account (it came
+    later, so accounts that already have presets get it too). A deleted sample never
+    comes back."""
+    if (not db.get_offer_presets(uid)
+            and db.get_user_setting(uid, "tames_seeded") != "1"):
+        _seed_default_preset(uid)
+        db.set_user_setting(uid, "tames_seeded", "1")
+    if db.get_user_setting(uid, "tames_seeded_pvc") != "1":
+        _seed_pvc_preset(uid)
+        db.set_user_setting(uid, "tames_seeded_pvc", "1")
+    return db.get_offer_presets(uid)
+
+
+def _brand_options():
+    return [(key, b["label"]) for key, b in pdf_branded.BRANDS.items()]
+
+
+def _seed_photos(uid, assets, names, prefix=""):
+    """Copy a brand's bundled sample photos into the account's photo pool."""
+    import shutil
+    photos = []
+    pdir = pdf_branded.photos_dir()
+    src_dir = os.path.join(BASE_DIR, "custom_assets", assets)
+    for name in names:
+        src = os.path.join(src_dir, name)
+        if not os.path.exists(src):
+            continue
+        dst_name = f"{uid}_{prefix}{name}"
+        dst = os.path.join(pdir, dst_name)
+        if not os.path.exists(dst):
+            shutil.copyfile(src, dst)
+        photos.append(dst_name)
+    return photos
 
 
 def _require_branded(user):
@@ -3322,19 +3362,7 @@ def _seed_default_preset(uid):
     """One-time example preset so the first visit shows the full design in
     action instead of an empty form. Copies the bundled sample photos into
     the account's photo pool."""
-    import shutil
-    photos = []
-    pdir = pdf_branded.photos_dir()
-    src_dir = os.path.join(BASE_DIR, "custom_assets", "tt")
-    for name in _TT_SEED_PHOTOS:
-        src = os.path.join(src_dir, name)
-        if not os.path.exists(src):
-            continue
-        dst_name = f"{uid}_{name}"
-        dst = os.path.join(pdir, dst_name)
-        if not os.path.exists(dst):
-            shutil.copyfile(src, dst)
-        photos.append(dst_name)
+    photos = _seed_photos(uid, "tt", _TT_SEED_PHOTOS)
     db.create_offer_preset(
         uid, "Alumīnija nojume",
         title="Alumīnija nojumes piedāvājums",
@@ -3361,18 +3389,47 @@ def _seed_default_preset(uid):
     )
 
 
+def _seed_pvc_preset(uid):
+    """The Angāru Pasaule PVC preset (2026-11-06), from angarupasaule.lv/pvc-produkti:
+    the alumīnija nojume layout under the Angāru Pasaule brand. The photos are the
+    page's own; the client swaps them for his."""
+    db.create_offer_preset(
+        uid, "PVC izstrādājumi",
+        title="PVC aizkaru un sienu piedāvājums",
+        specs=[
+            {"label": "Izstrādājuma platums", "value": "6,0 m"},
+            {"label": "Izstrādājuma augstums", "value": "3,0 m"},
+            {"label": "Audums - MehlerHeytex 620 g/m²", "value": ""},
+            {"label": "Auduma krāsa - pēc ražotāja kataloga", "value": ""},
+            {"label": "Caurskatāmas joslas - pēc vajadzības", "value": ""},
+            {"label": "Stiprinājums - sliede, gredzeni vai siksnas", "value": ""},
+            {"label": "Izgatavošana un uzstādīšana visā Latvijā", "value": ""},
+        ],
+        benefits=[
+            {"title": "Individuāls risinājums",
+             "text": "Izgatavots pēc jūsu objekta izmēriem"},
+            {"title": "Vācijā ražots audums",
+             "text": "Stiepes izturība 3000 N/50 mm"},
+            {"title": "Iztur Latvijas ziemu",
+             "text": "Aukstumizturība līdz -40 °C"},
+            {"title": "Hermētiskas šuves",
+             "text": "Kausētas, nevis šūtas: izmērs nav ierobežots"},
+        ],
+        conditions="* Galīgo cenu nosaka precīza uzmērīšana objektā.",
+        photos=_seed_photos(uid, "angaru_pasaule", _AP_SEED_PHOTOS),
+        brand="angaru_pasaule",
+    )
+
+
 @app.get("/tames", response_class=HTMLResponse)
 async def tames_page(request: Request):
     user = request.state.user
     _require_branded(user)
     uid = user["account_id"]
-    if (not db.get_offer_presets(uid)
-            and db.get_user_setting(uid, "tames_seeded") != "1"):
-        _seed_default_preset(uid)
-        db.set_user_setting(uid, "tames_seeded", "1")
     ctx = _base_context(request)
     ctx.update({
-        "presets": db.get_offer_presets(uid),
+        "presets": _offer_presets(uid),
+        "brands": dict(_brand_options()),
         "page": "tames",
     })
     return templates.TemplateResponse("tames.html", ctx)
@@ -3399,7 +3456,7 @@ async def tame_edit_page(request: Request, preset_id: int):
     if not preset:
         raise HTTPException(status_code=404)
     ctx = _base_context(request)
-    ctx.update({"preset": preset, "page": "tames"})
+    ctx.update({"preset": preset, "brands": _brand_options(), "page": "tames"})
     return templates.TemplateResponse("tame_form.html", ctx)
 
 
@@ -3428,6 +3485,7 @@ async def tame_save(request: Request, preset_id: int):
         specs=specs[:12],
         benefits=benefits[:8],
         conditions=(form.get("conditions") or "").strip(),
+        brand=pdf_branded.brand_key(form.get("brand")),
     )
     return RedirectResponse(f"/tames/{preset_id}/edit?saved=1", status_code=303)
 
@@ -3813,7 +3871,7 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         "prefill": prefill_doc is not None,
         "from_offer": prefill_doc["id"] if prefill_doc and not ref_doc else 0,
         "from_offer_number": prefill_doc["doc_number"] if prefill_doc and not ref_doc else "",
-        "offer_presets": (db.get_offer_presets(uid)
+        "offer_presets": (_offer_presets(uid)
                           if doc_type == "offer" and _branded_offers_enabled(uid) else []),
         "offer_meta": None,
         # "Izrakstīt rēķinu" from the clients list starts the form on that client.
@@ -4006,7 +4064,7 @@ async def edit_document_page(request: Request, doc_id: int):
         "prefill": True,
         "doc": doc,
         "edit_items": items,
-        "offer_presets": (db.get_offer_presets(uid)
+        "offer_presets": (_offer_presets(uid)
                           if doc["doc_type"] == "offer" and _branded_offers_enabled(uid) else []),
         "offer_meta": _decode_offer_meta(doc),
         "ref_doc": db.get_document(doc["ref_doc_id"])[0] if doc.get("ref_doc_id") else None,
