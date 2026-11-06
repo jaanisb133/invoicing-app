@@ -378,7 +378,9 @@ conditions strip, photo row). Architecture is three layers:
   tagline and website from settings) and `angaru_pasaule` (`custom_assets/angaru_pasaule`,
   ink #17191b + orange #dd4f05 from angarupasaule.lv, its wordmark, tagline "Protan Elmark
   partneris Latvijā", website angarupasaule.lv, badge "PĒC JŪSU IZMĒRIEM", square mark; see
-  that folder's SOURCES.txt). Both are SIA "TT Konstrukcijas", so the header's company rows
+  that folder's SOURCES.txt). The header band shows its photo only in a light window between
+  logo and contacts, so a brand may set `header_box` (left, top, width of the photo) to put the
+  photo's subject there; without one the photo is cut from the centre (Tavai Terasei). Both are SIA "TT Konstrukcijas", so the header's company rows
   (name, VAT, reg. no., phone) always come from the account. A brand lives on the preset
   (`offer_presets.brand`, select on the preset form, kept by duplicate) and travels into
   `offer_meta.brand` (hidden `offer_brand`); a meta without one renders as Tavai Terasei,

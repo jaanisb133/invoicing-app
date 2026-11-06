@@ -68,6 +68,9 @@ BRANDS = {
         "accent_ink": "#b23f04", "accent_soft": "#f6dccb", "accent_line": "#efc3a6",
         "logo_w_mm": 64, "tagline": "Protan Elmark partneris Latvijā", "website": "angarupasaule.lv",
         "overlay": (17, 18, 20),
+        # the canopy corner (roof edge, drainpipe, column, both PVC walls) in the band's
+        # light window; a centred cut showed only plain fabric
+        "header_box": (0.0, 0.0, 0.78),
         "badge": "PĒC JŪSU IZMĒRIEM", "monogram": None,
     },
 }
@@ -433,7 +436,14 @@ def _header_bg_reader(brand):
     img = PILImage.open(photo).convert("RGB")
     target = bw_pt / bh_pt
     w, h = img.size
-    if w / h > target:                      # cover, center-center
+    box = brand.get("header_box")
+    if box:                                 # the brand's own cut: (left, top, width) of the photo
+        left, top_, width = box
+        nw = int(w * width)
+        nh = int(nw / target)
+        x0, y0 = int(w * left), int(h * top_)
+        img = img.crop((x0, y0, x0 + nw, y0 + nh))
+    elif w / h > target:                    # cover, center-center
         nw = int(h * target)
         x0 = (w - nw) // 2
         img = img.crop((x0, 0, x0 + nw, h))
