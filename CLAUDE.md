@@ -376,11 +376,19 @@ conditions strip, photo row). Architecture is three layers:
 - **Brands** (2026-11-06): one layout, several of the client's brands. `pdf_branded.BRANDS`:
   `tavai_terasei` (assets `custom_assets/tt`, black + gold, "PREMIUM RISINĀJUMS", "TT" mark;
   tagline and website from settings) and `angaru_pasaule` (`custom_assets/angaru_pasaule`,
-  ink #17191b + orange #dd4f05 from angarupasaule.lv, its wordmark, tagline "Protan Elmark
-  partneris Latvijā", website angarupasaule.lv, badge "PĒC JŪSU IZMĒRIEM", square mark; see
-  that folder's SOURCES.txt). The header band shows its photo only in a light window between
-  logo and contacts, so a brand may set `header_box` (left, top, width of the photo) to put the
-  photo's subject there; without one the photo is cut from the centre (Tavai Terasei). Both are SIA "TT Konstrukcijas", so the header's company rows
+  **light**: sky-blue bands #d6e5f5 where Tavai Terasei is black (Renārs asked for it to look
+  quite different), dark wordmark `logo_dark.png`, cool pale boxes, orange #dd4f05 + ink
+  #17191b from angarupasaule.lv, tagline "Protan Elmark partneris Latvijā", website
+  angarupasaule.lv, badge "PĒC JŪSU IZMĒRIEM", square mark; see that folder's SOURCES.txt).
+  Every colour the layout draws comes from the brand's `theme` merged over `THEME` (Tavai
+  Terasei's original values): `band` and the `on_band*` / `chip_*` / `tagline` colours on it,
+  `on_accent` (icons on the accent segments), `cream` / `paper` / `border` / `text` / `muted`
+  and friends; a light band needs dark `on_*` and a dark `logo`. The header band shows its
+  photo only in a window between logo and contacts (`overlay` colour, `overlay_stops`): a
+  brand may cut the photo with `header_box` (left, top, width) or fit it whole with
+  `header_fit` (centre x, zoom) on a band of the overlay colour, which a light band needs to
+  show a whole hangar (the Talsi one, the owner's pick); without either it is cut from the
+  centre (Tavai Terasei). Both are SIA "TT Konstrukcijas", so the header's company rows
   (name, VAT, reg. no., phone) always come from the account. A brand lives on the preset
   (`offer_presets.brand`, select on the preset form, kept by duplicate) and travels into
   `offer_meta.brand` (hidden `offer_brand`); a meta without one renders as Tavai Terasei,

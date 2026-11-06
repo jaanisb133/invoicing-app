@@ -2,16 +2,18 @@ Angāru Pasaule brand for the branded tāme (pdf_branded.BRANDS["angaru_pasaule"
 Angāru Pasaule is a brand of SIA "TT Konstrukcijas" (the client); everything here comes
 from its own site, angarupasaule.lv, fetched 2026-11-06.
 
-logo_white.png   The site header's wordmark redrawn at 8x: an accent square (#dd4f05,
-                 12 px), a 10 px gap and "Angāru Pasaule" in Archivo (OFL) bold, 18 px,
-                 tracking -0.025em, white for the dark tāme header. Built from the site's
-                 own Archivo subsets (archivo-latin / latin-ext woff2).
-header.jpg       pvc-siena-nojumei (/pvc-produkti/; the owner's pick, 2026-11-06): beige
-                 PVC walls closing a canopy. The template cuts it with the brand's
-                 header_box (top-left 78 %) so the band's light window shows the corner.
-pvc_*.jpg        Default photo strip of the "PVC izstrādājumi" preset, from /pvc-produkti/:
-                 pvc-aizkars-darbnica, pvc-siena-razotne-sturis, pvc-sloksnu-aizkars-noliktava,
-                 pvc-siena-autoserviss, pvc-sienas-lauku-nojumei (not the header's photo,
-                 so an offer doesn't show it twice). The client replaces them
-                 with his own in Tāmju veidnes.
-Colours          --color-accent #dd4f05 and --color-ink #17191b from the site's CSS.
+Look            Light (Renārs, 2026-11-06: a light blue instead of black, "lai liekas
+                galīgi savādāk" from Tavai Terasei): sky-blue bands (#d6e5f5), dark
+                wordmark, cool pale boxes, the site's orange accent (#dd4f05) and ink
+                (#17191b, both from its CSS); the deeper orange #b23f04 carries small text.
+logo_dark.png   The site header's wordmark redrawn at 8x: an accent square (#dd4f05,
+                12 px), a 10 px gap and "Angāru Pasaule" in Archivo (OFL) bold, 18 px,
+                tracking -0.025em, in ink. Built from the site's own Archivo subsets
+                (archivo-latin / latin-ext woff2). logo_white.png is the same in white,
+                for a dark band.
+header.jpg      talsi-angars-varti-un-durvis (/projekti/talsi/, 1600 px; the owner's pick):
+                fitted whole into the band (header_fit) and faded into the blue at its edges.
+pvc_*.jpg       Default photo strip of the "PVC izstrādājumi" preset, from /pvc-produkti/:
+                pvc-aizkars-darbnica, pvc-siena-razotne-sturis, pvc-sloksnu-aizkars-noliktava,
+                pvc-siena-autoserviss, pvc-sienas-lauku-nojumei. The client replaces them
+                with his own in Tāmju veidnes.

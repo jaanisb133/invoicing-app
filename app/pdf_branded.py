@@ -35,13 +35,25 @@ PAGE_W, PAGE_H = A4
 M = 11 * mm                     # side margin
 BOTTOM = 8 * mm                # content floor before a page break
 
-# --- Shared palette; the near-black and the accent are each brand's (BRANDS) ---
-CREAM = colors.HexColor("#f3f0ea")
-PAPER = colors.HexColor("#faf9f7")
-BORDER = colors.HexColor("#e6e2da")
-TEXT = colors.HexColor("#1a1a1a")
-MUTED = colors.HexColor("#6e6a63")
 WHITE = colors.white
+
+# --- Theme: every colour the layout draws with. These are Tavai Terasei's (the
+# original design: dark bands, warm cream); a brand overrides what it changes.
+# "band" is the header, client card, table head, totals band and page-2 strip;
+# on_* is what sits on it. A light band needs dark on_* and a dark logo.
+THEME = {
+    "band": "#141414", "on_band": "#ffffff", "on_band_soft": "#e8e4dd",
+    "on_band_muted": "#b9b3a9", "on_band_sub": "#d5d0c8", "on_band_icon": "#8f897f",
+    "band_rule": "#3a3936", "chip_fill": "#232220", "chip_line": "#3a3a38",
+    "tagline": "#bdb6ab", "on_accent": "#141414",
+    "cream": "#f3f0ea", "paper": "#faf9f7", "border": "#e6e2da",
+    "text": "#1a1a1a", "muted": "#6e6a63", "benefit_rule": "#e2dccf",
+    "spec_icon": "#8a8a86", "dots": "#c9c4bb",
+}
+# Header photo overlay opacity across the width (0..255): solid behind the logo and
+# the contacts, open in between so the photo shows
+OVERLAY_STOPS = [(0.00, 255), (0.34, 252), (0.44, 195), (0.52, 118),
+                 (0.62, 118), (0.70, 200), (0.78, 246), (1.00, 250)]
 
 _ASSETS_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_assets")
 
@@ -55,23 +67,36 @@ _ASSETS_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_
 BRANDS = {
     "tavai_terasei": {
         "label": "Tavai Terasei", "assets": "tt",
-        "dark": "#141414", "accent": "#b08d57", "accent_light": "#c9a97c",
+        "accent": "#b08d57", "accent_light": "#c9a97c",
         "accent_ink": "#8a6f45", "accent_soft": "#e9e2d5", "accent_line": "#d9cfbc",
         "logo_w_mm": 58, "tagline": None, "website": None, "overlay": (16, 15, 14),
-        "badge": "PREMIUM RISINĀJUMS", "monogram": "TT",
+        "badge": "PREMIUM RISINĀJUMS", "monogram": "TT", "logo": "logo_white.png",
     },
     # angarupasaule.lv: accent #dd4f05 and ink #17191b from the site's CSS; the
     # wordmark is the site header's (square + Archivo bold), see SOURCES.txt
     "angaru_pasaule": {
+        # Light: a pale sky-blue band where Tavai Terasei is black (Renārs, 2026-11-06:
+        # "lai liekas galīgi savādāk"), dark wordmark, orange accent. Accent and ink are
+        # angarupasaule.lv's (#dd4f05, #17191b); on the light band the deeper orange
+        # carries small text. See custom_assets/angaru_pasaule/SOURCES.txt.
         "label": "Angāru Pasaule", "assets": "angaru_pasaule",
-        "dark": "#17191b", "accent": "#dd4f05", "accent_light": "#f47a3a",
-        "accent_ink": "#b23f04", "accent_soft": "#f6dccb", "accent_line": "#efc3a6",
+        "accent": "#dd4f05", "accent_light": "#b23f04",
+        "accent_ink": "#b23f04", "accent_soft": "#d6e5f5", "accent_line": "#bfd2e7",
         "logo_w_mm": 64, "tagline": "Protan Elmark partneris Latvijā", "website": "angarupasaule.lv",
-        "overlay": (17, 18, 20),
-        # the canopy corner (roof edge, drainpipe, column, both PVC walls) in the band's
-        # light window; a centred cut showed only plain fabric
-        "header_box": (0.0, 0.0, 0.78),
-        "badge": "PĒC JŪSU IZMĒRIEM", "monogram": None,
+        "badge": "PĒC JŪSU IZMĒRIEM", "monogram": None, "logo": "logo_dark.png",
+        # The whole Talsi hangar (the owner's pick) between the logo and the contacts, its sky fading into the band
+        "overlay": (214, 229, 245), "header_fit": (0.55, 1.2),
+        "overlay_stops": [(0.00, 252), (0.32, 250), (0.40, 150), (0.46, 10),
+                          (0.64, 10), (0.70, 120), (0.76, 246), (1.00, 250)],
+        "theme": {
+            "band": "#d6e5f5", "on_band": "#17191b", "on_band_soft": "#1d2733",
+            "on_band_muted": "#4a5d72", "on_band_sub": "#2b3846", "on_band_icon": "#617389",
+            "band_rule": "#b3c8df", "chip_fill": "#ffffff", "chip_line": "#b3c8df",
+            "tagline": "#3c4f66", "on_accent": "#ffffff",
+            "cream": "#eef4fb", "paper": "#f5f8fc", "border": "#d8e2ee",
+            "text": "#17191b", "muted": "#5b6166", "benefit_rule": "#d6e1ee",
+            "spec_icon": "#7b8794", "dots": "#c2cfdd",
+        },
     },
 }
 DEFAULT_BRAND = "tavai_terasei"
@@ -85,8 +110,9 @@ def brand_key(value):
 
 def _brand(key):
     b = dict(BRANDS[brand_key(key)])
-    for k in ("dark", "accent", "accent_light", "accent_ink", "accent_soft", "accent_line"):
+    for k in ("accent", "accent_light", "accent_ink", "accent_soft", "accent_line"):
         b[k] = colors.HexColor(b[k])
+    b["theme"] = {k: colors.HexColor(v) for k, v in {**THEME, **b.get("theme", {})}.items()}
     b["key"] = brand_key(key)
     return b
 
@@ -378,7 +404,9 @@ class _Page:
     def __init__(self, c, fonts, doc_label, brand):
         self.c = c
         self.brand = brand
-        self.dark, self.accent, self.accent_light = brand["dark"], brand["accent"], brand["accent_light"]
+        self.t = brand["theme"]
+        self.band = self.t["band"]
+        self.accent, self.accent_light = brand["accent"], brand["accent_light"]
         self.font, self.font_bold = fonts
         self.doc_label = doc_label
         self.num = 1
@@ -396,9 +424,9 @@ class _Page:
         self.num += 1
         # Slim continuation header: black band, small logo, doc reference
         band_h = 13 * mm
-        c.setFillColor(self.dark)
+        c.setFillColor(self.band)
         c.rect(0, PAGE_H - band_h, PAGE_W, band_h, stroke=0, fill=1)
-        logo = _asset(self.brand, "logo_white.png")
+        logo = _asset(self.brand, self.brand["logo"])
         if logo:
             img = ImageReader(logo)
             iw, ih = img.getSize()
@@ -425,9 +453,9 @@ HEADER_DIAG = 10 * mm                   # extra drop of the diagonal on the left
 
 def _header_bg_reader(brand):
     """Header background: the photo cover-cropped (center-center) to the full
-    band, with a horizontal dark overlay baked in — near-opaque behind the
-    logo and contact column, lighter in the middle so the photo shows
-    through, like the client's mockup."""
+    band, or cut or fitted as the brand says, with a horizontal overlay in the
+    brand's colour baked in: near-opaque behind the logo and contact column,
+    open in the middle so the photo shows through, like the client's mockup."""
     photo = _asset(brand, "header.jpg")
     if not photo:
         return None
@@ -436,8 +464,21 @@ def _header_bg_reader(brand):
     img = PILImage.open(photo).convert("RGB")
     target = bw_pt / bh_pt
     w, h = img.size
+    fit = brand.get("header_fit")
     box = brand.get("header_box")
-    if box:                                 # the brand's own cut: (left, top, width) of the photo
+    if fit:
+        # The whole photo, scaled to the band's height (times zoom) and centred at a point of
+        # the width, on a band of the overlay colour; the stops fade its edges into it. For a
+        # light band, where a cover crop would keep only a slice of the subject.
+        cx, zoom = fit
+        max_px = int(bw_pt / 72 * 96 * 2)
+        band = PILImage.new("RGB", (max_px, round(max_px / target)), brand["overlay"])
+        ph = round(band.height * zoom)
+        pw = round(img.width * ph / img.height)
+        img = img.resize((pw, ph), PILImage.LANCZOS)
+        band.paste(img, (round(band.width * cx - pw / 2), round((band.height - ph) / 2)))
+        img = band
+    elif box:                                 # the brand's own cut: (left, top, width) of the photo
         left, top_, width = box
         nw = int(w * width)
         nh = int(nw / target)
@@ -455,9 +496,7 @@ def _header_bg_reader(brand):
     if img.width > max_px:
         img = img.resize((max_px, round(img.height * max_px / img.width)),
                          PILImage.LANCZOS)
-    # Overlay opacity across the width (0..255): dark - light - dark
-    stops = [(0.00, 255), (0.34, 252), (0.44, 195), (0.52, 118),
-             (0.62, 118), (0.70, 200), (0.78, 246), (1.00, 250)]
+    stops = brand.get("overlay_stops", OVERLAY_STOPS)
 
     def alpha_at(t):
         for (t0, a0), (t1, a1) in zip(stops, stops[1:]):
@@ -489,7 +528,7 @@ def _draw_header(pg, data):
     p.lineTo(PAGE_W, PAGE_H - HEADER_H)
     p.lineTo(0, PAGE_H - HEADER_H - HEADER_DIAG)
     p.close()
-    c.setFillColor(pg.dark)
+    c.setFillColor(pg.band)
     c.drawPath(p, stroke=0, fill=1)
     # Full-bleed photo background with the overlay baked in, clipped to the
     # band so the diagonal edge cuts through the image
@@ -513,7 +552,7 @@ def _draw_header(pg, data):
            PAGE_W, PAGE_H - HEADER_H - 1.4)
 
     # Logo + tagline, left
-    logo = _asset(pg.brand, "logo_white.png")
+    logo = _asset(pg.brand, pg.brand["logo"])
     lx, lw = M + 2 * mm, pg.brand["logo_w_mm"] * mm
     if logo:
         img = ImageReader(logo)
@@ -522,13 +561,13 @@ def _draw_header(pg, data):
         c.drawImage(img, lx, PAGE_H - 9 * mm - lh, lw, lh, mask="auto")
         ty = PAGE_H - 9 * mm - lh - 4.6 * mm
     else:
-        c.setFillColor(WHITE)
+        c.setFillColor(pg.t["on_band"])
         c.setFont(pg.font_bold, 20)
         c.drawString(lx, PAGE_H - 20 * mm, settings.get("company_name", ""))
         ty = PAGE_H - 26 * mm
     tagline = (pg.brand["tagline"] or settings.get("offer_tagline", "") or "").strip()
     if tagline:
-        c.setFillColor(colors.HexColor("#bdb6ab"))
+        c.setFillColor(pg.t["tagline"])
         c.setFont(pg.font, 6.8)
         c.drawString(lx + 1 * mm, ty, " ".join(tagline.upper()))
 
@@ -548,14 +587,14 @@ def _draw_header(pg, data):
     rx = 156 * mm
     ry = PAGE_H - 7.5 * mm
     for icon, text in rows[:5]:
-        c.setStrokeColor(colors.HexColor("#3a3a38"))
+        c.setStrokeColor(pg.t["chip_line"])
         c.setLineWidth(0.7)
-        c.setFillColor(colors.HexColor("#232220"))
+        c.setFillColor(pg.t["chip_fill"])
         c.roundRect(rx, ry - 5.4 * mm, 5.4 * mm, 5.4 * mm, 1.2 * mm,
                     stroke=1, fill=1)
         _icon(c, icon, rx + 2.7 * mm, ry - 2.7 * mm, 3.1 * mm,
               color=pg.accent_light, lw=0.75)
-        c.setFillColor(colors.HexColor("#e8e4dd"))
+        c.setFillColor(pg.t["on_band_soft"])
         size = _fit_font(text, pg.font, 8.2, PAGE_W - M - (rx + 8 * mm))
         c.setFont(pg.font, size)
         c.drawString(rx + 7.6 * mm, ry - 3.8 * mm, text)
@@ -575,9 +614,9 @@ def _draw_title_block(pg, data, meta):
     card_x = PAGE_W - M - card_w
     top = pg.top()
 
-    c.setFillColor(TEXT)
+    c.setFillColor(pg.t["text"])
     c.setFont(pg.font, 8.5)
-    c.setFillColor(MUTED)
+    c.setFillColor(pg.t["muted"])
     ktext = "  ".join(kicker)          # letterspaced
     c.drawString(M, top - 3.2 * mm, ktext)
 
@@ -585,7 +624,7 @@ def _draw_title_block(pg, data, meta):
     tsize = _fit_font(title, pg.font_bold, 19, title_max * 1.9, min_size=13)
     tlines = simpleSplit(title, pg.font_bold, tsize, title_max)[:2]
     ty = top - 3.2 * mm - 8 * mm
-    c.setFillColor(TEXT)
+    c.setFillColor(pg.t["text"])
     for line in tlines:
         c.setFont(pg.font_bold, tsize)
         c.drawString(M, ty, line)
@@ -596,13 +635,13 @@ def _draw_title_block(pg, data, meta):
     c.line(M, ty + 1.5, M + 24 * mm, ty + 1.5)
     # Small doc reference: number + date (the mockup omits it; a real
     # piedāvājums should not)
-    c.setFillColor(MUTED)
+    c.setFillColor(pg.t["muted"])
     c.setFont(pg.font, 8)
     c.drawString(M + 28 * mm, ty + 0.4, f"Nr. {doc['doc_number']}  ·  {data['display_date']}")
 
     # Client card
     card_y = top - card_h
-    c.setFillColor(pg.dark)
+    c.setFillColor(pg.band)
     c.roundRect(card_x, card_y, card_w, card_h, 2.6 * mm, stroke=0, fill=1)
     circ_x = card_x + 9.5 * mm
     circ_y = card_y + card_h / 2
@@ -613,11 +652,11 @@ def _draw_title_block(pg, data, meta):
     name = (data["buyer"]["name"] or "").strip() or "—"
     text_x = card_x + 18.5 * mm
     text_max = card_x + card_w - text_x - 3 * mm
-    c.setFillColor(colors.HexColor("#b9b3a9"))
+    c.setFillColor(pg.t["on_band_muted"])
     c.setFont(pg.font, 7.6)
     c.drawString(text_x, circ_y + 2.4 * mm, "K L I E N T S")
     nsize = _fit_font(name, pg.font_bold, 14.5, text_max, min_size=8)
-    c.setFillColor(WHITE)
+    c.setFillColor(pg.t["on_band"])
     c.setFont(pg.font_bold, nsize)
     c.drawString(text_x, circ_y - 4.2 * mm, _ellipsize(name, pg.font_bold, nsize, text_max))
 
@@ -691,7 +730,7 @@ def _draw_boxes(pg, meta):
     if spec_rows:
         x = M
         c.setFillColor(colors.white)
-        c.setStrokeColor(BORDER)
+        c.setStrokeColor(pg.t["border"])
         c.setLineWidth(0.9)
         c.roundRect(x, top - box_h, box_w, box_h, 3 * mm, stroke=1, fill=1)
         _box_heading(pg, x + pad, top - pad * 0.5, "Tehniskā specifikācija", "ruler")
@@ -699,8 +738,8 @@ def _draw_boxes(pg, meta):
         for i, (lines, value, h) in enumerate(spec_rows):
             cy = ry - h / 2
             _icon(c, _spec_icon(lines[0]), x + pad + 2.2 * mm, cy, 4.4 * mm,
-                  color=colors.HexColor("#8a8a86"), lw=0.85)
-            c.setFillColor(TEXT)
+                  color=pg.t["spec_icon"], lw=0.85)
+            c.setFillColor(pg.t["text"])
             c.setFont(pg.font, 9.5)
             ly = cy + (len(lines) - 1) * 2.1 * mm - 1.2 * mm
             for line in lines:
@@ -710,14 +749,14 @@ def _draw_boxes(pg, meta):
                 c.setFont(pg.font_bold, 9.5)
                 c.drawRightString(x + box_w - pad, cy - 1.2 * mm, value)
             if i < len(spec_rows) - 1:
-                c.setStrokeColor(BORDER)
+                c.setStrokeColor(pg.t["border"])
                 c.setLineWidth(0.6)
                 c.line(x + pad, ry - h, x + box_w - pad, ry - h)
             ry -= h
 
     if ben_rows:
         x = M + box_w + gap
-        c.setFillColor(CREAM)
+        c.setFillColor(pg.t["cream"])
         c.roundRect(x, top - box_h, box_w, box_h, 3 * mm, stroke=0, fill=1)
         # Subtle gold corner accent (folded-corner triangle, top right)
         p = c.beginPath()
@@ -739,18 +778,18 @@ def _draw_boxes(pg, meta):
             _icon(c, _benefit_icon(title), circ_x, cy, 4.6 * mm, color=pg.accent, lw=0.85)
             tx = x + pad + 11 * mm
             ly = ry - 5.4 * mm
-            c.setFillColor(TEXT)
+            c.setFillColor(pg.t["text"])
             c.setFont(pg.font_bold, 9.8)
             for line in tlines:
                 c.drawString(tx, ly, line)
                 ly -= 4.4 * mm
-            c.setFillColor(MUTED)
+            c.setFillColor(pg.t["muted"])
             c.setFont(pg.font, 8.2)
             for line in xlines:
                 c.drawString(tx, ly, line)
                 ly -= 3.7 * mm
             if i < len(ben_rows) - 1:
-                c.setStrokeColor(colors.HexColor("#e2dccf"))
+                c.setStrokeColor(pg.t["benefit_rule"])
                 c.setLineWidth(0.6)
                 c.line(x + pad, ry - h, x + box_w - pad, ry - h)
             ry -= h
@@ -783,7 +822,7 @@ def _draw_items_table(pg, data):
 
     def table_header():
         top = pg.top()
-        c.setFillColor(pg.dark)
+        c.setFillColor(pg.band)
         c.roundRect(M, top - head_h, W, head_h, 2 * mm, stroke=0, fill=1)
         # Accent diagonal-cut square with the cart icon
         p = c.beginPath()
@@ -799,12 +838,12 @@ def _draw_items_table(pg, data):
         c.setFillColor(pg.accent)
         c.drawPath(p, stroke=0, fill=1)
         c.restoreState()
-        _icon(c, "cart", M + 6 * mm, top - head_h / 2, 5.2 * mm, color=pg.dark, lw=1.0)
-        c.setFillColor(WHITE)
+        _icon(c, "cart", M + 6 * mm, top - head_h / 2, 5.2 * mm, color=pg.t["on_accent"], lw=1.0)
+        c.setFillColor(pg.t["on_band"])
         c.setFont(pg.font_bold, 9.5)
         c.drawString(M + 17 * mm, top - head_h / 2 - 1.6 * mm,
                      "PRODUKTI UN PAKALPOJUMI")
-        c.setFillColor(colors.HexColor("#b9b3a9"))
+        c.setFillColor(pg.t["on_band_muted"])
         c.setFont(pg.font, 8)
         c.drawRightString(col_qty, top - head_h / 2 - 1.4 * mm, "DAUDZUMS")
         c.drawRightString(col_price, top - head_h / 2 - 1.4 * mm, "CENA")
@@ -823,7 +862,7 @@ def _draw_items_table(pg, data):
             table_header()
         top = pg.top()
         cy = top - row_h / 2
-        c.setFillColor(TEXT)
+        c.setFillColor(pg.t["text"])
         c.setFont(pg.font, 9.8)
         ly = cy + (len(lines) - 1) * 2.3 * mm - 1.4 * mm
         for line in lines:
@@ -834,11 +873,11 @@ def _draw_items_table(pg, data):
         c.drawRightString(col_qty, cy - 1.4 * mm,
                           f"{_qty(item['quantity'])} {item['unit']}")
         if included:
-            c.setFillColor(MUTED)
+            c.setFillColor(pg.t["muted"])
             c.setFont(pg.font, 8.6)
             c.drawRightString(col_total, cy - 1.4 * mm, "Iekļauts cenā")
         else:
-            c.setFillColor(TEXT)
+            c.setFillColor(pg.t["text"])
             c.setFont(pg.font, 9.3)
             c.drawRightString(col_price, cy - 1.4 * mm,
                               _eur(item["price_per_unit"]))
@@ -846,7 +885,7 @@ def _draw_items_table(pg, data):
             c.drawRightString(col_total, cy - 1.4 * mm,
                               _eur(item["line_amount"]))
         if idx < len(items) - 1:
-            c.setStrokeColor(BORDER)
+            c.setStrokeColor(pg.t["border"])
             c.setLineWidth(0.6)
             c.line(M + 2 * mm, top - row_h, M + W - 2 * mm, top - row_h)
         pg.y += row_h
@@ -860,7 +899,7 @@ def _draw_totals(pg, data):
     top = pg.top()
     W = PAGE_W - 2 * M
 
-    c.setFillColor(pg.dark)
+    c.setFillColor(pg.band)
     c.roundRect(M, top - band_h, W, band_h, 2.6 * mm, stroke=0, fill=1)
     # Accent diagonal segment on the left with the calculator icon
     c.saveState()
@@ -876,38 +915,38 @@ def _draw_totals(pg, data):
     c.setFillColor(pg.accent)
     c.drawPath(p, stroke=0, fill=1)
     c.restoreState()
-    c.setStrokeColor(pg.dark)
+    c.setStrokeColor(pg.t["on_accent"])
     c.setLineWidth(1.0)
     c.roundRect(M + 5.5 * mm, top - band_h / 2 - 5.5 * mm, 11 * mm, 11 * mm,
                 1.6 * mm, stroke=1, fill=0)
-    _icon(c, "calc", M + 11 * mm, top - band_h / 2, 7 * mm, color=pg.dark, lw=1.0)
+    _icon(c, "calc", M + 11 * mm, top - band_h / 2, 7 * mm, color=pg.t["on_accent"], lw=1.0)
 
     tx_label = M + 38 * mm
     tx_val = M + W - 6 * mm
     show_vat = data["is_vat_payer"] and not data["reverse_charge"]
     if show_vat:
-        c.setFillColor(colors.HexColor("#d5d0c8"))
+        c.setFillColor(pg.t["on_band_sub"])
         c.setFont(pg.font, 9.3)
         _icon(c, "doc", tx_label - 4.5 * mm, top - 6.2 * mm, 3.4 * mm,
-              color=colors.HexColor("#8f897f"), lw=0.75)
+              color=pg.t["on_band_icon"], lw=0.75)
         c.drawString(tx_label, top - 7.4 * mm, "Kopējā summa")
         c.drawRightString(tx_val, top - 7.4 * mm, _eur(data["subtotal"]))
         _icon(c, "percent", tx_label - 4.5 * mm, top - 11.6 * mm, 3.4 * mm,
-              color=colors.HexColor("#8f897f"), lw=0.75)
+              color=pg.t["on_band_icon"], lw=0.75)
         c.drawString(tx_label, top - 12.8 * mm, f"PVN {data['vat_rate']:.0f}%")
         c.drawRightString(tx_val, top - 12.8 * mm, _eur(data["vat_amount"]))
-        c.setStrokeColor(colors.HexColor("#3a3936"))
+        c.setStrokeColor(pg.t["band_rule"])
         c.setLineWidth(0.7)
         c.line(tx_label - 8 * mm, top - 15.6 * mm, tx_val, top - 15.6 * mm)
         gy = top - 19.6 * mm
     else:
         if data["reverse_charge"]:
-            c.setFillColor(colors.HexColor("#d5d0c8"))
+            c.setFillColor(pg.t["on_band_sub"])
             c.setFont(pg.font, 8.2)
             c.drawString(tx_label, top - 8 * mm,
                          "Nodokļa apgrieztā maksāšana (PVN likuma 142. pants)")
         gy = top - band_h / 2 - 2.4 * mm
-    c.setFillColor(WHITE)
+    c.setFillColor(pg.t["on_band"])
     c.setFont(pg.font_bold, 12.5)
     c.drawString(tx_label, gy, "Kopējā summa" + (" -" if show_vat else ""))
     c.setFillColor(pg.accent_light)
@@ -935,8 +974,8 @@ def _draw_conditions(pg, meta, data):
     pg.ensure(box_h + 3 * mm)
     top = pg.top()
 
-    c.setFillColor(PAPER)
-    c.setStrokeColor(BORDER)
+    c.setFillColor(pg.t["paper"])
+    c.setStrokeColor(pg.t["border"])
     c.setLineWidth(0.9)
     c.roundRect(M, top - box_h, W, box_h, 2.6 * mm, stroke=1, fill=1)
     circ_x = M + 8.5 * mm
@@ -950,7 +989,7 @@ def _draw_conditions(pg, meta, data):
     c.setFont(pg.font_bold, 8.6)
     c.drawString(M + 16 * mm, top - 6.4 * mm, "P A P I L D U S   N O S A C Ī J U M I")
     ly = top - 11 * mm
-    c.setFillColor(TEXT)
+    c.setFillColor(pg.t["text"])
     c.setFont(pg.font, 9)
     for line in lines:
         c.drawString(M + 16 * mm, ly, line)
@@ -996,14 +1035,14 @@ def _draw_photos(pg, meta):
     top = pg.top()
 
     # Label row: camera chip + FOTO PIEMĒRI + dotted rule
-    c.setFillColor(pg.dark)
+    c.setFillColor(pg.band)
     c.roundRect(M, top - 5.6 * mm, 5.6 * mm, 5.6 * mm, 1.2 * mm, stroke=0, fill=1)
-    _icon(c, "camera", M + 2.8 * mm, top - 2.8 * mm, 3.4 * mm, color=WHITE, lw=0.75)
-    c.setFillColor(TEXT)
+    _icon(c, "camera", M + 2.8 * mm, top - 2.8 * mm, 3.4 * mm, color=pg.t["on_band"], lw=0.75)
+    c.setFillColor(pg.t["text"])
     c.setFont(pg.font_bold, 9.5)
     c.drawString(M + 8 * mm, top - 4.2 * mm, "FOTO PIEMĒRI:")
     lbl_w = stringWidth("FOTO PIEMĒRI:", pg.font_bold, 9.5)
-    c.setStrokeColor(colors.HexColor("#c9c4bb"))
+    c.setStrokeColor(pg.t["dots"])
     c.setLineWidth(0.8)
     c.setDash(1, 2.4)
     c.line(M + 11 * mm + lbl_w, top - 3 * mm, M + W, top - 3 * mm)
