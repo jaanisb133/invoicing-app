@@ -361,6 +361,7 @@
                     <div class="card-body">
                         <input type="hidden" name="offer_branded" id="offerBranded" value="0">
                         <input type="hidden" name="offer_preset_id" id="offerPresetId" value="">
+                        <input type="hidden" name="offer_brand" id="offerBrand" value="">
                         <div class="form-group">
                             <label for="offerPresetSelect">Veidne</label>
                             <select id="offerPresetSelect" class="form-control" onchange="applyOfferPreset(this.value)">
@@ -470,7 +471,7 @@
                         <span class="sr-only" id="previewTemplateLabel"></span>
                         {% if doc_type == 'offer' and branded_offers %}
                         <div id="brandedPreviewCard" style="display:none">
-                            <img src="/static/img/tame_sample.jpg?v={{ css_version }}" alt="Tāmes dizaina paraugs"
+                            <img id="brandedSample" src="/static/img/tame_sample.jpg?v={{ css_version }}" alt="Tāmes dizaina paraugs"
                                  style="width:100%;border:1px solid var(--border);border-radius:6px">
                             <p class="field-hint">Tāme tiks noformēta firmas dizainā. Precīzs PDF būs redzams pēc saglabāšanas.</p>
                         </div>
@@ -1496,7 +1497,13 @@ if (!document.getElementById('clientSelect').value && !editMode && matchMedia('(
         box.innerHTML = '';
         (rows || []).forEach(r => box.insertAdjacentHTML('beforeend', build(r)));
     }
+    // Each brand's look, as a picture of its first page
+    const brandSamples = { tavai_terasei: '/static/img/tame_sample.jpg', angaru_pasaule: '/static/img/tame_sample_angaru_pasaule.jpg' };
     function fillFields(meta) {
+        const brand = brandSamples[meta.brand] ? meta.brand : 'tavai_terasei';
+        document.getElementById('offerBrand').value = brand;
+        const sample = document.getElementById('brandedSample');
+        if (sample) sample.src = brandSamples[brand] + '?v={{ css_version }}';
         document.getElementById('offerTitle').value = meta.title || '';
         document.getElementById('offerConditions').value = meta.conditions || '';
         fillRows('offerSpecRows', meta.specs, specRow);

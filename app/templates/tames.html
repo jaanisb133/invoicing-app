@@ -28,6 +28,7 @@
             </a>
             <div class="tame-card-body">
                 <div class="tame-card-name">{{ p.name }}</div>
+                <div class="tame-card-meta">{{ brands.get(p.brand, brands['tavai_terasei']) }}</div>
                 <div class="tame-card-meta">{{ p.title or '—' }}</div>
                 <div class="tame-card-meta" style="margin-top:2px">
                     {{ p.specs | length }} specifikācijas · {{ p.benefits | length }} priekšrocības · {{ p.photos | length }} foto

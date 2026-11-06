@@ -451,6 +451,11 @@ def _run_migrations():
     if "buyer_reference" not in client_cols:
         # The client's usual reference, copied onto new invoices for them
         cursor.execute("ALTER TABLE clients ADD COLUMN buyer_reference TEXT NOT NULL DEFAULT ''")
+    preset_cols = {row[1] for row in cursor.execute("PRAGMA table_info(offer_presets)").fetchall()}
+    if "brand" not in preset_cols:
+        # Which of the client's brands the tāme carries (pdf_branded.BRANDS);
+        # every preset made before brands existed was Tavai Terasei
+        cursor.execute("ALTER TABLE offer_presets ADD COLUMN brand TEXT NOT NULL DEFAULT 'tavai_terasei'")
 
     conn.commit()
     conn.close()
@@ -875,14 +880,14 @@ def get_offer_preset(user_id, preset_id):
 
 
 def create_offer_preset(user_id, name, title="", specs=None, benefits=None,
-                        conditions="", photos=None):
+                        conditions="", photos=None, brand="tavai_terasei"):
     conn = get_connection()
     cursor = conn.execute(
-        """INSERT INTO offer_presets (user_id, name, title, specs_json, benefits_json, conditions, photos_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO offer_presets (user_id, name, title, specs_json, benefits_json, conditions, photos_json, brand)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (user_id, name, title, json.dumps(specs or [], ensure_ascii=False),
          json.dumps(benefits or [], ensure_ascii=False), conditions,
-         json.dumps(photos or [], ensure_ascii=False))
+         json.dumps(photos or [], ensure_ascii=False), brand)
     )
     conn.commit()
     preset_id = cursor.lastrowid
@@ -891,8 +896,11 @@ def create_offer_preset(user_id, name, title="", specs=None, benefits=None,
 
 
 def update_offer_preset(user_id, preset_id, name, title, specs, benefits,
-                        conditions, photos=None):
+                        conditions, photos=None, brand=None):
     conn = get_connection()
+    if brand is not None:
+        conn.execute("UPDATE offer_presets SET brand = ? WHERE id = ? AND user_id = ?",
+                     (brand, preset_id, user_id))
     if photos is None:
         conn.execute(
             """UPDATE offer_presets SET name = ?, title = ?, specs_json = ?,
@@ -937,7 +945,7 @@ def duplicate_offer_preset(user_id, preset_id):
         return None
     return create_offer_preset(
         user_id, f"{src['name']} (kopija)", src["title"], src["specs"],
-        src["benefits"], src["conditions"], src["photos"]
+        src["benefits"], src["conditions"], src["photos"], src.get("brand") or "tavai_terasei"
     )
 
 
