@@ -3,8 +3,10 @@
    Used by the editor's live preview and the document page; change both together.
 
    vrPaper.render(el, d)  d = {
-     template: 'classic' | 'modern' | 'minimal', kind: 'sell' | 'credit' | 'buy' | 'offer',
+     template: 'classic' | 'modern' | 'minimal', kind: 'sell' | 'credit' | 'buy' | 'offer' | 'advance',
      title, number, date, due,                       (dates already dd.mm.yyyy)
+     received,                                       (an advance invoice: the day the advance arrived, or '')
+     advances: [{ number, date, total, vat }],       (a final invoice: the advances it deducts)
      ref,                                            ("Kredītrēķins rēķinam Nr. … no …" or '')
      supplier, buyer: { name, reg, vat, addr, bank, account, person, ref },
      items: [{ name, unit, qty, price, included, amount }],   (amount: the stored line total, if known)
@@ -53,7 +55,16 @@
         return window.vrLine ? vrLine(it.qty, it.price) : it.qty * it.price;
     };
     var amountLabel = function (kind) {
-        return kind === 'sell' ? 'Apmaksai' : kind === 'credit' ? 'Kreditētā summa' : 'Kopā';
+        return kind === 'sell' || kind === 'advance' ? 'Apmaksai' : kind === 'credit' ? 'Kreditētā summa' : 'Kopā';
+    };
+    // What is left to pay once the advances are deducted (pdf_generator.document_amounts)
+    var dueAmount = function (d) {
+        var prepaid = (d.advances || []).reduce(function (s, a) { return s + Number(a.total || 0); }, 0);
+        var v = Number(d.total || 0) - prepaid;
+        return window.vrRound2 ? vrRound2(v) : Math.round(v * 100) / 100;
+    };
+    var advanceLabel = function (a) {
+        return 'Avanss Nr. ' + a.number + ' no ' + a.date + (Number(a.vat) ? ', t. sk. PVN ' + money(a.vat) : '');
     };
 
     function identity(d) {
@@ -72,15 +83,17 @@
     }
     function metaRows(d) {
         var rows = [['Numurs', esc(d.number)], ['Datums', esc(d.date || '—')]];
+        if (d.received) rows.push(['Samaksāts', esc(d.received)]);
         if (d.due) rows.push(['Apmaksāt līdz', esc(d.due)]);
         return rows;
     }
 
     function head(d) {
         if (d.template === 'modern') {
-            var cells = [[amountLabel(d.kind), money(d.total)]];
+            var cells = [[amountLabel(d.kind), money(dueAmount(d))]];
             if (d.due) cells.push(['Apmaksāt līdz', esc(d.due)]);
             cells.push(['Datums', esc(d.date || '—')]);
+            if (d.received) cells.push(['Samaksāts', esc(d.received)]);
             var light = isLight(d.accent);
             return '<div class="pp-top"><div>' + identity(d) + '</div><div class="pp-title">' + esc(d.title) +
                 '<small>Nr. ' + esc(d.number) + '</small></div></div>' +
@@ -131,7 +144,7 @@
 
     function payment(d) {
         var s = d.supplier;
-        if (d.kind !== 'sell' || !s.account) return '';
+        if ((d.kind !== 'sell' && d.kind !== 'advance') || !s.account) return '';
         var rows = [];
         if (s.bank) rows.push(['Banka', eq(s.bank)]);
         rows.push(['Konts', esc(iban(s.account))]);
@@ -140,18 +153,25 @@
         return '<div class="pp-pay">' + label('Maksājuma informācija') + kv(rows) + '</div>';
     }
     function totals(d) {
-        var html = '';
+        var html = '', rows = [];
         if (d.vatPayer) {
-            var rows = d.reverseCharge
+            rows = d.reverseCharge
                 ? [['Summa bez PVN', money(d.subtotal)], ['Nodokļa apgrieztā maksāšana', '—']]
                 : [['Summa bez PVN', money(d.subtotal)], ['PVN ' + qty(d.vatRate) + ' %', money(d.vat)]];
             if (Number(d.rounding)) rows.push(['Noapaļošana', money(d.rounding)]);
+        }
+        if ((d.advances || []).length) {
+            // The whole supply, each advance paid for it, then what is left to pay
+            rows.push([d.vatPayer ? 'Kopā ar PVN' : 'Kopā', money(d.total)]);
+            d.advances.forEach(function (a) { rows.push([advanceLabel(a), '\u2212' + money(a.total)]); });
+        }
+        if (rows.length) {
             html += '<table class="pp-sums">' + rows.map(function (r) {
                 return '<tr><td>' + esc(r[0]) + '</td><td class="r">' + r[1] + '</td></tr>';
             }).join('') + '</table><div class="pp-sumrule"></div>';
         }
         return '<div class="pp-totals">' + html + '<div class="pp-amount"><span>' + amountLabel(d.kind) +
-            '</span><b>' + money(d.total) + '</b></div></div>';
+            '</span><b>' + money(dueAmount(d)) + '</b></div></div>';
     }
     function tail(d) {
         var out = '<div class="pp-summary">' + (payment(d) || '<div></div>') + totals(d) + '</div>';

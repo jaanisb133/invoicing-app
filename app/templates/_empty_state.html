@@ -11,7 +11,7 @@
          cta_label="Jauns dokuments") }}
 
   icon: document | client | product | offer | search | recurring | mail | box
-  Pass cta_href="" to render without a button.
+  Pass cta_href="" to render without a button; alt_href + alt_label add a second, outlined one.
 #}
 
 {% macro _icon(name) -%}
@@ -34,7 +34,7 @@
 {%- endif -%}
 {%- endmacro %}
 
-{% macro empty_state(icon="document", title="", text="", cta_href="", cta_label="", cta_onclick="") %}
+{% macro empty_state(icon="document", title="", text="", cta_href="", cta_label="", cta_onclick="", alt_href="", alt_label="") %}
 <div class="empty-state-rich">
     <div class="empty-state-mark">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -49,6 +49,7 @@
         {% else %}
         <a href="{{ cta_href }}" class="btn btn-primary btn-sm">{{ cta_label }}</a>
         {% endif %}
+        {% if alt_label %}<a href="{{ alt_href }}" class="btn btn-outline btn-sm">{{ alt_label }}</a>{% endif %}
     </div>
     {% endif %}
 </div>

@@ -346,6 +346,11 @@ img { display: block; max-width: 100%; }
 .ev-cols { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .ev-cols span { padding: 4px 10px; border-radius: 4px; background: var(--ground); font-size: 13px; }
 .ev-file { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 13px; }
+.ev-sum .ev-line { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.ev-sum .ev-line span:first-child { color: var(--muted); min-width: 0; }
+.ev-sum .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ev-sum .total { margin-top: 6px; padding-top: 9px; border-top: 1px solid var(--rule); font-weight: 600; }
+.ev-sum .total span:first-child { color: var(--text); }
 
 /* ------------------------------------------------------------ pricing (two fields) */
 .price { padding-top: var(--gap); }

@@ -11,15 +11,23 @@
     {% set form_title = "Jauns iegādes dokuments" %}
 {% elif doc_type == 'offer' %}
     {% set form_title = "Jauns piedāvājums" %}
+{% elif doc_type == 'advance' %}
+    {% set form_title = "Jauns avansa rēķins" %}
+{% elif from_advance %}
+    {% set form_title = "Gala rēķins" %}
 {% else %}
     {% set form_title = "Jauns rēķins" %}
 {% endif %}
 {% set is_vat_payer = settings.get('is_vat_payer', '1') == '1' %}
-{% set submit_label = "Saglabāt izmaiņas" if edit_mode else ("Izveidot piedāvājumu" if doc_type == 'offer' else ("Saglabāt dokumentu" if doc_type == 'buy' else ("Izrakstīt kredītrēķinu" if is_credit else ("Izrakstīt koriģējošo rēķinu" if ref_doc else "Izveidot rēķinu")))) %}
+{% set submit_label = "Saglabāt izmaiņas" if edit_mode else ("Izveidot piedāvājumu" if doc_type == 'offer' else ("Saglabāt dokumentu" if doc_type == 'buy' else ("Izrakstīt kredītrēķinu" if is_credit else ("Izrakstīt koriģējošo rēķinu" if ref_doc else ("Izrakstīt avansa rēķinu" if doc_type == 'advance' else "Izveidot rēķinu"))))) %}
+{# A final sales invoice can deduct paid advances (open_advances: every client's free ones) #}
+{% set can_deduct = doc_type == 'sell' and not ref_doc %}
 {% if edit_mode %}
     {% set cancel_href = "/documents/" ~ doc.id %}
 {% elif ref_doc %}
     {% set cancel_href = "/documents/" ~ ref_doc.id %}
+{% elif from_advance %}
+    {% set cancel_href = "/documents/" ~ from_advance.id %}
 {% elif from_offer %}
     {% set cancel_href = "/documents/" ~ from_offer %}
 {% elif doc_type == 'offer' %}
@@ -135,6 +143,19 @@
 .totals dd { text-align: right; padding-left: 32px; }
 .totals .grand { font-size: 20px; line-height: 28px; font-weight: 700; color: var(--text); padding-top: 8px; border-top: 1px solid var(--border); }
 .totals dt.grand { font-size: 15px; font-weight: 600; }
+/* With advances deducted the whole supply is a plain row and "Apmaksai" is the figure */
+.totals.has-prepaid #totalLabel, .totals.has-prepaid #totalDisplay { font-size: 14px; line-height: 20px; font-weight: 500; }
+.totals #prepaidDisplay { color: var(--text); }
+.adv-list { display: grid; gap: 0; }
+.adv-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--rule); cursor: pointer; }
+.adv-row:first-child { border-top: 0; padding-top: 2px; }
+.adv-row input { flex: none; width: 16px; height: 16px; margin: 0; }
+.adv-row .adv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 14px; }
+.adv-row .adv-body b { font-weight: 500; }
+.adv-row .adv-body span { font-size: 12px; color: var(--muted); }
+.adv-row .adv-amt { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 14px; }
+.adv-row.is-off { cursor: default; }
+.adv-row.is-off .adv-body b, .adv-row.is-off .adv-amt { color: var(--muted); }
 
 /* Rail: preview + total + the one primary action */
 .rail-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; }
@@ -222,14 +243,16 @@
         <div class="page-sub">
             {% if edit_mode %}{{ doc_type_name }} no {{ doc.doc_date[8:10] }}.{{ doc.doc_date[5:7] }}.{{ doc.doc_date[:4] }}
             {% elif doc_type == 'offer' %}Numurs tiks piešķirts, saglabājot. Piedāvājums neietekmē apgrozījumu.
+            {% elif doc_type == 'advance' %}Sava numerācija (AV-…). Avanss neietekmē apgrozījumu: to ieskaita gala rēķinā.
             {% else %}Numurs tiks piešķirts, saglabājot.{% endif %}
         </div>
     </div>
     <div class="btn-group">
-        {% if not edit_mode and not from_offer and not ref_doc and doc_type != 'offer' and stock_enabled %}
+        {% if not edit_mode and not from_offer and not from_advance and not ref_doc and doc_type != 'offer' %}
         <div class="segmented" role="group" aria-label="Dokumenta veids">
-            <a href="/documents/new?doc_type=sell" class="{% if doc_type == 'sell' %}on{% endif %}">Pārdošana</a>
-            <a href="/documents/new?doc_type=buy" class="{% if doc_type == 'buy' %}on{% endif %}">Iegāde</a>
+            <a href="/documents/new?doc_type=sell" class="{% if doc_type == 'sell' %}on{% endif %}">Rēķins</a>
+            <a href="/documents/new?doc_type=advance" class="{% if doc_type == 'advance' %}on{% endif %}">Avansa rēķins</a>
+            {% if stock_enabled %}<a href="/documents/new?doc_type=buy" class="{% if doc_type == 'buy' %}on{% endif %}">Iegāde</a>{% endif %}
         </div>
         {% endif %}
         <a href="{{ cancel_href }}" class="btn btn-ghost hide-mobile">Atcelt</a>
@@ -242,7 +265,17 @@
     {% if err %}
     <div class="alert alert-danger">{% if err == 'no_items' %}Pievienojiet vismaz vienu rindu ar nosaukumu.{% else %}{{ err }}{% endif %}</div>
     {% endif %}
-    {% if from_offer %}
+    {% if from_advance %}
+    <div class="alert">
+        Gala rēķins avansam <a href="/documents/{{ from_advance.id }}">{{ from_advance.doc_number }}</a>{% if from_offer %} pēc piedāvājuma <a href="/documents/{{ from_offer }}">{{ from_offer_number }}</a>{% endif %}.
+        Rindās norādiet visu piegādi: samaksātais avanss tiks atskaitīts no kopsummas.
+    </div>
+    {% elif from_offer and doc_type == 'advance' %}
+    <div class="alert">
+        Avansa rēķins piedāvājumam <a href="/documents/{{ from_offer }}">{{ from_offer_number }}</a>.
+        Rindā norādiet avansa summu bez PVN: tagad tur ir visa piedāvājuma summa. Piedāvājums paliks neizmainīts.
+    </div>
+    {% elif from_offer %}
     <div class="alert">
         Dati pārkopēti no piedāvājuma <a href="/documents/{{ from_offer }}">{{ from_offer_number }}</a>.
         Pārbaudiet tos un izveidojiet rēķinu — piedāvājums paliks neizmainīts.
@@ -295,7 +328,7 @@
                             {% if not ref_doc %}<button type="button" class="btn btn-outline btn-sm" onclick="clearClient()">Mainīt</button>{% endif %}
                         </div>
                         <div class="field-error" id="clientError" hidden>Izvēlieties klientu, kam izrakstīt dokumentu.</div>
-                        {% if doc_type in ('sell', 'credit') %}
+                        {% if doc_type in ('sell', 'credit', 'advance') %}
                         {% set ref_val = (doc.buyer_reference or '') if (prefill and doc) else '' %}
                         <button type="button" class="btn btn-ghost btn-sm buyer-ref-open" id="buyerRefOpen" {% if ref_val %}hidden{% endif %}
                                 onclick="openBuyerRef()">+ Pircēja atsauce</button>
@@ -433,10 +466,30 @@
                             <dd id="vatDisplay" {% if not is_vat_payer %}hidden{% endif %}>0,00 €</dd>
                             <dt class="grand" id="totalLabel">{{ 'Kopā ar PVN' if is_vat_payer else 'Kopā' }}</dt>
                             <dd class="grand" id="totalDisplay">0,00 €</dd>
+                            {% if can_deduct %}
+                            <dt id="prepaidLabel" hidden>Avansi</dt>
+                            <dd id="prepaidDisplay" hidden>0,00 €</dd>
+                            <dt class="grand" id="dueLabel" hidden>Apmaksai</dt>
+                            <dd class="grand" id="dueDisplay" hidden>0,00 €</dd>
+                            {% endif %}
                         </dl>
                         <div id="stockError" class="alert alert-danger" style="display:none;margin:16px 0 0"></div>
                     </div>
                 </section>
+
+                {% if can_deduct %}
+                <!-- Paid advances this final invoice deducts (shown once the client has any) -->
+                <section class="card" id="advancesCard" hidden>
+                    <div class="card-body">
+                        <input type="hidden" name="advances_posted" value="1">
+                        <div class="section-head">
+                            <h2 class="section-title">Ieskaitīt avansu</h2>
+                            <span class="muted" id="advancesHint">atskaita no kopsummas</span>
+                        </div>
+                        <div class="adv-list" id="advancesList"></div>
+                    </div>
+                </section>
+                {% endif %}
 
                 <!-- Notes -->
                 <section class="card">
@@ -601,6 +654,9 @@ const productPrices = {{ product_prices | tojson }};
 const clientLastBilled = {{ client_last_billed | tojson }};
 const units = {{ units | tojson }};
 const docType = "{{ doc_type }}";
+// Advances a final invoice can deduct (every client's; the chosen client's are shown)
+const OPEN_ADVANCES = {{ (open_advances or []) | tojson }};
+const CHECKED_ADVANCES = new Set({{ (checked_advances or []) | tojson }});
 // A credit note or correction names the invoice it changes, on the paper as in the PDF
 const REF_LINE = {{ ((('Kredītrēķins rēķinam' if doc_type == 'credit' else 'Koriģējošais rēķins, aizstāj rēķinu') ~ ' Nr. ' ~ ref_doc.doc_number ~ ' no ' ~ ref_doc.doc_date[8:10] ~ '.' ~ ref_doc.doc_date[5:7] ~ '.' ~ ref_doc.doc_date[:4]) if ref_doc else '') | tojson }};
 const stockEnabled = {{ 'true' if stock_enabled else 'false' }};
@@ -800,6 +856,7 @@ function selectFormClient(id, name) {
     document.getElementById('clientError').hidden = true;
     clientInput.classList.remove('invalid');
     fillBuyerRef(c);
+    renderAdvances();
     updatePreview();
 }
 // The client's usual reference fills in, unless the user typed one for this invoice
@@ -828,7 +885,41 @@ function clearClient() {
     document.getElementById('clientCombo').hidden = false;
     clientInput.value = '';
     clientInput.focus();
+    renderAdvances();
     updatePreview();
+}
+
+/* ------------------------------------------------------------ advances */
+// A final invoice lists the whole supply and deducts the client's paid advances.
+// Only paid ones can be ticked; the server checks the same (db.check_advances).
+function clientAdvances() {
+    const cid = document.getElementById('clientSelect').value;
+    return cid ? OPEN_ADVANCES.filter(a => String(a.client_id) === String(cid)) : [];
+}
+function renderAdvances() {
+    const card = document.getElementById('advancesCard');
+    if (!card) return;
+    const list = clientAdvances();
+    card.hidden = !list.length;
+    document.getElementById('advancesList').innerHTML = list.map(a => {
+        const paid = a.status === 'paid';
+        const meta = fmtDate(a.doc_date) + (paid
+            ? (a.paid_on ? ' · samaksāts ' + fmtDate(a.paid_on) : ' · apmaksāts')
+            : ' · nav apmaksāts: vispirms atzīmējiet to kā apmaksātu');
+        return '<label class="adv-row' + (paid ? '' : ' is-off') + '">' +
+            '<input type="checkbox" name="advance_ids" value="' + a.id + '"' +
+            (paid && CHECKED_ADVANCES.has(a.id) ? ' checked' : '') + (paid ? '' : ' disabled') + '>' +
+            '<span class="adv-body"><b>' + esc(a.doc_number) + '</b><span>' + esc(meta) + '</span></span>' +
+            '<span class="adv-amt">' + fmtEur(a.total) + '</span></label>';
+    }).join('');
+    document.querySelectorAll('#advancesList input').forEach(cb => cb.addEventListener('change', () => {
+        if (cb.checked) CHECKED_ADVANCES.add(Number(cb.value)); else CHECKED_ADVANCES.delete(Number(cb.value));
+        recalculate();
+    }));
+    recalculate();
+}
+function checkedAdvances() {
+    return clientAdvances().filter(a => a.status === 'paid' && CHECKED_ADVANCES.has(a.id));
 }
 (function () {
     const cid = document.getElementById('clientSelect').value;
@@ -1117,8 +1208,25 @@ function recalculate() {
     document.getElementById('vatDisplay').textContent = reverse ? '—' : fmtEur(vat);
     document.getElementById('vatLabel').textContent = reverse ? 'Nodokļa apgrieztā maksāšana' : 'PVN ' + fmtQty(rate) + ' %';
     document.getElementById('totalDisplay').textContent = fmtEur(total);
-    document.getElementById('railTotal').textContent = fmtEur(total);
-    document.getElementById('barTotal').textContent = fmtEur(total);
+    // What is left to pay once the ticked advances are deducted
+    const prepaid = vrRound2(checkedAdvances().reduce((sum, a) => sum + Number(a.total || 0), 0));
+    const due = vrRound2(total - prepaid);
+    document.getElementById('totals').classList.toggle('has-prepaid', !!prepaid);
+    ['prepaidLabel', 'prepaidDisplay', 'dueLabel', 'dueDisplay'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = !prepaid;
+    });
+    if (prepaid) {
+        document.getElementById('prepaidDisplay').textContent = '\u2212' + fmtEur(prepaid);
+        document.getElementById('dueDisplay').textContent = fmtEur(due);
+    }
+    const hint = document.getElementById('advancesHint');
+    if (hint) {
+        hint.textContent = due < 0 ? 'avansi pārsniedz rēķina summu' : 'atskaita no kopsummas';
+        hint.classList.toggle('text-negative', due < 0);
+    }
+    document.getElementById('railTotal').textContent = fmtEur(prepaid ? due : total);
+    document.getElementById('barTotal').textContent = fmtEur(prepaid ? due : total);
     const lines = named === 1 ? '1 rinda' : named + ' rindas';
     document.getElementById('railLines').textContent = named ? lines : 'Nav rindu';
     document.getElementById('lineCount').textContent = named ? lines : '';
@@ -1214,6 +1322,7 @@ function getPreviewData() {
     if (docType === 'buy') title = companySettings.buy_doc_name || 'Rēķins';
     else if (docType === 'offer') title = companySettings.offer_doc_name || 'Piedāvājums';
     else if (docType === 'credit') title = 'Kredītrēķins';
+    else if (docType === 'advance') title = 'Avansa rēķins';
     else title = companySettings.sell_doc_name || 'Rēķins';
 
     const company = {
@@ -1241,7 +1350,7 @@ function getPreviewData() {
     const t = vrTotals(amounts, reverse ? 0 : vatRate);
     const subtotal = t.subtotal, vat = t.vat;
     const dueEl = document.getElementById('paymentDueDate');
-    const due = docType === 'sell' && dueEl && dueEl.value ? fmtDate(dueEl.value) : '';
+    const due = (docType === 'sell' || docType === 'advance') && dueEl && dueEl.value ? fmtDate(dueEl.value) : '';
     return {
         template: document.getElementById('templateSelect').value, kind: docType,
         title, number: editMode ? editDocNumber : '(automātiski)',
@@ -1249,6 +1358,8 @@ function getPreviewData() {
         supplier: docType === 'buy' ? client : company,
         buyer: docType === 'buy' ? company : client,
         items, subtotal, vatRate, vat, total: t.total,
+        advances: checkedAdvances().map(a => ({ number: a.doc_number, date: fmtDate(a.doc_date),
+                                                 total: a.total, vat: a.vat_amount })),
         vatPayer: isVatPayer, reverseCharge: reverse,
         notes: document.getElementById('notesInput').value,
         electronic: companySettings.electronic_doc === '1',

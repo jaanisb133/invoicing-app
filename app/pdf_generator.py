@@ -263,6 +263,8 @@ def _get_doc_data(doc_id):
         doc_type_label = settings.get("offer_doc_name", "Piedāvājums")
     elif doc["doc_type"] == "credit":
         doc_type_label = "Kredītrēķins"
+    elif doc["doc_type"] == "advance":
+        doc_type_label = "Avansa rēķins"
     else:
         doc_type_label = settings.get("sell_doc_name", "Rēķins")
     doc_type_label = (doc_type_label or "Rēķins").strip()
@@ -315,6 +317,14 @@ def _get_doc_data(doc_id):
 
     display_due_date = _date(doc.get("payment_due_date")) if doc.get("doc_type") != "offer" else ""
 
+    # A final invoice deducts the advances paid before it (EN 16931 BT-113); an advance
+    # invoice prints the day the advance arrived when that is not its own date
+    # (PVN likums 126(1)7)
+    advances = [dict(a, date=_date(a["date"])) for a in db.document_advances(doc)]
+    received = ""
+    if doc["doc_type"] == "advance" and doc.get("paid_on") and doc["paid_on"] != doc["doc_date"]:
+        received = _date(doc["paid_on"])
+
     return {
         "doc": doc,
         "items": items,
@@ -330,6 +340,10 @@ def _get_doc_data(doc_id):
         "vat_amount": totals["vat"],
         "rounding": totals["rounding"],
         "total": totals["total"],
+        "advances": advances,
+        "prepaid": totals["prepaid"],
+        "due": totals["due"],
+        "advance_received": received,
         "ref_line": ref,
         "is_vat_payer": settings.get("is_vat_payer", "1") == "1",
         "entity_type": entity_type,
@@ -340,12 +354,14 @@ def _get_doc_data(doc_id):
 def document_amounts(doc, items):
     """The document's stored totals (app/money.py) as floats, with each item's
     "line_amount". Falls back to computing them for a document that has none."""
+    prepaid = float(doc.get("prepaid") or 0)
     if doc.get("total") is None:
         t = money.document_totals(items, 0 if doc.get("reverse_charge") else doc.get("vat_rate") or 0,
                                   doc.get("rounding") or 0)
         for item, line in zip(items, t["lines"]):
             item["line_amount"] = float(line)
-        return {k: float(t[k]) for k in ("subtotal", "vat", "rounding", "total")}
+        out = {k: float(t[k]) for k in ("subtotal", "vat", "rounding", "total")}
+        return {**out, "prepaid": prepaid, "due": float(money.cents(out["total"] - prepaid))}
     for item in items:
         if item.get("total") is not None and not item.get("included_in_price"):
             item["line_amount"] = item["total"]
@@ -353,18 +369,28 @@ def document_amounts(doc, items):
             item["line_amount"] = float(money.line_total(item["quantity"], item["price_per_unit"],
                                                          item.get("included_in_price")))
     return {"subtotal": doc["subtotal"], "vat": doc["vat_amount"],
-            "rounding": doc.get("rounding") or 0, "total": doc["total"]}
+            "rounding": doc.get("rounding") or 0, "total": doc["total"],
+            "prepaid": prepaid, "due": float(money.cents(doc["total"] - prepaid))}
 
 
 def ref_line(doc, original):
     """The line a credit note or corrective invoice prints under its title."""
-    what = "Kredītrēķins rēķinam" if doc["doc_type"] == "credit" else "Koriģējošais rēķins, aizstāj rēķinu"
+    if doc["doc_type"] == "credit":
+        what = "Kredītrēķins avansa rēķinam" if original.get("doc_type") == "advance" else "Kredītrēķins rēķinam"
+    else:
+        what = "Koriģējošais rēķins, aizstāj rēķinu"
     return f"{what} Nr. {original['doc_number']} no {_date(original['doc_date'])}"
 
 
 def amount_label(kind):
     """What the big figure is called: owed on an invoice, given back on a credit note."""
-    return {"sell": "Apmaksai", "credit": "Kreditētā summa"}.get(kind, "Kopā")
+    return {"sell": "Apmaksai", "advance": "Apmaksai", "credit": "Kreditētā summa"}.get(kind, "Kopā")
+
+
+def advance_label(a):
+    """A deducted advance as the final invoice names it."""
+    vat = f", t. sk. PVN {fmt.eur(a['vat'])}" if a.get("vat") else ""
+    return f"Avanss Nr. {a['number']} no {a['date']}{vat}"
 
 
 FREE_PLAN_FOOTER = "Sagatavots ar V-Rēķini · v-rekini.lv"
@@ -634,6 +660,8 @@ def _meta_rows(ctx):
     """Number and dates as (label, value) rows."""
     data, doc = ctx["data"], ctx["doc"]
     rows = [("Numurs", doc["doc_number"]), ("Datums", data["display_date"])]
+    if data["advance_received"]:
+        rows.append(("Samaksāts", data["advance_received"]))
     if data["display_due_date"]:
         rows.append(("Apmaksāt līdz", data["display_due_date"]))
     return rows
@@ -687,10 +715,12 @@ def _head_modern(ctx):
     ]))
 
     # The panel: what is owed and by when, before anything else
-    cells = [(amount_label(ctx["kind"]), fmt.eur(data["total"]))]
+    cells = [(amount_label(ctx["kind"]), fmt.eur(data["due"]))]
     if data["display_due_date"]:
         cells.append(("Apmaksāt līdz", data["display_due_date"]))
     cells.append(("Datums", data["display_date"]))
+    if data["advance_received"]:
+        cells.append(("Samaksāts", data["advance_received"]))
     panel = _Panel(cells, accent, F)
     return [top, Spacer(1, 9 * mm), panel, Spacer(1, 9 * mm)]
 
@@ -808,7 +838,7 @@ def _totals(ctx, box_w):
         ("TOPPADDING", (0, 0), (-1, -1), 1.2), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.2),
         ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
     ]
-    out = []
+    out, rows = [], []
     if data["is_vat_payer"]:
         if data["reverse_charge"]:
             rows = [("Summa bez PVN", fmt.eur(data["subtotal"])), ("Nodokļa apgrieztā maksāšana", "—")]
@@ -817,6 +847,11 @@ def _totals(ctx, box_w):
                     (f"PVN {fmt.qty(data['vat_rate'])}\u00a0%", fmt.eur(data["vat_amount"]))]
         if data["rounding"]:
             rows.append(("Noapaļošana", fmt.eur(data["rounding"])))
+    if data["advances"]:
+        # The whole supply first, then each advance paid for it, then what is left to pay
+        rows.append(("Kopā ar PVN" if data["is_vat_payer"] else "Kopā", fmt.eur(data["total"])))
+        rows += [(advance_label(a), "\u2212" + fmt.eur(a["total"])) for a in data["advances"]]
+    if rows:
         t = Table([[Paragraph(_x(k), st["kv_k"]), Paragraph(v, st["kv_vr"])] for k, v in rows],
                   colWidths=[box_w * 0.64, box_w * 0.36])
         t.setStyle(TableStyle(plain))
@@ -824,7 +859,7 @@ def _totals(ctx, box_w):
                 Spacer(1, 2.6 * mm)]
     label = amount_label(ctx["kind"])
     split = 0.45 if ctx["kind"] == "credit" else 0.3  # "Kreditētā summa" on one line
-    t = Table([[Paragraph(label, st["amount_k"]), Paragraph(fmt.eur(data["total"]), st["amount_v"])]],
+    t = Table([[Paragraph(label, st["amount_k"]), Paragraph(fmt.eur(data["due"]), st["amount_v"])]],
               colWidths=[box_w * split, box_w * (1 - split)])
     t.setStyle(TableStyle(plain + [("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
     out.append(t)
@@ -835,7 +870,7 @@ def _payment(ctx):
     """Where to pay: only on sales invoices that have an account to pay into."""
     data, doc = ctx["data"], ctx["doc"]
     sup = data["supplier"]
-    if ctx["kind"] != "sell" or not sup["account"]:
+    if ctx["kind"] not in ("sell", "advance") or not sup["account"]:
         return None
     rows = []
     if sup["bank"]:

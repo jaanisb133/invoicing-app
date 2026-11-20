@@ -50,6 +50,7 @@ from app.pdf_generator import generate_invoice_pdf, TEMPLATES, document_amounts,
 from app import pdf_branded
 from app.einvoice import generate_einvoice_xml, generate_einvoice_file, problems as einvoice_problems_for
 from app import payment_logos
+from app import client_import
 
 app = FastAPI(title="V-Rēķini")
 
@@ -62,7 +63,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # pricing, ...) stay in step with base.html — they used to carry their own
 # hardcoded ?v= and silently drifted behind, serving visitors a stale
 # stylesheet on exactly the pages new users land on.
-CSS_VERSION = "66"
+CSS_VERSION = "67"
 templates.env.globals["css_version"] = CSS_VERSION
 
 # Plans and prices are rendered from the tier table, never typed into a
@@ -2050,7 +2051,7 @@ async def robots_txt():
 # Public, indexable pages and when their content last really changed. Update the
 # date when a page's content changes; a lastmod that moves on every fetch is ignored.
 SITEMAP_PAGES = [
-    ("/", "2026-10-31"),
+    ("/", "2026-11-20"),
     ("/pricing", "2026-10-21"),
     ("/contacts", "2026-10-31"),
     ("/terms", "2026-10-31"),
@@ -3702,6 +3703,138 @@ async def delete_client(request: Request, client_id: int):
     return RedirectResponse("/clients", status_code=303)
 
 
+# --- Client import (Klienti → Importēt) -----------------------------------------
+# The uploaded file is read once and kept as JSON under data/imports until the person
+# has checked the columns on the preview: then saved, or left to expire after a day.
+
+_IMPORT_TOKEN = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+
+
+def _imports_dir():
+    d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "imports")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _import_path(account_id, token):
+    if not _IMPORT_TOKEN.match(token or ""):
+        return None
+    return os.path.join(_imports_dir(), f"{int(account_id)}_{token}.json")
+
+
+def _load_import(account_id, token):
+    path = _import_path(account_id, token)
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _purge_old_imports():
+    cutoff = time.time() - 86400
+    for name in os.listdir(_imports_dir()):
+        path = os.path.join(_imports_dir(), name)
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            pass
+
+
+def _import_mapping(data, source):
+    """The mapping chosen on the preview (c0, c1, … in a form or query), else the guess."""
+    width = len(data["header"])
+    if not any(f"c{i}" in source for i in range(width)):
+        return client_import.guess_mapping(data["header"])
+    known = set(client_import.FIELD_LABELS)
+    return [v if (v := str(source.get(f"c{i}", ""))) in known else "" for i in range(width)]
+
+
+def _import_room(user):
+    allowed, current, maximum = _check_tier_limit(user, "clients")
+    return None if maximum is None else max(0, maximum - current)
+
+
+@app.get("/clients/import", response_class=HTMLResponse)
+async def clients_import_page(request: Request):
+    ctx = _base_context(request)
+    ctx.update({"page": "clients", "step": "upload", "fields": client_import.FIELDS,
+                "error": request.query_params.get("error", "")})
+    return templates.TemplateResponse("clients_import.html", ctx)
+
+
+@app.post("/clients/import")
+async def clients_import_upload(request: Request, file: UploadFile = File(None)):
+    user = request.state.user
+    content = await file.read(client_import.MAX_BYTES + 1) if file else b""
+    try:
+        header, rows = client_import.read_file(file.filename if file else "", content)
+    except client_import.ImportError_ as e:
+        ctx = _base_context(request)
+        ctx.update({"page": "clients", "step": "upload", "fields": client_import.FIELDS, "error": str(e)})
+        return templates.TemplateResponse("clients_import.html", ctx, status_code=400)
+    _purge_old_imports()
+    token = secrets.token_urlsafe(18)
+    with open(_import_path(user["account_id"], token), "w", encoding="utf-8") as f:
+        json.dump({"filename": os.path.basename(file.filename or "")[:120], "header": header, "rows": rows}, f)
+    return RedirectResponse(f"/clients/import/{token}", status_code=303)
+
+
+@app.get("/clients/import/{token}", response_class=HTMLResponse)
+async def clients_import_preview(request: Request, token: str):
+    user = request.state.user
+    data = _load_import(user["account_id"], token)
+    if not data:
+        return RedirectResponse("/clients/import?error=expired", status_code=303)
+    mapping = _import_mapping(data, request.query_params)
+    room = _import_room(user)
+    plan = client_import.plan(data["rows"], mapping, db.get_all_clients(user["account_id"]), room)
+    counts = defaultdict(int)
+    for r in plan:
+        counts[r["status"]] += 1
+    # Under each column, its first few values, so the person can see what it holds
+    samples = [[v for v in (row[i] for row in data["rows"][:40]) if v][:3] for i in range(len(data["header"]))]
+    ctx = _base_context(request)
+    ctx.update({
+        "page": "clients", "step": "preview", "token": token, "data": data,
+        "fields": client_import.FIELDS, "mapping": mapping, "samples": samples,
+        "plan": plan, "counts": counts, "room": room,
+        "has_name": "name" in mapping,
+    })
+    return templates.TemplateResponse("clients_import.html", ctx)
+
+
+@app.post("/clients/import/{token}")
+async def clients_import_save(request: Request, token: str):
+    user = request.state.user
+    data = _load_import(user["account_id"], token)
+    if not data:
+        return RedirectResponse("/clients/import?error=expired", status_code=303)
+    form = await request.form()
+    mapping = _import_mapping(data, form)
+    # Counted again at save: the list or the plan may have changed since the preview
+    plan = client_import.plan(data["rows"], mapping, db.get_all_clients(user["account_id"]),
+                              _import_room(user))
+    added = 0
+    for r in plan:
+        if r["status"] != "new":
+            continue
+        c = r["client"]
+        db.add_client(user["account_id"], c["name"], c["reg_number"], c["vat_number"], c["vat_payer"],
+                      c["legal_address"], c["bank_name"], c["bank_account"], c["contact_person"],
+                      c["phone"], c["email"], client_type=c["client_type"])
+        added += 1
+    try:
+        os.remove(_import_path(user["account_id"], token))
+    except OSError:
+        pass
+    left = len(plan) - added
+    return RedirectResponse(f"/clients?imported={added}&not_imported={left}", status_code=303)
+
+
 # =============================================================================
 # Documents (per-user)
 # =============================================================================
@@ -3776,13 +3909,18 @@ async def offers_page(request: Request, client_id: str = "",
     return templates.TemplateResponse("offers.html", ctx)
 
 
-def _followup_source(uid, doc_id):
+def _followup_source(uid, doc_id, cancel=False):
     """The sales invoice a credit note or corrective invoice is about to change,
-    or None if it isn't this account's or has already been cancelled/replaced."""
+    or None if it isn't this account's or has already been cancelled/replaced.
+    cancel: an advance invoice may be cancelled too (a full credit note), unless
+    a final invoice already deducts it."""
     if not doc_id:
         return None
     doc, items = db.get_document(doc_id)
-    if (not doc or doc.get("user_id") != uid or doc.get("doc_type") != "sell"
+    kinds = ("sell", "advance") if cancel else ("sell",)
+    if doc and doc.get("doc_type") == "advance" and db.get_advance_holder(uid, doc):
+        return None
+    if (not doc or doc.get("user_id") != uid or doc.get("doc_type") not in kinds
             or doc.get("status") in ("cancelled", "replaced") or doc.get("deleted_at")
             # an unsent invoice is simply edited; this also stops follow-ups (which the
             # monthly limit never blocks) from being chained into free invoices
@@ -3793,10 +3931,12 @@ def _followup_source(uid, doc_id):
 
 @app.get("/documents/new", response_class=HTMLResponse)
 async def new_document_page(request: Request, doc_type: str = "sell", from_offer: int = 0, client_id: int = 0,
-                            corrects: int = 0, credits: int = 0):
+                            corrects: int = 0, credits: int = 0, advance: int = 0):
     ctx = _base_context(request)
     user = request.state.user
     uid = user["account_id"]
+    if doc_type not in ("sell", "buy", "offer", "advance"):
+        doc_type = "sell"
 
     # A corrective invoice or credit note starts as a copy of the invoice it
     # changes; the user edits what differs (E-INVOICING.md §5)
@@ -3814,12 +3954,44 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
     # client, items and notes to the form as starting values. Nothing is saved
     # until the user submits, so they can still adjust quantities or prices.
     prefill_doc, prefill_items = None, []
+    source_offer = None
     if from_offer:
         offer, offer_items = db.get_document(from_offer)
-        if not offer or offer.get("user_id") != uid or offer.get("doc_type") != "offer":
+        if not offer or offer.get("user_id") != uid or offer.get("doc_type") != "offer" or offer.get("deleted_at"):
             raise HTTPException(status_code=404, detail="Piedāvājums nav atrasts")
-        prefill_doc, prefill_items = offer, offer_items
+        source_offer = offer
+        if doc_type == "advance":
+            # An advance asks for part of the offer before the work: one line naming
+            # the offer, its net amount to start from; the user sets the share
+            prefill_doc = dict(offer, notes="", buyer_reference=offer.get("buyer_reference") or "")
+            prefill_items = [{"product_id": None, "product_name": f"Avanss saskaņā ar piedāvājumu Nr. {offer['doc_number']}",
+                              "description": "", "quantity": 1, "unit": "gab",
+                              "price_per_unit": offer.get("subtotal") or 0, "included_in_price": 0}]
+        else:
+            prefill_doc, prefill_items = offer, offer_items
+            doc_type = "sell"
+
+    # The final invoice for a paid advance: the advance's client, the whole job
+    # (the offer's lines when the advance came from one, else the advance's own)
+    # and the advance ticked for deduction
+    from_advance = None
+    if advance and not from_offer:
+        adv, adv_items = db.get_document(advance)
+        if (not adv or adv.get("user_id") != uid or adv.get("doc_type") != "advance" or adv.get("deleted_at")
+                or adv.get("status") == "cancelled"):
+            raise HTTPException(status_code=404, detail="Avansa rēķins nav atrasts")
+        from_advance = adv
         doc_type = "sell"
+        offer = None
+        if adv.get("converted_from_offer_id"):
+            o, o_items = db.get_document(adv["converted_from_offer_id"])
+            if o and o.get("user_id") == uid and not o.get("deleted_at"):
+                offer, source_offer = (o, o_items), o
+        prefill_doc = dict(offer[0] if offer else adv, client_id=adv["client_id"],
+                           vat_rate=adv["vat_rate"], reverse_charge=adv.get("reverse_charge"),
+                           buyer_reference=adv.get("buyer_reference") or "",
+                           notes=(offer[0].get("notes") if offer else "") or "")
+        prefill_items = offer[1] if offer else adv_items
 
     if ref_doc:
         # Credit notes keep their own notes; a correction carries the original's
@@ -3869,8 +4041,13 @@ async def new_document_page(request: Request, doc_type: str = "sell", from_offer
         "doc": prefill_doc,
         "edit_items": prefill_items,
         "prefill": prefill_doc is not None,
-        "from_offer": prefill_doc["id"] if prefill_doc and not ref_doc else 0,
-        "from_offer_number": prefill_doc["doc_number"] if prefill_doc and not ref_doc else "",
+        "from_offer": source_offer["id"] if source_offer else 0,
+        "from_offer_number": source_offer["doc_number"] if source_offer else "",
+        "from_advance": from_advance,
+        # Advances a final invoice can deduct, for every client (the editor shows
+        # the chosen client's); the one it was started from comes ticked
+        "open_advances": db.get_available_advances(uid, None) if doc_type == "sell" and not ref_doc else [],
+        "checked_advances": [from_advance["id"]] if from_advance else [],
         "offer_presets": (_offer_presets(uid)
                           if doc_type == "offer" and _branded_offers_enabled(uid) else []),
         "offer_meta": None,
@@ -3888,6 +4065,8 @@ def _doc_type_name(doc_type, settings):
         return settings.get("offer_doc_name", "Piedāvājums")
     if doc_type == "credit":
         return "Kredītrēķins"
+    if doc_type == "advance":
+        return "Avansa rēķins"
     return settings.get("sell_doc_name", "Rēķins")
 
 
@@ -3929,7 +4108,7 @@ async def create_document(request: Request):
 
     form = await request.form()
     doc_type = form.get("doc_type", "sell")
-    if doc_type not in ("sell", "buy", "offer", "credit"):
+    if doc_type not in ("sell", "buy", "offer", "credit", "advance"):
         doc_type = "sell"
 
     # A credit note or corrective invoice names the invoice it changes; the id
@@ -3982,7 +4161,7 @@ async def create_document(request: Request):
     # offer really belongs to the user — the id arrives from a form field.
     from_offer_raw = (form.get("from_offer") or "").strip()
     converted_from = None
-    if from_offer_raw.isdigit() and doc_type == "sell":
+    if from_offer_raw.isdigit() and doc_type in ("sell", "advance"):
         src, _ = db.get_document(int(from_offer_raw))
         if src and src.get("user_id") == user["account_id"] and src.get("doc_type") == "offer":
             converted_from = src["id"]
@@ -3990,6 +4169,14 @@ async def create_document(request: Request):
     offer_meta = None
     if doc_type == "offer" and _branded_offers_enabled(user["account_id"]):
         offer_meta = _parse_offer_meta_form(form, user["account_id"]) or None
+
+    # Paid advances this final invoice deducts: checked before anything is saved
+    advances = []
+    if doc_type == "sell" and not ref_doc:
+        try:
+            advances = _checked_advances(user, form, client_id, items, vat_rate, reverse_charge)
+        except ValueError as e:
+            return RedirectResponse(f"/documents/new?doc_type=sell&error={quote(str(e))}", status_code=303)
 
     try:
         doc_id, doc_number = db.create_document(
@@ -3999,11 +4186,13 @@ async def create_document(request: Request):
             created_by_user_id=user["id"],
             offer_meta=offer_meta,
             ref_doc_id=ref_doc["id"] if ref_doc else None,
-            buyer_reference=form.get("buyer_reference", "") if doc_type in ("sell", "credit") else "",
+            buyer_reference=form.get("buyer_reference", "") if doc_type in ("sell", "credit", "advance") else "",
         )
     except ValueError as e:
         logger.warning("Document creation error: %s", e)
         return RedirectResponse(f"/documents/new?doc_type={doc_type}&error={quote(str(e))}", status_code=303)
+    if advances:
+        db.set_document_advances(user["account_id"], doc_id, [a["id"] for a in advances])
 
     if ref_doc:
         db.refresh_original_status(user["account_id"], ref_doc["id"])
@@ -4068,8 +4257,31 @@ async def edit_document_page(request: Request, doc_id: int):
                           if doc["doc_type"] == "offer" and _branded_offers_enabled(uid) else []),
         "offer_meta": _decode_offer_meta(doc),
         "ref_doc": db.get_document(doc["ref_doc_id"])[0] if doc.get("ref_doc_id") else None,
+        "open_advances": (db.get_available_advances(uid, None, final_id=doc_id)
+                          if doc["doc_type"] == "sell" and not doc.get("ref_doc_id") else []),
+        "checked_advances": [a["id"] for a in db.get_deducted_advances(doc_id, uid)],
     })
     return templates.TemplateResponse("document_form.html", ctx)
+
+
+def _lv_date(iso):
+    """2026-11-08 -> 08.11.2026."""
+    iso = str(iso or "")
+    return f"{iso[8:10]}.{iso[5:7]}.{iso[:4]}" if len(iso) >= 10 else iso
+
+
+def _checked_advances(user, form, client_id, items, vat_rate, reverse_charge, final_id=None):
+    """The paid advances a final invoice's form ticks (advance_ids), checked to be
+    this client's and free, and not more than the invoice itself. ValueError in
+    Latvian otherwise."""
+    advances = db.check_advances(user["account_id"], client_id, form.getlist("advance_ids"), final_id)
+    if advances:
+        total = money.document_totals(items, 0 if reverse_charge else vat_rate)["total"]
+        prepaid = money.cents(sum(money.dec(a["total"] or 0) for a in advances))
+        if prepaid > total:
+            raise ValueError(f"Ieskaitāmie avansi ({fmt.eur(prepaid)}) ir lielāki par rēķina summu "
+                             f"({fmt.eur(total)}). Rēķinā norādiet visu piegādi.")
+    return advances
 
 
 def _form_vat(form, user):
@@ -4114,6 +4326,13 @@ async def update_document(request: Request, doc_id: int):
     if doc_type == "offer" and _branded_offers_enabled(user["account_id"]):
         offer_meta = _parse_offer_meta_form(form, user["account_id"])
 
+    advances = None
+    if doc_type == "sell" and form.get("advances_posted") == "1" and not db.is_locked(current):
+        try:
+            advances = _checked_advances(user, form, client_id, items, vat_rate, reverse_charge, final_id=doc_id)
+        except ValueError as e:
+            return RedirectResponse(f"/documents/{doc_id}/edit?error={quote(str(e))}", status_code=303)
+
     try:
         db.update_document(user["account_id"], doc_id, client_id, doc_date, items, vat_rate, notes,
                            payment_due_date=payment_due_date, reverse_charge=reverse_charge,
@@ -4125,6 +4344,8 @@ async def update_document(request: Request, doc_id: int):
             return RedirectResponse(f"/documents/{doc_id}?error={quote(str(e))}", status_code=303)
         return RedirectResponse(f"/documents/{doc_id}/edit?error={quote(str(e))}", status_code=303)
 
+    if advances is not None:
+        db.set_document_advances(user["account_id"], doc_id, [a["id"] for a in advances])
     db.refresh_original_status(user["account_id"], current.get("ref_doc_id"))
     try:
         _generate_doc_pdf(doc_id, template)
@@ -4153,9 +4374,9 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
     if doc.get("ref_doc_id"):
         o, _ = db.get_document(doc["ref_doc_id"])
         original = o if o and o.get("user_id") == uid else None
-    followups = db.get_document_followups(uid, doc_id) if doc["doc_type"] == "sell" else []
+    followups = db.get_document_followups(uid, doc_id) if doc["doc_type"] in ("sell", "advance") else []
     einvoice_problems = []
-    if doc["doc_type"] in ("sell", "credit"):
+    if doc["doc_type"] in ("sell", "credit", "advance"):
         try:
             einvoice_problems = einvoice_problems_for(doc_id)
         except Exception:
@@ -4178,6 +4399,11 @@ async def view_document(request: Request, doc_id: int, template: str = ""):
         "vat_amount": vat_amount,
         "rounding": amounts["rounding"],
         "total": total,
+        "amount_due": amounts["due"],
+        # A final invoice: the advances it deducts, as printed; an advance: the
+        # invoice that deducts it
+        "advances": [dict(a, date=_lv_date(a["date"])) for a in db.document_advances(doc)],
+        "advance_holder": db.get_advance_holder(uid, doc) if doc["doc_type"] == "advance" else None,
         "locked": db.is_locked(doc),
         "original": original,
         "followups": followups,
@@ -4408,7 +4634,13 @@ async def cancel_document(request: Request, doc_id: int):
     deleted) and is marked cancelled."""
     user = request.state.user
     uid = user["account_id"]
-    src = _followup_source(uid, doc_id)
+    doc, _ = db.get_document(doc_id)
+    holder = db.get_advance_holder(uid, doc) if doc and doc.get("user_id") == uid else None
+    if holder:
+        return RedirectResponse(f"/documents/{doc_id}?error=" + quote(
+            f"Avanss ir ieskaitīts rēķinā {holder['doc_number']}. Vispirms anulējiet vai koriģējiet to rēķinu."),
+            status_code=303)
+    src = _followup_source(uid, doc_id, cancel=True)
     if not src:
         return RedirectResponse(f"/documents/{doc_id}?error=" + quote("Šo rēķinu vairs nevar anulēt."), status_code=303)
     original, items = src
@@ -4547,6 +4779,9 @@ async def restore_document(request: Request, doc_id: int):
     doc, _ = db.get_document(doc_id)
     if doc and doc.get("user_id") == user["account_id"]:
         db.refresh_original_status(user["account_id"], doc.get("ref_doc_id"))
+        if doc.get("doc_type") == "sell" and doc.get("advances_json"):
+            # an advance it deducted may have gone to another invoice meanwhile
+            db.refresh_prepaid(user["account_id"], doc_id)
     if "application/json" in request.headers.get("accept", ""):
         return JSONResponse({"ok": True})
     return RedirectResponse("/trash", status_code=303)
@@ -4572,6 +4807,12 @@ async def toggle_document_status(request: Request, doc_id: int):
                                 status_code=409)
         return RedirectResponse(f"/documents/{doc_id}", status_code=303)
     new_status = "paid" if doc.get("status", "issued") == "issued" else "issued"
+    holder = db.get_advance_holder(user["account_id"], doc) if doc.get("doc_type") == "advance" else None
+    if holder and new_status == "issued":
+        msg = f"Avanss ir ieskaitīts rēķinā {holder['doc_number']}, tāpēc tas paliek apmaksāts."
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"status": doc.get("status"), "error": msg}, status_code=409)
+        return RedirectResponse(f"/documents/{doc_id}?error={quote(msg)}", status_code=303)
     db.update_document_status(user["account_id"], doc_id, new_status)
     # Return JSON for AJAX requests, fall back to redirect
     accept = request.headers.get("accept", "")
@@ -5246,6 +5487,8 @@ ACCOUNTING_EXPORT_FIELDS = {
     "subtotal_no_vat": "Summa bez PVN",
     "vat_amount": "PVN summa",
     "total_with_vat": "Summa ar PVN",
+    "prepaid": "Ieskaitītie avansi",
+    "amount_due": "Apmaksai (pēc avansiem)",
     "client_name": "Klients — nosaukums",
     "client_reg_number": "Klients — reģ. nr.",
     "client_vat_number": "Klients — PVN nr.",
@@ -5322,7 +5565,8 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
     elif source == "doc_type_code":
         val = "Pirk." if doc.get("doc_type") == "buy" else "Pārd."
     elif source == "doc_type_name":
-        val = {"sell": "Pārdošana", "credit": "Kredītrēķins"}.get(doc.get("doc_type"), "Iegāde")
+        val = {"sell": "Pārdošana", "credit": "Kredītrēķins",
+               "advance": "Avansa rēķins"}.get(doc.get("doc_type"), "Iegāde")
     elif source == "doc_number":
         val = doc.get("doc_number", "")
     elif source in _DATE_FIELDS:
@@ -5348,6 +5592,11 @@ def _resolve_field_value(source, doc, item, settings, fmt=None, constant_val="")
         # money back, so it goes to the books as negative amounts.
         field = {"subtotal_no_vat": "subtotal", "vat_amount": "vat_amount", "total_with_vat": "total"}[source]
         val = round(_credit_sign(doc) * (doc.get(field) or 0), 2)
+    elif source == "prepaid":
+        # the advances a final invoice deducts (advance invoices go to the books on their own)
+        val = round(doc.get("prepaid") or 0, 2)
+    elif source == "amount_due":
+        val = round(_credit_sign(doc) * ((doc.get("total") or 0) - (doc.get("prepaid") or 0)), 2)
     elif source.startswith("client_"):
         val = doc.get(source, "") or ""
     elif source.startswith("company_"):
@@ -5631,6 +5880,12 @@ def _doc_list_rows(docs, status_tracking):
         "locked": db.is_locked(d),
         "payment_due_date": d.get("payment_due_date") or "",
         "excluded_from_stats": d.get("excluded_from_stats", 0),
+        # Advances and the credit notes that cancel them are no turnover: the list's
+        # total leaves them out, as the dashboard does
+        "in_total": not (d["doc_type"] == "advance"
+                         or (d["doc_type"] == "credit" and d.get("ref_doc_type") == "advance")),
+        "amount_due": round(d.get("amount_due") or 0, 2),
+        "deducted": bool(d.get("is_deducted")),
     } for d in docs]
 
 

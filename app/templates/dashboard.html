@@ -290,7 +290,7 @@
                         {% for doc in recent_docs %}
                         <tr>
                             <td class="c-num"><a href="/documents/{{ doc.id }}" class="row-link">{{ doc.doc_number }}</a></td>
-                            <td class="c-client client-cell"><a href="/documents/{{ doc.id }}" class="row-link plain" style="font-weight:400">{{ doc.client_name }}</a>{% if doc.doc_type == 'buy' %} <span class="pill pill-warning">Iegāde</span>{% elif doc.doc_type == 'credit' %} <span class="pill pill-outline">kredītrēķins</span>{% endif %}</td>
+                            <td class="c-client client-cell"><a href="/documents/{{ doc.id }}" class="row-link plain" style="font-weight:400">{{ doc.client_name }}</a>{% if doc.doc_type == 'buy' %} <span class="pill pill-warning">Iegāde</span>{% elif doc.doc_type == 'credit' %} <span class="pill pill-outline">kredītrēķins</span>{% elif doc.doc_type == 'advance' %} <span class="pill pill-outline">avanss</span>{% endif %}</td>
                             <td class="c-meta">{{ doc.doc_number }} · {{ ddmm(doc.doc_date) }}{{ doc.doc_date[:4] }}</td>
                             <td class="c-date num">{{ ddmm(doc.doc_date) }}{{ doc.doc_date[:4] }}</td>
                             <td class="c-sum num text-right">{{ doc.total_with_vat | eur }}</td>

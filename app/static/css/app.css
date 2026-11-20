@@ -1625,7 +1625,8 @@ td.c-swipe { display: none; }
 .pp-minimal .pp-summary { grid-template-columns: 1fr 187px; }
 .pp-modern .pp-pay { background: var(--pa); border-radius: 4px; padding: 10.2px 11.3px 10.2px 12.8px; margin-right: 28.3px; }
 .pp-sums td { font-size: 8.2px; line-height: 12px; color: var(--mu); padding: 1.2px 0; }
-.pp-sums td.r { font-size: 8.6px; line-height: 12.4px; color: var(--ink); }
+.pp-sums td.r { font-size: 8.6px; line-height: 12.4px; color: var(--ink); white-space: nowrap; }
+.pp-sums td:first-child { width: 64%; vertical-align: bottom; }  /* the PDF's 64 / 36 split: a deducted advance wraps like it */
 .pp-sumrule { margin: 6.2px 0 7.4px; border-top: .6px solid var(--ink); }
 .pp-classic .pp-sumrule { border-top-width: .9px; }
 .pp-amount { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
