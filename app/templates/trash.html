@@ -32,6 +32,12 @@
                     <td data-label="Tips">
                         {% if doc.doc_type == 'sell' %}
                         <span class="pill pill-brand">Pārdošana</span>
+                        {% elif doc.doc_type == 'advance' %}
+                        <span class="pill pill-brand">Avanss</span>
+                        {% elif doc.doc_type == 'offer' %}
+                        <span class="pill pill-brand">Piedāvājums</span>
+                        {% elif doc.doc_type == 'credit' %}
+                        <span class="pill pill-brand">Kredītrēķins</span>
                         {% else %}
                         <span class="pill pill-warning">Iegāde</span>
                         {% endif %}

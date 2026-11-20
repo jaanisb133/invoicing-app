@@ -10,8 +10,10 @@
      "Jā. Iestatījumos atzīmējiet, ka neesat PVN maksātājs, un rēķinos PVN rindu nebūs. Der arī individuālajiem komersantiem un pašnodarbinātajiem."),
     ("Kas ir e-rēķins, un vai man tas vajadzīgs?",
      "E-rēķins ir rēķins mašīnlasāmā PEPPOL BIS 3.0 formātā. Valsts iestādēm tādi jāsūta jau kopš 2025. gada, un no 2028. gada 1. janvāra tie būs obligāti arī darījumos starp uzņēmumiem. V-Rēķini tos sagatavo, sākot ar Mini plānu."),
-    ("Vai varu turpināt savu numerāciju?",
-     "Jā. Izvēlieties numerācijas veidu un priedēkli un norādiet, no kura numura sākt, lai numerācija turpinās bez pārrāvuma."),
+    ("Vai varu pāriet no citas programmas?",
+     "Jā. Klientu sarakstu ielādējiet no Excel vai CSV, un numerāciju turpiniet no sava pēdējā numura bez pārrāvuma: izvēlieties numerācijas veidu, priedēkli un sākuma numuru. Ja jāpārnes arī iepriekšējie rēķini, rakstiet mums."),
+    ("Vai var izrakstīt avansa rēķinu?",
+     "Jā. Avansa rēķiniem ir sava numerācija (AV-…). Kad izrakstāt gala rēķinu, samaksāto avansu atskaitām no kopsummas, un klientam paliek apmaksāt tikai atlikumu; ieņēmumos nekas netiek skaitīts divreiz."),
     ("Vai var strādāt telefonā?",
      "Jā, jebkurā pārlūkā. Lietotni var pievienot telefona sākuma ekrānam un izrakstīt rēķinu uzreiz pēc darba."),
     ("Kur glabājas mani dati?",
@@ -35,7 +37,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Rēķinu programma Latvijas uzņēmējiem | V-Rēķini</title>
-    <meta name="description" content="Izrakstiet PVN rēķinu minūtē: rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini, periodiskie rēķini un eksports grāmatvedim. Sāciet bez maksas.">
+    <meta name="description" content="Izrakstiet PVN rēķinu minūtē: rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini, avansa un periodiskie rēķini, eksports grāmatvedim. Sāciet bez maksas.">
     <link rel="canonical" href="{{ site_url }}/">
     <meta name="robots" content="index,follow,max-image-preview:large">
     <meta property="og:type" content="website">
@@ -94,7 +96,7 @@
           "applicationSubCategory": "Rēķinu izrakstīšana",
           "operatingSystem": "Web, Android, iOS",
           "inLanguage": "lv",
-          "description": "Rēķinu programma Latvijas uzņēmējiem: PVN rēķini, rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini, piedāvājumi, periodiskie rēķini un eksports grāmatvedim.",
+          "description": "Rēķinu programma Latvijas uzņēmējiem: PVN rēķini, rekvizīti no Uzņēmumu reģistra, PDF un PEPPOL e-rēķini, piedāvājumi, avansa un periodiskie rēķini, klientu imports no Excel un eksports grāmatvedim.",
           "publisher": { "@id": "{{ site_url }}/#org" },
           "offers": {
             "@type": "AggregateOffer",
@@ -300,6 +302,13 @@
         <p class="stage-p" data-rise><strong>Vispirms</strong> klients saņem cenu piedāvājumu. Kad viņš piekrīt, atzīmējiet to kā pieņemtu, un rēķins izveidojas ar vienu klikšķi, ar tām pašām rindām un cenām.</p>
         <div class="evidence" data-ui data-rise style="--i:1">
             <div class="ev-row"><div class="grow"><b>P-26-014</b> <span class="meta">SIA „Bērzu Darbnīca” · 1&nbsp;488,30&nbsp;€</span></div><span class="pill pos">pieņemts</span><span class="ev-btn">Izveidot rēķinu</span></div>
+        </div>
+
+        <p class="stage-p" data-rise><strong>Ja darbam vajag avansu,</strong> klients to samaksā pēc avansa rēķina ar savu numerāciju. Gala rēķinā samaksāto avansu atskaitām paši: klientam paliek apmaksāt tikai atlikumu.</p>
+        <div class="evidence ev-sum" data-ui data-rise style="--i:1">
+            <div class="ev-line"><span>Kopā ar PVN</span><span class="amt">1&nbsp;488,30&nbsp;€</span></div>
+            <div class="ev-line"><span>Avanss AV-26-007 no {{ day(-12) }}</span><span class="amt">−500,00&nbsp;€</span></div>
+            <div class="ev-line total"><span>Apmaksai</span><span class="amt">988,30&nbsp;€</span></div>
         </div>
 
         <p class="stage-p" data-rise><strong>Kad darbs padarīts,</strong> rēķins aiziet klientam e-pastā kā PDF no Jūsu uzņēmuma vārda, un tas, kad tas nosūtīts, paliek dokumenta vēsturē.</p>

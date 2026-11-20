@@ -435,7 +435,16 @@ def _run_migrations():
                      ("ref_doc_id", "INTEGER"),
                      # The buyer's own reference (EN 16931 BT-10): the code a council or
                      # its school routes the invoice on, an order number, a cost centre
-                     ("buyer_reference", "TEXT NOT NULL DEFAULT ''")):
+                     ("buyer_reference", "TEXT NOT NULL DEFAULT ''"),
+                     # Advance invoices (doc_type 'advance'): the final sales invoice
+                     # stores the advances it deducts (EN 16931 BT-113, prepaid), each
+                     # advance names that invoice (deducted_in_id); paid_on is the day a
+                     # document was marked paid (PVN likums 126(1)7 prints it on an advance)
+                     ("prepaid", "REAL NOT NULL DEFAULT 0"), ("deducted_in_id", "INTEGER"),
+                     ("paid_on", "DATE"),
+                     # what the final invoice printed about them, so a sent invoice's PDF
+                     # never changes when a link moves later: [{id, number, date, total, vat}]
+                     ("advances_json", "TEXT")):
         if col not in doc_cols:
             cursor.execute(f"ALTER TABLE documents ADD COLUMN {col} {ddl}")
     if "sent_at" not in doc_cols:
@@ -653,28 +662,38 @@ def get_all_products(user_id, active_only=True):
 
 # Revenue as the books see it: a sales invoice counts at its own date, a credit
 # note subtracts at its own date, and an invoice replaced by a corrective one
-# drops out (the corrective invoice carries the sale instead).
-REVENUE_SQL = ("(CASE WHEN d.doc_type = 'credit' THEN -d.total "
+# drops out (the corrective invoice carries the sale instead). Advance invoices
+# are no revenue (the final invoice carries the whole sale), so neither is a
+# credit note that cancels one.
+_CREDITS_ADVANCE = ("EXISTS (SELECT 1 FROM documents ra WHERE ra.id = d.ref_doc_id "
+                    "AND ra.doc_type = 'advance')")
+REVENUE_SQL = (f"(CASE WHEN d.doc_type = 'credit' AND NOT {_CREDITS_ADVANCE} THEN -d.total "
                "WHEN d.doc_type = 'sell' AND d.status != 'replaced' THEN d.total ELSE 0 END)")
-REVENUE_NET_SQL = ("(CASE WHEN d.doc_type = 'credit' THEN -d.subtotal "
+REVENUE_NET_SQL = (f"(CASE WHEN d.doc_type = 'credit' AND NOT {_CREDITS_ADVANCE} THEN -d.subtotal "
                    "WHEN d.doc_type = 'sell' AND d.status != 'replaced' THEN d.subtotal ELSE 0 END)")
 INVOICE_SQL = "(d.doc_type = 'sell' AND d.status != 'replaced')"
+# Still to be paid: a sales invoice less the advances it deducts, or an advance
+# invoice (a payment request). Credit notes and offers are never "unpaid".
+UNPAID_SQL = ("(d.doc_type IN ('sell', 'advance') AND d.status = 'issued' "
+              "AND ROUND(d.total - COALESCE(d.prepaid, 0), 2) > 0)")
+DUE_SQL = "ROUND(d.total - COALESCE(d.prepaid, 0), 2)"
 
 
 def get_unpaid_invoices(user_id):
-    """Every issued, unpaid sales invoice with its total, oldest due date first.
+    """Every issued, unpaid sales or advance invoice with what is left to pay
+    (total less deducted advances), oldest due date first.
 
     Same scope as the unpaid figure in get_dashboard_stats_range(), so the
     rows always add up to the "Neapmaksāti" total shown beside them.
     """
     conn = get_connection()
     rows = conn.execute(
-        """SELECT d.id, d.doc_number, d.doc_date, d.payment_due_date, d.client_id,
-                  COALESCE(c.name, '') AS client_name, d.total
+        f"""SELECT d.id, d.doc_number, d.doc_date, d.payment_due_date, d.client_id,
+                  COALESCE(c.name, '') AS client_name, {DUE_SQL} AS total, d.doc_type
            FROM documents d
            LEFT JOIN clients c ON c.id = d.client_id
            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0
-             AND d.doc_type = 'sell' AND d.status = 'issued'
+             AND {UNPAID_SQL}
            ORDER BY (d.payment_due_date IS NULL OR d.payment_due_date = ''),
                     d.payment_due_date, d.doc_date""",
         (user_id,),
@@ -810,7 +829,7 @@ def get_invoices_from_offer(user_id, offer_id):
     Used to show on the offer that it has already been billed."""
     conn = get_connection()
     rows = conn.execute(
-        """SELECT id, doc_number, doc_date, deleted_at FROM documents
+        """SELECT id, doc_type, doc_number, doc_date, deleted_at FROM documents
            WHERE user_id = ? AND converted_from_offer_id = ? AND deleted_at IS NULL
            ORDER BY id DESC""",
         (user_id, offer_id)
@@ -824,7 +843,8 @@ def get_converted_offer_ids(user_id):
     conn = get_connection()
     rows = conn.execute(
         """SELECT DISTINCT converted_from_offer_id AS oid FROM documents
-           WHERE user_id = ? AND converted_from_offer_id IS NOT NULL AND deleted_at IS NULL""",
+           WHERE user_id = ? AND converted_from_offer_id IS NOT NULL AND deleted_at IS NULL
+             AND doc_type = 'sell'""",
         (user_id,)
     ).fetchall()
     conn.close()
@@ -976,6 +996,10 @@ def count_preset_photo_refs(user_id, filename):
 
 # --- Documents (per-user) ---
 
+# Document types numbered in a series of their own (P-…, KR-…, AV-…)
+OWN_SERIES = ("offer", "credit", "advance")
+
+
 def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     """
     Get next document number based on user's invoice_number_type setting.
@@ -1012,17 +1036,22 @@ def get_next_doc_number(user_id, doc_type, doc_date, conn=None):
     elif doc_type == "credit":
         # Credit notes likewise: their own series, so invoice numbers stay unbroken.
         prefix = settings.get("credit_doc_prefix", "KR") or "KR"
+    elif doc_type == "advance":
+        # Advance invoices too (PVN likums 125(1)2: a tax invoice for an advance received)
+        prefix = settings.get("advance_doc_prefix", "AV") or "AV"
     elif settings.get("use_prefixes", "0") == "1":
         prefix = settings.get("sell_doc_prefix", "") if doc_type == "sell" else settings.get("buy_doc_prefix", "")
     else:
         prefix = ""
 
-    # Offers and credit notes count in their own sequences; invoices (sales and
-    # purchases) share one.
-    if doc_type in ("offer", "credit"):
+    # Offers, credit notes and advance invoices count in their own sequences;
+    # invoices (sales and purchases) share one. The chosen start number continues
+    # an invoice series from another program, so it is the invoices' alone.
+    if doc_type in OWN_SERIES:
         offer_scope = f" AND doc_type='{doc_type}'"
+        start_num = 1
     else:
-        offer_scope = " AND doc_type NOT IN ('offer','credit')"
+        offer_scope = " AND doc_type NOT IN ('offer','credit','advance')"
 
     if isinstance(doc_date, str):
         doc_date_obj = datetime.date.fromisoformat(doc_date)
@@ -1161,8 +1190,9 @@ def replaced_quantities(conn, doc_id):
     return {r["product_id"]: r["q"] for r in rows}
 
 
-# Sales invoices and credit notes stop being editable once they reach the client.
-LOCKED_DOC_TYPES = ("sell", "credit")
+# Sales invoices, credit notes and advance invoices stop being editable once they
+# reach the client.
+LOCKED_DOC_TYPES = ("sell", "credit", "advance")
 SENT_LOCK_MESSAGE = ("Nosūtītu rēķinu vairs nevar labot vai dzēst. "
                      "Izrakstiet koriģējošo rēķinu vai kredītrēķinu.")
 
@@ -1284,8 +1314,12 @@ def get_document(doc_id):
 def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_to=None,
                   status=None, exclude_doc_types=None):
     conn = get_connection()
-    query = """SELECT d.*, c.name as client_name,
-               (CASE WHEN d.doc_type = 'credit' THEN -d.total ELSE d.total END) as total_with_vat
+    query = f"""SELECT d.*, c.name as client_name,
+               (CASE WHEN d.doc_type = 'credit' THEN -d.total ELSE d.total END) as total_with_vat,
+               {DUE_SQL} as amount_due,
+               (SELECT r.doc_type FROM documents r WHERE r.id = d.ref_doc_id) as ref_doc_type,
+               EXISTS (SELECT 1 FROM documents f WHERE f.id = d.deducted_in_id AND f.user_id = d.user_id
+                       AND f.deleted_at IS NULL AND f.status NOT IN ('replaced', 'cancelled')) as is_deducted
                FROM documents d
                JOIN clients c ON d.client_id = c.id
                WHERE d.user_id = ? AND d.deleted_at IS NULL"""
@@ -1312,6 +1346,8 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
         params.append(status)
         if status in ("issued", "paid"):
             query += " AND d.doc_type != 'credit'"  # payment tabs: credit notes aren't paid
+        if status == "issued":
+            query += f" AND {DUE_SQL} > 0"  # nothing left after the advances: not awaited
 
     query += " ORDER BY d.doc_date DESC, d.id DESC"
     rows = conn.execute(query, params).fetchall()
@@ -1321,8 +1357,12 @@ def get_documents(user_id, doc_type=None, client_id=None, date_from=None, date_t
 
 def update_document_status(user_id, doc_id, status):
     conn = get_connection()
-    conn.execute("UPDATE documents SET status = ? WHERE id = ? AND user_id = ?",
-                 (status, doc_id, user_id))
+    # paid_on: the day it was marked paid, kept while it stays paid
+    conn.execute("""UPDATE documents SET status = ?,
+                        paid_on = CASE WHEN ? = 'paid' THEN COALESCE(paid_on, DATE('now', 'localtime'))
+                                       WHEN ? IN ('issued') THEN NULL ELSE paid_on END
+                    WHERE id = ? AND user_id = ?""",
+                 (status, status, status, doc_id, user_id))
     conn.commit()
     conn.close()
     if status == "paid":
@@ -1369,7 +1409,7 @@ def refresh_original_status(user_id, original_id):
     if not original_id:
         return
     original, _ = get_document(original_id)
-    if not original or original.get("user_id") != user_id or original.get("doc_type") != "sell":
+    if not original or original.get("user_id") != user_id or original.get("doc_type") not in ("sell", "advance"):
         return
     followups = get_document_followups(user_id, original_id)
     if any(f["doc_type"] == "sell" for f in followups):
@@ -1394,6 +1434,131 @@ def credited_total(user_id, doc_id):
     ).fetchone()
     conn.close()
     return row["t"] if row else 0
+
+
+# --- Advance invoices -----------------------------------------------------------
+# An advance invoice (doc_type 'advance') asks for, or confirms, money paid before
+# the supply. The final sales invoice lists the whole supply and deducts the paid
+# advances: each advance names it in deducted_in_id, and the invoice stores their
+# sum in prepaid (EN 16931 BT-113), so the amount due is total - prepaid. An advance
+# held by a trashed or purged invoice, or by one that was replaced (its corrective
+# invoice deducts it instead) or cancelled, is free again. What the invoice printed
+# is kept in advances_json, so its PDF stays as sent.
+
+_ADVANCE_FREE = """(a.deducted_in_id IS NULL OR a.deducted_in_id = ?
+                    OR NOT EXISTS (SELECT 1 FROM documents f WHERE f.id = a.deducted_in_id
+                                   AND f.user_id = a.user_id AND f.deleted_at IS NULL
+                                   AND f.status NOT IN ('replaced', 'cancelled')))"""
+
+
+def get_available_advances(user_id, client_id, final_id=None):
+    """A client's (client_id None: every client's) advance invoices a final invoice
+    can deduct: not trashed, not
+    cancelled, not held by another live invoice. Unpaid ones come too, so the
+    editor can say why it can't take them; only paid ones can be deducted."""
+    conn = get_connection()
+    rows = conn.execute(
+        f"""SELECT a.id, a.client_id, a.doc_number, a.doc_date, a.total, a.vat_amount, a.status, a.paid_on
+            FROM documents a
+            WHERE a.user_id = ? AND (? IS NULL OR a.client_id = ?) AND a.doc_type = 'advance'
+              AND a.deleted_at IS NULL AND a.status != 'cancelled' AND {_ADVANCE_FREE}
+            ORDER BY a.doc_date, a.id""",
+        (user_id, client_id, client_id, final_id or 0),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_deducted_advances(doc_id, user_id):
+    """The advances a final invoice deducts, oldest first."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT id, doc_number, doc_date, total, vat_amount, paid_on FROM documents
+           WHERE user_id = ? AND deducted_in_id = ? AND doc_type = 'advance' AND deleted_at IS NULL
+           ORDER BY doc_date, id""",
+        (user_id, doc_id),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_advance_holder(user_id, advance):
+    """The live invoice an advance is deducted in, or None."""
+    if not advance or not advance.get("deducted_in_id"):
+        return None
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT id, doc_number, doc_date FROM documents WHERE id = ? AND user_id = ?
+           AND deleted_at IS NULL AND status NOT IN ('replaced', 'cancelled')""",
+        (advance["deducted_in_id"], user_id),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def check_advances(user_id, client_id, advance_ids, final_id=None):
+    """The advance rows a final invoice may deduct, or ValueError in Latvian."""
+    ids = []
+    for raw in advance_ids or []:
+        try:
+            i = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if i not in ids:
+            ids.append(i)
+    if not ids:
+        return []
+    free = {a["id"]: a for a in get_available_advances(user_id, client_id, final_id)}
+    out = []
+    for i in ids:
+        a = free.get(i)
+        if not a:
+            raise ValueError("Šo avansu nevar ieskaitīt: tas ir citam klientam, jau ieskaitīts citā rēķinā vai anulēts.")
+        if a["status"] != "paid":
+            raise ValueError(f"Avanss {a['doc_number']} vēl nav apmaksāts. Atzīmējiet to kā apmaksātu, tad to var ieskaitīt.")
+        out.append(a)
+    return out
+
+
+def set_document_advances(user_id, final_id, advance_ids):
+    """Link exactly these (already checked) advances to a final invoice and store
+    their sum as its prepaid amount."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE documents SET deducted_in_id = NULL WHERE user_id = ? AND deducted_in_id = ? AND doc_type = 'advance'",
+            (user_id, final_id))
+        for i in advance_ids:
+            conn.execute(
+                "UPDATE documents SET deducted_in_id = ? WHERE id = ? AND user_id = ? AND doc_type = 'advance'",
+                (final_id, i, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+    refresh_prepaid(user_id, final_id)
+
+
+def refresh_prepaid(user_id, final_id):
+    """Recount a final invoice's prepaid amount and its printed list from the
+    advances that name it (after a save, or a restore from the trash when an
+    advance went elsewhere). Only for an invoice that can still change."""
+    rows = get_deducted_advances(final_id, user_id)
+    snap = [{"id": a["id"], "number": a["doc_number"], "date": a["doc_date"],
+             "total": a["total"] or 0, "vat": a["vat_amount"] or 0} for a in rows]
+    conn = get_connection()
+    conn.execute("UPDATE documents SET prepaid = ?, advances_json = ? WHERE id = ? AND user_id = ?",
+                 (round(sum(a["total"] for a in snap), 2), json.dumps(snap) if snap else None,
+                  final_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def document_advances(doc):
+    """The advances a final invoice printed: [{id, number, date (ISO), total, vat}]."""
+    try:
+        return json.loads(doc.get("advances_json") or "[]")
+    except (TypeError, ValueError):
+        return []
 
 
 def set_document_excluded(user_id, doc_id, excluded):
@@ -1463,8 +1628,8 @@ def restore_document(user_id, doc_id):
             """SELECT 1 FROM documents
                WHERE user_id = ? AND id != ? AND deleted_at IS NULL
                  AND seq_num = ?
-                 AND (CASE WHEN doc_type IN ('offer', 'credit') THEN doc_type ELSE 'invoice' END)
-                   = (CASE WHEN ? IN ('offer', 'credit') THEN ? ELSE 'invoice' END)
+                 AND (CASE WHEN doc_type IN ('offer', 'credit', 'advance') THEN doc_type ELSE 'invoice' END)
+                   = (CASE WHEN ? IN ('offer', 'credit', 'advance') THEN ? ELSE 'invoice' END)
                  AND (? IS NULL OR strftime('%Y', doc_date) = ?)""",
             (user_id, doc_id, row["seq_num"], row["doc_type"], row["doc_type"], year, year)
         ).fetchone()
@@ -1493,7 +1658,7 @@ def permanently_delete_document(user_id, doc_id):
     trash can go, and a sent invoice never gets there."""
     conn = get_connection()
     conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL "
-                 "AND NOT (sent_at IS NOT NULL AND doc_type IN ('sell', 'credit'))",
+                 "AND NOT (sent_at IS NOT NULL AND doc_type IN ('sell', 'credit', 'advance'))",
                  (doc_id, user_id))
     conn.commit()
     conn.close()
@@ -1520,7 +1685,7 @@ def purge_old_deleted_documents():
     conn = get_connection()
     conn.execute(
         "DELETE FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-7 days') "
-        "AND NOT (sent_at IS NOT NULL AND doc_type IN ('sell', 'credit'))"
+        "AND NOT (sent_at IS NOT NULL AND doc_type IN ('sell', 'credit', 'advance'))"
     )
     conn.commit()
     conn.close()
@@ -1551,7 +1716,7 @@ def _get_product_stock(conn, product_id, user_id):
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = ? AND d.doc_type IN ('buy', 'credit') AND d.user_id = ?{date_filter}), 0
+                 WHERE di.product_id = ? AND d.doc_type IN ('buy', 'credit') AND NOT {_CREDITS_ADVANCE} AND d.user_id = ?{date_filter}), 0
             ) -
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
@@ -1595,7 +1760,7 @@ def get_stock(user_id, date_from=None, date_to=None):
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
                  JOIN documents d ON di.document_id = d.id
-                 WHERE di.product_id = p.id AND d.doc_type IN ('buy', 'credit') AND d.user_id = ?{date_filter}), 0
+                 WHERE di.product_id = p.id AND d.doc_type IN ('buy', 'credit') AND NOT {_CREDITS_ADVANCE} AND d.user_id = ?{date_filter}), 0
             ) as bought,
             COALESCE(
                 (SELECT SUM(di.quantity) FROM document_items di
@@ -2330,15 +2495,15 @@ def get_dashboard_stats_range(user_id: int, date_from: str, date_to: str, compar
     avg_invoice = row["avg_val"] if row and row["avg_val"] else 0
 
     # Unpaid + overdue in one query
-    row = conn.execute("""
+    row = conn.execute(f"""
         SELECT
             COALESCE(SUM(inv_total), 0) as unpaid_total,
             SUM(CASE WHEN payment_due_date IS NOT NULL AND payment_due_date != '' AND payment_due_date < ? THEN 1 ELSE 0 END) as overdue_count,
             COALESCE(SUM(CASE WHEN payment_due_date IS NOT NULL AND payment_due_date != '' AND payment_due_date < ? THEN inv_total ELSE 0 END), 0) as overdue_total
         FROM (
-            SELECT d.id, d.payment_due_date, d.total as inv_total
+            SELECT d.id, d.payment_due_date, {DUE_SQL} as inv_total
             FROM documents d
-            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND d.doc_type = 'sell' AND d.status = 'issued'
+            WHERE d.user_id = ? AND d.deleted_at IS NULL AND d.excluded_from_stats = 0 AND {UNPAID_SQL}
         )
     """, (today_str, today_str, user_id)).fetchone()
     unpaid_total = row["unpaid_total"] if row and row["unpaid_total"] else 0
@@ -3115,7 +3280,7 @@ def get_documents_for_export(user_id, doc_type=None, date_from=None, date_to=Non
 
     if doc_type == "sell":
         # Sales include their credit notes: both belong in the sales ledger
-        query += " AND d.doc_type IN ('sell', 'credit')"
+        query += " AND d.doc_type IN ('sell', 'credit', 'advance')"
     elif doc_type:
         query += " AND d.doc_type = ?"
         params.append(doc_type)

@@ -8,6 +8,10 @@
                 {{ 'Automātiski nosūtīts' if ev.meta.send_type == 'recurring' else 'Nosūtīts klientam' }}
             {%- elif ev.doc_type == 'credit' -%}
                 Kredītrēķins izveidots
+            {%- elif ev.doc_type == 'advance' -%}
+                Avansa rēķins izveidots
+            {%- elif ev.doc_type == 'offer' -%}
+                Piedāvājums izveidots
             {%- else -%}
                 {{ 'Periodiskais rēķins izveidots' if ev.meta.source == 'recurring' else 'Rēķins izveidots' }}
             {%- endif -%}

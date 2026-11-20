@@ -2,8 +2,10 @@
 E-invoice (e-rēķins) generator for V-Rēķini.
 
 Writes UBL 2.1 XML to PEPPOL BIS Billing 3.0 (EN 16931, LVS EN 16931-1:2017):
-an Invoice (380), a corrective invoice (384, pointing at the invoice it
-replaces) or a CreditNote (381, pointing at the invoice it credits). VID
+an Invoice (380), a corrective invoice (380 pointing at the invoice it
+replaces), a CreditNote (381, pointing at the invoice it credits) or an advance
+invoice (386); a final invoice names the advances it deducts and subtracts them
+as PrepaidAmount. VID
 rejects anything that fails the PEPPOL Schematron, so the rules that bite are
 handled here and `problems()` names what the user still has to fill in.
 See E-INVOICING.md for the law behind it.
@@ -160,9 +162,15 @@ def _get_einvoice_data(doc_id):
         if o and o.get("user_id") == user_id:
             original = o
 
+    # A final invoice deducts the advances paid before it (BT-113), naming each one
+    # (BT-25), as it printed them
+    advances = db.document_advances(doc) if doc["doc_type"] == "sell" else []
+    prepaid = money.cents(sum(money.dec(a["total"]) for a in advances))
+
     return {"doc": doc, "items": items, "supplier": supplier, "buyer": buyer,
             "category": category, "rate": rate, "totals": totals, "original": original,
-            "is_credit": doc["doc_type"] == "credit"}
+            "is_credit": doc["doc_type"] == "credit", "is_advance": doc["doc_type"] == "advance",
+            "advances": advances, "prepaid": prepaid}
 
 
 def problems(doc_id):
@@ -259,7 +267,8 @@ def _tax_category(parent, tag, category, rate):
 
 
 def generate_einvoice_xml(doc_id):
-    """(xml_string, filename) for a sales invoice, corrective invoice or credit note."""
+    """(xml_string, filename) for a sales invoice, corrective invoice, credit note
+    or advance invoice."""
     d = _get_einvoice_data(doc_id)
     doc, items, totals = d["doc"], d["items"], d["totals"]
     credit = d["is_credit"]
@@ -278,8 +287,8 @@ def generate_einvoice_xml(doc_id):
     else:
         # A corrective invoice is a commercial invoice that names the one it
         # replaces (BillingReference below): that reference is what VID reads.
-        # PEPPOL keeps 384 for German parties only.
-        _text(root, "InvoiceTypeCode", "380")
+        # PEPPOL keeps 384 for German parties only. An advance invoice is 386.
+        _text(root, "InvoiceTypeCode", "386" if d["is_advance"] else "380")
     if (doc.get("notes") or "").strip():
         _text(root, "Note", doc["notes"].strip())
     _text(root, "DocumentCurrencyCode", CURRENCY)
@@ -290,11 +299,12 @@ def generate_einvoice_xml(doc_id):
     buyer_reg = "" if d["buyer"]["person"] else d["buyer"]["reg"]
     _text(root, "BuyerReference", (doc.get("buyer_reference") or "").strip() or buyer_reg or doc["doc_number"])
 
-    if d["original"]:
+    for earlier in ([d["original"]] if d["original"] else []) + [
+            {"doc_number": a["number"], "doc_date": a["date"]} for a in d["advances"]]:
         ref = SubElement(root, f"{{{NS_CAC}}}BillingReference")
         inv = SubElement(ref, f"{{{NS_CAC}}}InvoiceDocumentReference")
-        _text(inv, "ID", d["original"]["doc_number"])
-        _text(inv, "IssueDate", d["original"]["doc_date"])
+        _text(inv, "ID", earlier["doc_number"])
+        _text(inv, "IssueDate", earlier["doc_date"])
 
     _party(root, "AccountingSupplierParty", d["supplier"], d["category"], True)
     _party(root, "AccountingCustomerParty", d["buyer"], d["category"], False)
@@ -330,9 +340,12 @@ def generate_einvoice_xml(doc_id):
     _amount(lmt, "LineExtensionAmount", totals["subtotal"])
     _amount(lmt, "TaxExclusiveAmount", totals["subtotal"])
     _amount(lmt, "TaxInclusiveAmount", tax_inclusive)
+    if d["prepaid"]:
+        _amount(lmt, "PrepaidAmount", d["prepaid"])
     if totals["rounding"]:
         _amount(lmt, "PayableRoundingAmount", totals["rounding"])
-    _amount(lmt, "PayableAmount", totals["total"])
+    # BR-CO-16: amount due = total with VAT - paid amount + rounding
+    _amount(lmt, "PayableAmount", totals["total"] - d["prepaid"])
 
     line_tag, qty_tag = ("CreditNoteLine", "CreditedQuantity") if credit else ("InvoiceLine", "InvoicedQuantity")
     for idx, (item, line) in enumerate(zip(items, totals["lines"]), 1):

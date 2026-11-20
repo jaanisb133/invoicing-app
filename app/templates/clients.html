@@ -34,11 +34,17 @@
         </p>
     </div>
     <div class="btn-group">
+        <a href="/clients/import" class="btn btn-outline">Importēt</a>
         <button class="btn btn-primary" onclick="openAddClient()">Pievienot klientu</button>
     </div>
 </div>
 
 <div class="page-body">
+    {% set imported = request.query_params.get('imported') %}
+    {% if imported is not none and imported.isdigit() %}
+    {% set left = (request.query_params.get('not_imported') or '0') | int %}
+    <div class="alert alert-success">Importēti {{ imported }} {{ 'klients' if imported | int % 10 == 1 and imported | int % 100 != 11 else 'klienti' }}.{% if left %} {{ left }} {{ 'rinda netika importēta' if left % 10 == 1 and left % 100 != 11 else 'rindas netika importētas' }} (jau sarakstā, bez nosaukuma vai pāri plāna limitam).{% endif %}</div>
+    {% endif %}
     {% if request.query_params.get('error') == 'limit' %}
     <div class="alert alert-danger">Sasniegts klientu limits ({{ tier_limits.max_clients | limit_text }}). <a href="/pricing">Mainiet plānu</a>, lai pievienotu vairāk.</div>
     {% elif request.query_params.get('error') == 'duplicate' %}
@@ -102,9 +108,11 @@
         {{ empty_state(
             icon="client",
             title="Vēl nav neviena klienta",
-            text="Pievienojiet klientu vienreiz — turpmāk rēķinā pietiks ar nosaukuma sākumu.",
+            text="Pievienojiet klientu vienreiz vai ielādējiet visu sarakstu no Excel: turpmāk rēķinā pietiks ar nosaukuma sākumu.",
             cta_label="Pievienot klientu",
-            cta_onclick="openAddClient()") }}
+            cta_onclick="openAddClient()",
+            alt_href="/clients/import",
+            alt_label="Importēt no Excel") }}
         {% endif %}
     </section>
 </div>

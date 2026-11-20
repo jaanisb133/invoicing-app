@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Klientu imports · V-Rēķini{% endblock %}
+
+{% block content %}
+<style>
+.imp-steps { display: flex; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: var(--gap); flex-wrap: wrap; }
+.imp-steps b { color: var(--text); font-weight: 500; }
+.imp-drop { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--gap); }
+.imp-drop .file-pick { margin: 4px 0 16px; }
+.imp-cols { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.imp-cols li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--rule); }
+.imp-cols li:last-child { border-bottom: 0; }
+.imp-cols li span:last-child { color: var(--muted); text-align: right; }
+.imp-map td { vertical-align: top; padding-top: 10px; padding-bottom: 10px; }
+.imp-map .m-col { width: 32%; font-weight: 500; }
+.imp-map .m-sample { color: var(--muted); font-size: 13px; }
+.imp-map .m-sample span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; }
+.imp-map .m-field { width: 260px; }
+.imp-map select { height: 34px; }
+.imp-rows .r-n { width: 56px; color: var(--muted); }
+.imp-rows .r-status { white-space: nowrap; text-align: right; }
+.imp-rows tr.is-off td { color: var(--muted); }
+.imp-more { padding: 12px var(--card-pad); font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); }
+.imp-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 768px) {
+    .imp-drop { grid-template-columns: minmax(0, 1fr); }
+    .imp-map thead, .imp-rows thead { display: none; }
+    .imp-map, .imp-map tbody, .imp-rows, .imp-rows tbody { display: block; }
+    .imp-map tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px var(--card-pad); border-bottom: 1px solid var(--rule); }
+    .imp-map tbody tr:last-child { border-bottom: 0; }
+    .imp-map td { display: block; padding: 0 !important; height: auto; border: 0; width: auto !important; }
+    .imp-map .m-sample span { max-width: none; }
+    .imp-map .m-field { margin-top: 6px; }
+    .imp-rows tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px var(--card-pad); border-bottom: 1px solid var(--rule); }
+    .imp-rows tbody tr:last-child { border-bottom: 0; }
+    .imp-rows td { display: block; padding: 0 !important; height: auto; border: 0; width: auto !important; }
+    .imp-rows .r-n, .imp-rows .r-reg { display: none; }
+    .imp-rows .r-name { grid-column: 1; grid-row: 1; }
+    .imp-rows .r-status { grid-column: 2; grid-row: 1; }
+}
+</style>
+
+<div class="page-header">
+    <div>
+        <h1>Klientu imports</h1>
+        {% if step == 'upload' %}
+        <p class="page-sub">Ielādējiet klientu sarakstu no Excel vai CSV: no citas programmas, bankas vai savas tabulas.</p>
+        {% else %}
+        <p class="page-sub">{{ data.filename or 'Fails' }} · {{ data.rows | length }} {{ 'rinda' if data.rows | length % 10 == 1 and data.rows | length % 100 != 11 else 'rindas' }}. Pārbaudiet kolonnas: nekas vēl nav saglabāts.</p>
+        {% endif %}
+    </div>
+    <div class="btn-group">
+        <a href="/clients" class="btn btn-ghost">Atpakaļ uz klientiem</a>
+    </div>
+</div>
+
+<div class="page-body">
+{% if step == 'upload' %}
+    {% if error == 'expired' %}
+    <div class="alert alert-danger">Ielādētais fails vairs nav pieejams (tas glabājas vienu dienu). Ielādējiet to vēlreiz.</div>
+    {% elif error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    <div class="imp-drop">
+        <section class="card">
+            <div class="card-header">Fails</div>
+            <div class="card-body">
+                <form method="post" action="/clients/import" enctype="multipart/form-data" id="impForm">
+                    <p class="text-muted" style="font-size:14px;margin:0 0 4px">Excel (.xlsx) vai CSV, līdz 5 MB. Pirmā rinda ir kolonnu nosaukumi; nolasām pirmo lapu.</p>
+                    {# Our own button: the browser's "Choose File" speaks the browser's language, not Latvian #}
+                    <div class="file-pick">
+                        <input type="file" id="impFile" name="file" class="sr-only" required
+                               accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                        <label for="impFile" class="btn btn-outline">Izvēlēties failu</label>
+                        <span id="impFileName" class="text-muted">nav izvēlēts</span>
+                    </div>
+                    <div class="imp-actions">
+                        <button type="submit" class="btn btn-primary" id="impNext" disabled>Turpināt</button>
+                        <span class="text-muted" style="font-size:13px">Nākamajā solī redzēsiet, kas tiks pievienots.</span>
+                    </div>
+                </form>
+            </div>
+        </section>
+        <section class="card">
+            <div class="card-header">Ko nolasām</div>
+            <div class="card-body">
+                <ul class="imp-cols">
+                    {% for key, label in fields %}
+                    <li><span>{{ label }}</span><span>{% if key == 'name' %}obligāti{% elif key == 'reg_number' %}pēc tā atrodam dublikātus{% endif %}</span></li>
+                    {% endfor %}
+                </ul>
+                <p class="field-hint" style="margin-top:12px">Kolonnu nosaukumi var būt jebkuri: tos atpazīstam, un katru var mainīt priekšskatījumā.
+                    Paraugs: <a href="/static/paraugi/klienti-paraugs.xlsx" download>Excel</a> · <a href="/static/paraugi/klienti-paraugs.csv" download>CSV</a>.</p>
+            </div>
+        </section>
+    </div>
+{% else %}
+    {% set new = counts['new'] %}
+    {% if not has_name %}
+    <div class="alert alert-danger">Norādiet, kurā kolonnā ir klienta nosaukums: bez tā nevaram izveidot nevienu klientu.</div>
+    {% elif counts['limit'] %}
+    <div class="alert alert-warning">Jūsu plānā var pievienot vēl {{ room }} {{ 'klientu' if room % 10 == 1 and room % 100 != 11 else 'klientus' }}; {{ counts['limit'] }} no faila paliks neimportēti. <a href="/pricing">Plāni ar vairāk klientiem</a></div>
+    {% endif %}
+
+    <form method="post" action="/clients/import/{{ token }}" id="mapForm">
+    <section class="card">
+        <div class="card-header">Kolonnas <span class="hint">kas ir katrā faila kolonnā</span></div>
+        <div class="card-body flush">
+            <table class="imp-map">
+                <thead><tr><th class="m-col">Kolonna failā</th><th>Pirmās vērtības</th><th class="m-field">Saglabāt kā</th></tr></thead>
+                <tbody>
+                {% for col in data.header %}
+                {% set i = loop.index0 %}
+                <tr>
+                    <td class="m-col">{{ col }}</td>
+                    <td class="m-sample">{% for v in samples[i] %}<span>{{ v }}</span>{% else %}<span>tukša</span>{% endfor %}</td>
+                    <td class="m-field">
+                        <select name="c{{ i }}" class="form-control" aria-label="Lauks kolonnai {{ col }}">
+                            <option value="">Neimportēt</option>
+                            {% for key, label in fields %}
+                            <option value="{{ key }}" {% if mapping[i] == key %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            {% if new %}Tiks pievienoti {{ new }} {{ 'klients' if new % 10 == 1 and new % 100 != 11 else 'klienti' }}{% else %}Nav ko pievienot{% endif %}
+            <span class="hint">
+                {%- set parts = [] -%}
+                {%- if counts['dup'] %}{% set _ = parts.append(counts['dup'] ~ ' jau sarakstā') %}{% endif -%}
+                {%- if counts['skip'] %}{% set _ = parts.append(counts['skip'] ~ ' bez nosaukuma') %}{% endif -%}
+                {%- if counts['limit'] %}{% set _ = parts.append(counts['limit'] ~ ' pāri limitam') %}{% endif -%}
+                {{ parts | join(' · ') }}
+            </span>
+        </div>
+        <div class="card-body flush">
+            <table class="imp-rows">
+                <thead><tr><th class="r-n">Rinda</th><th class="r-name">Klients</th><th class="r-reg">Reģ. nr. · PVN nr.</th><th class="r-status">Rezultāts</th></tr></thead>
+                <tbody>
+                {% for r in plan[:200] %}
+                <tr class="{{ '' if r.status == 'new' else 'is-off' }}">
+                    <td class="r-n num">{{ r.n }}</td>
+                    <td class="r-name">
+                        {% if r.client %}
+                        <span style="font-weight:500">{{ r.client.name }}</span>
+                        <span class="cell-sub">{{ r.client.legal_address or r.client.email or ('Privātpersona' if r.client.client_type == 'individual' else '') }}</span>
+                        {% else %}<span class="muted">—</span>{% endif %}
+                    </td>
+                    <td class="r-reg">{% if r.client %}{{ r.client.reg_number or '—' }}{% if r.client.vat_number %} · {{ r.client.vat_number }}{% endif %}{% endif %}</td>
+                    <td class="r-status">
+                        {% if r.status == 'new' %}<span class="pill pill-success">jauns</span>
+                        {% else %}<span class="pill pill-outline">{{ r.note }}</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% if plan | length > 200 %}
+            <div class="imp-more">Rādītas pirmās 200 no {{ plan | length }} rindām; importēsim visas.</div>
+            {% endif %}
+        </div>
+    </section>
+
+    <div class="imp-actions">
+        <button type="submit" class="btn btn-primary" {% if not new %}disabled{% endif %}>
+            Importēt {{ new }} {{ 'klientu' if new % 10 == 1 and new % 100 != 11 else 'klientus' }}
+        </button>
+        <button type="submit" class="btn btn-outline" formmethod="get" formaction="/clients/import/{{ token }}" id="impRefresh">Atjaunot priekšskatījumu</button>
+        <a href="/clients/import" class="btn btn-ghost">Cits fails</a>
+    </div>
+    </form>
+{% endif %}
+</div>
+
+<script>
+(function () {
+    var file = document.getElementById('impFile');
+    if (file) {
+        file.addEventListener('change', function () {
+            var f = file.files && file.files[0];
+            document.getElementById('impFileName').textContent = f ? f.name : 'nav izvēlēts';
+            document.getElementById('impNext').disabled = !f;
+        });
+    }
+    // A changed column redraws the preview at once; without script the button does it
+    var form = document.getElementById('mapForm');
+    if (form) {
+        var refresh = document.getElementById('impRefresh');
+        if (refresh) refresh.hidden = true;
+        form.querySelectorAll('select').forEach(function (sel) {
+            sel.addEventListener('change', function () {
+                var q = new URLSearchParams(new FormData(form));
+                location.replace(location.pathname + '?' + q.toString());
+            });
+        });
+    }
+})();
+</script>
+{% endblock %}

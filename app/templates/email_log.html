@@ -49,6 +49,10 @@
                                 <span class="pill pill-warning">Iegāde</span>
                                 {% elif e.doc_type == 'sell' %}
                                 <span class="pill pill-brand">Pārdošana</span>
+                                {% elif e.doc_type == 'advance' %}
+                                <span class="pill pill-brand">Avanss</span>
+                                {% elif e.doc_type == 'credit' %}
+                                <span class="pill pill-brand">Kredītrēķins</span>
                                 {% else %}
                                 —
                                 {% endif %}

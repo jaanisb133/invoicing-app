@@ -235,10 +235,14 @@ function statusCell(d) {
     // Credit notes aren't paid; a cancelled or replaced invoice isn't owed
     if (d.doc_type === 'credit') return '<td class="c-status"></td>';
     if (d.state) return '<td class="c-status"><span class="pill pill-outline">' + STATE_LABEL[d.state] + '</span></td>';
+    // An advance a final invoice deducts, or a final invoice its advances paid in full
+    if (d.deducted) return '<td class="c-status"><span class="pill pill-success">ieskaitīts</span></td>';
+    if (d.doc_type === 'sell' && d.status !== 'paid' && d.amount_due <= 0)
+        return '<td class="c-status"><span class="pill pill-success">avanss sedz</span></td>';
     const paid = d.status === 'paid';
     let label = 'gaida', cls = 'pill-neutral';
     if (paid) { label = 'apmaksāts'; cls = 'pill-success'; }
-    else if (d.doc_type === 'sell' && d.payment_due_date && d.payment_due_date < TODAY) {
+    else if ((d.doc_type === 'sell' || d.doc_type === 'advance') && d.payment_due_date && d.payment_due_date < TODAY) {
         label = 'kavēts ' + daysBetween(d.payment_due_date, TODAY) + ' d.'; cls = 'pill-danger';
     }
     return '<td class="c-status"><button type="button" class="pill status-btn ' + cls + '" data-doc-id="' + d.id + '" data-status="' + (d.status || 'issued') + '" onclick="toggleStatus(this)" title="Mainīt statusu">' + label + '</button></td>';
@@ -247,12 +251,13 @@ function statusCell(d) {
 function rowHtml(d) {
     const date = fmtDate(d.doc_date);
     const typeTag = d.doc_type === 'buy' ? ' <span class="pill pill-warning">iegāde</span>'
-        : d.doc_type === 'credit' ? ' <span class="pill pill-outline">kredītrēķins</span>' : '';
+        : d.doc_type === 'credit' ? ' <span class="pill pill-outline">kredītrēķins</span>'
+        : d.doc_type === 'advance' ? ' <span class="pill pill-outline">avanss</span>' : '';
     const excl = (d.excluded_from_stats ? ' <span class="pill pill-outline" title="Netiek ieskaitīts pārskatos">ārpus pārskata</span>' : '')
         + (d.state && !statusTracking ? ' <span class="pill pill-outline">' + STATE_LABEL[d.state] + '</span>' : '');
     let due = '';
     if (statusTracking) {
-        if (!d.payment_due_date || d.doc_type !== 'sell' || d.state) due = '<td class="c-due num muted">—</td>';
+        if (!d.payment_due_date || (d.doc_type !== 'sell' && d.doc_type !== 'advance') || d.state || d.deducted) due = '<td class="c-due num muted">—</td>';
         else {
             const late = d.status !== 'paid' && d.payment_due_date < TODAY;
             due = '<td class="c-due num' + (late ? ' due-late' : '') + '">' + fmtDate(d.payment_due_date) + '</td>';
@@ -287,7 +292,8 @@ function renderDocs(docs) {
     tbody.innerHTML = docs.map(rowHtml).join('');
     // The footer is computed from the rows on screen, so it always agrees with
     // them: credit notes subtract, a replaced invoice counts through its correction.
-    const total = docs.reduce((a, d) => a + (d.state === 'replaced' ? 0 : Number(d.total_with_vat || 0)), 0);
+    // Advances (and credit notes cancelling them) are no turnover: the final invoice carries the sale.
+    const total = docs.reduce((a, d) => a + (d.state === 'replaced' || !d.in_total ? 0 : Number(d.total_with_vat || 0)), 0);
     const n = docs.length;
     foot.hidden = false;
     foot.innerHTML = '<span>' + n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? 'dokuments' : 'dokumenti') + '</span><span>Kopā <b>' + fmtEur(total) + '</b></span>';
@@ -296,11 +302,13 @@ function renderDocs(docs) {
 function menuHtml(d) {
     // A sent invoice isn't edited or deleted: it is corrected or cancelled by a new document
     const fixable = d.locked && d.doc_type === 'sell' && !d.state;
+    const cancellable = d.locked && d.doc_type === 'advance' && !d.state && !d.deducted;
     let items = '<a href="/documents/' + d.id + '" class="row-menu-item">Atvērt</a>'
         + (d.locked ? '' : '<a href="/documents/' + d.id + '/edit" class="row-menu-item">Rediģēt</a>')
         + (fixable ? '<a href="/documents/new?corrects=' + d.id + '" class="row-menu-item">Koriģēt</a>'
             + '<a href="/documents/new?credits=' + d.id + '" class="row-menu-item">Izrakstīt kredītrēķinu</a>'
             + '<a href="/documents/' + d.id + '?cancel=1" class="row-menu-item">Anulēt…</a>' : '')
+        + (cancellable ? '<a href="/documents/' + d.id + '?cancel=1" class="row-menu-item">Anulēt…</a>' : '')
         + '<a href="/documents/' + d.id + '/pdf" class="row-menu-item" target="_blank">Lejupielādēt PDF</a>'
         + (einvoiceEnabled
             ? '<a href="/documents/' + d.id + '/einvoice" class="row-menu-item" target="_blank">E-rēķins (XML)</a>'
@@ -309,7 +317,7 @@ function menuHtml(d) {
         + (emailEnabled
             ? '<button type="button" class="row-menu-item" data-action="send" data-doc-id="' + d.id + '" data-client-id="' + (d.client_id || '') + '">Nosūtīt klientam</button>'
             : '<a href="/pricing" class="row-menu-item row-menu-disabled">Nosūtīt klientam · {{ plans.mini.label }}</a>')
-        + (recurringEnabled
+        + (d.doc_type === 'credit' || d.doc_type === 'advance' ? '' : recurringEnabled
             ? '<button type="button" class="row-menu-item" data-action="recurring" data-doc-id="' + d.id + '">Padarīt periodisku</button>'
             : '<a href="/pricing" class="row-menu-item row-menu-disabled">Padarīt periodisku · {{ plans.starter.label }}</a>')
         + (d.locked ? '' : '<div class="row-menu-divider"></div>'
@@ -364,7 +372,7 @@ if (window.vrSwipe) vrSwipe.attach(document.getElementById('docsBody'), function
     const d = docsData.find(x => String(x.id) === tr.dataset.id);
     if (!d) return [];
     const acts = [];
-    if (statusTracking && d.doc_type === 'sell' && !d.state) acts.push({
+    if (statusTracking && (d.doc_type === 'sell' || d.doc_type === 'advance') && !d.state && !d.deducted) acts.push({
         label: d.status === 'paid' ? 'Neapmaksāts' : 'Apmaksāts', tone: d.status === 'paid' ? '' : 'pos',
         run: row => { const b = row.querySelector('.status-btn'); if (b) toggleStatus(b); }
     });

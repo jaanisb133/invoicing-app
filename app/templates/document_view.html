@@ -4,9 +4,13 @@
 {% set list_href = '/offers' if is_offer else '/documents' %}
 {% set list_label = 'Piedāvājumi' if is_offer else ('Dokumenti' if stock_enabled else 'Rēķini') %}
 {% set is_credit = doc.doc_type == 'credit' %}
-{% set doc_name = settings.get('buy_doc_name', 'Rēķins') if doc.doc_type == 'buy' else (settings.get('offer_doc_name', 'Piedāvājums') if is_offer else ('Kredītrēķins' if is_credit else settings.get('sell_doc_name', 'Rēķins'))) %}
+{% set is_advance = doc.doc_type == 'advance' %}
+{% set doc_name = settings.get('buy_doc_name', 'Rēķins') if doc.doc_type == 'buy' else (settings.get('offer_doc_name', 'Piedāvājums') if is_offer else ('Kredītrēķins' if is_credit else ('Avansa rēķins' if is_advance else settings.get('sell_doc_name', 'Rēķins')))) %}
 {% set state = doc.status if doc.status in ('cancelled', 'replaced') else '' %}
 {% set fixable = locked and doc.doc_type == 'sell' and not state %}
+{# A sent advance is cancelled with a full credit note, until a final invoice deducts it #}
+{% set cancellable = fixable or (locked and is_advance and not state and not advance_holder) %}
+{% set offer_finals = offer_invoices | selectattr('doc_type', 'equalto', 'sell') | list %}
 {% set due = doc.payment_due_date if (doc.payment_due_date and not is_offer) else '' %}
 {% set is_paid = doc.status == 'paid' %}
 {% set is_late = tracking and not is_paid and due and due < today and doc.status not in ('cancelled', 'replaced') %}
@@ -62,6 +66,8 @@
                 <span class="pill pill-outline">kredītrēķins</span>
             {% elif state %}
                 <span class="pill pill-outline">{{ 'anulēts' if state == 'cancelled' else 'aizstāts' }}</span>
+            {% elif advance_holder %}
+                <span class="pill pill-success">ieskaitīts</span>
             {% elif tracking %}
                 {% if is_paid %}<span class="pill pill-success">apmaksāts</span>
                 {% elif is_late %}<span class="pill pill-danger">kavēts</span>
@@ -74,8 +80,8 @@
     </div>
     <div class="btn-group">
         {% if is_offer %}
-        <a href="/documents/new?from_offer={{ doc.id }}" class="btn {% if offer_invoices %}btn-outline{% else %}btn-primary{% endif %}"
-           {% if offer_invoices %}onclick="return confirm('Šim piedāvājumam jau ir rēķins {{ offer_invoices[0].doc_number }}. Izveidot vēl vienu?')"{% endif %}>Izveidot rēķinu</a>
+        <a href="/documents/new?from_offer={{ doc.id }}" class="btn {% if offer_finals %}btn-outline{% else %}btn-primary{% endif %}"
+           {% if offer_finals %}onclick="return confirm('Šim piedāvājumam jau ir rēķins {{ offer_finals[0].doc_number }}. Izveidot vēl vienu?')"{% endif %}>Izveidot rēķinu</a>
         {% elif email_enabled %}
         <button type="button" class="btn {{ 'btn-outline' if state else 'btn-primary' }}" onclick="showSendModal()">Nosūtīt klientam</button>
         {% endif %}
@@ -90,8 +96,14 @@
                 <a href="/documents/new?credits={{ doc.id }}" class="view-menu-item">Izrakstīt kredītrēķinu</a>
                 <button type="button" class="view-menu-item" onclick="closeAllMenus();openCancel()">Anulēt…</button>
                 <div class="view-menu-divider"></div>
+                {% elif cancellable %}
+                <button type="button" class="view-menu-item" onclick="closeAllMenus();openCancel()">Anulēt…</button>
+                <div class="view-menu-divider"></div>
                 {% elif not locked %}
                 <a href="/documents/{{ doc.id }}/edit" class="view-menu-item">Rediģēt</a>
+                {% endif %}
+                {% if is_offer %}
+                <a href="/documents/new?from_offer={{ doc.id }}&doc_type=advance" class="view-menu-item">Izrakstīt avansa rēķinu</a>
                 {% endif %}
                 {% if is_offer and email_enabled %}
                 <button type="button" class="view-menu-item" onclick="closeAllMenus();showSendModal()">Nosūtīt klientam</button>
@@ -104,7 +116,7 @@
                     {% else %}
                     <a href="/pricing" class="view-menu-item view-menu-disabled">E-rēķins (XML) · {{ plans.mini.label }}</a>
                     {% endif %}
-                    {% if is_credit %}
+                    {% if is_credit or is_advance %}
                     {% elif recurring_enabled %}
                     <button type="button" class="view-menu-item" onclick="closeAllMenus();showRecurringModal()">Padarīt periodisku</button>
                     {% else %}
@@ -138,7 +150,7 @@
     {% endif %}
     {% if original %}
     <div class="alert">
-        {% if is_credit %}Kredītrēķins rēķinam{% else %}Koriģējošais rēķins: aizstāj rēķinu{% endif %}
+        {% if is_credit %}Kredītrēķins {{ 'avansa rēķinam' if original.doc_type == 'advance' else 'rēķinam' }}{% else %}Koriģējošais rēķins: aizstāj rēķinu{% endif %}
         <a href="/documents/{{ original.id }}">{{ original.doc_number }}</a> no {{ dmy(original.doc_date) }}.
     </div>
     {% endif %}
@@ -147,7 +159,7 @@
         {% for f in followups %}
         {% if f.doc_type == 'credit' %}Kredītrēķins <a href="/documents/{{ f.id }}">{{ f.doc_number }}</a> ({{ f.total | eur }}){% else %}Aizstāts ar rēķinu <a href="/documents/{{ f.id }}">{{ f.doc_number }}</a>{% endif %}{{ ', ' if not loop.last else '.' }}
         {% endfor %}
-        {% if state == 'cancelled' %}Rēķins ir anulēts.{% elif credited and not state %}Kreditēti {{ credited | eur }} no {{ total | eur }}.{% endif %}
+        {% if state == 'cancelled' %}{{ doc_name }} ir anulēts.{% elif credited and not state %}Kreditēti {{ credited | eur }} no {{ total | eur }}.{% endif %}
     </div>
     {% endif %}
     {% if request.query_params.get('scheduled') %}
@@ -181,10 +193,13 @@
         <aside class="rail">
             <section class="card">
                 <div class="card-body">
-                    <div class="kpi-label">{{ 'Summa' if (is_offer or state) else ('Kreditētā summa' if is_credit else 'Kopā apmaksai') }}</div>
-                    <div class="sum-total">{{ total | eur }}</div>
+                    <div class="kpi-label">{{ 'Summa' if (is_offer or state) else ('Kreditētā summa' if is_credit else ('Apmaksai' if advances else 'Kopā apmaksai')) }}</div>
+                    <div class="sum-total">{{ (amount_due if advances and not state else total) | eur }}</div>
                     {% if settings.get('is_vat_payer', '1') == '1' %}
                     <div class="sum-sub">bez PVN {{ subtotal | eur }} · PVN {{ vat_amount | eur }}{% if rounding %} · noapaļošana {{ rounding | eur }}{% endif %}</div>
+                    {% endif %}
+                    {% if advances %}
+                    <div class="sum-sub">kopā {{ total | eur }} · avanss −{{ doc.prepaid | eur }}</div>
                     {% endif %}
                     <dl class="facts">
                         <dt>{{ 'Piegādātājs' if doc.doc_type == 'buy' else 'Klients' }}</dt>
@@ -201,14 +216,17 @@
                         {% if client.email %}
                         <dt>E-pasts</dt><dd>{{ client.email }}</dd>
                         {% endif %}
-                        {% if doc.doc_type in ('sell', 'credit') %}
+                        {% if is_advance and doc.paid_on and is_paid %}
+                        <dt>Samaksāts</dt><dd class="num">{{ dmy(doc.paid_on) }}</dd>
+                        {% endif %}
+                        {% if doc.doc_type in ('sell', 'credit', 'advance') %}
                         <dt>Nosūtīts</dt><dd>{% if doc.sent_at %}{{ dmy(doc.sent_at[:10]) }}{% else %}vēl nav{% endif %}</dd>
                         {% endif %}
                     </dl>
-                    {% if doc.doc_type in ('sell', 'credit') %}
+                    {% if doc.doc_type in ('sell', 'credit', 'advance') %}
                     <p class="lock-note">
                         {% if locked %}
-                        Nosūtītu dokumentu vairs nemaina un nedzēš: {% if fixable %}kļūdu labo ar koriģējošo rēķinu, darījumu atceļ ar kredītrēķinu.{% else %}tā prasa e-rēķinu kārtība.{% endif %}
+                        Nosūtītu dokumentu vairs nemaina un nedzēš: {% if fixable %}kļūdu labo ar koriģējošo rēķinu, darījumu atceļ ar kredītrēķinu.{% elif is_advance and advance_holder %}avanss ieskaitīts gala rēķinā.{% elif is_advance %}ja avansu nemaksās vai to atmaksāsiet, anulējiet to.{% else %}tā prasa e-rēķinu kārtība.{% endif %}
                         {% else %}
                         Kamēr nav nosūtīts, to var labot. Ja sūtāt PDF pats, atzīmējiet to:
                         <form method="post" action="/documents/{{ doc.id }}/mark-sent" style="margin:8px 0 0" onsubmit="return confirm('Pēc tam {{ doc.doc_number }} vairs nevarēs labot vai dzēst. Turpināt?')">
@@ -223,8 +241,11 @@
                         <ul>{% for p in einvoice_problems %}<li>{{ p }}</li>{% endfor %}</ul>
                     </div>
                     {% endif %}
-                    {% if tracking and not state %}
+                    {% if (tracking or is_advance) and not state and not advance_holder %}
                     <div class="rail-actions">
+                        {% if is_advance and is_paid %}
+                        <a href="/documents/new?advance={{ doc.id }}" class="btn btn-secondary">Izrakstīt gala rēķinu</a>
+                        {% endif %}
                         <form method="post" action="/documents/{{ doc.id }}/status">
                             {% if is_paid %}
                             <button type="submit" class="btn btn-outline">Atzīmēt kā neapmaksātu</button>
@@ -250,6 +271,19 @@
                         </form>
                         {% endfor %}
                     </div>
+                </div>
+            </section>
+            {% endif %}
+
+            {% if advance_holder or advances %}
+            <section class="card">
+                <div class="card-body link-note">
+                    {% if advance_holder %}
+                    Avanss ieskaitīts gala rēķinā <a href="/documents/{{ advance_holder.id }}">{{ advance_holder.doc_number }}</a>.
+                    {% else %}
+                    Rēķinā {{ 'ieskaitīts avanss' if advances | length == 1 else 'ieskaitīti avansi' }}
+                    {% for a in advances %}<a href="/documents/{{ a.id }}">{{ a.number }}</a> ({{ a.total | eur }}){{ ', ' if not loop.last else '.' }}{% endfor %}
+                    {% endif %}
                 </div>
             </section>
             {% endif %}
@@ -320,14 +354,14 @@
     </div>
 </div>
 
-{% if fixable %}
-<!-- Cancel: a credit note for the whole invoice -->
+{% if cancellable %}
+<!-- Cancel: a credit note for the whole invoice (or advance) -->
 <div class="modal-overlay" id="cancelModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal" style="max-width:520px">
         <div class="modal-title">Anulēt {{ doc.doc_number }}</div>
         <p class="text-muted" style="margin:-8px 0 16px">
             Tiks izrakstīts kredītrēķins par visu summu ({{ total | eur }}) ar šodienas datumu.
-            Rēķins {{ doc.doc_number }} paliks tāds, kāds tas izsniegts, un tiks atzīmēts kā anulēts.
+            {{ doc_name }} {{ doc.doc_number }} paliks tāds, kāds tas izsniegts, un tiks atzīmēts kā anulēts.
             Kredītrēķins pēc tam jānosūta klientam.
         </p>
         <form method="post" action="/documents/{{ doc.id }}/cancel">
@@ -430,6 +464,9 @@ const docData = {
     vat: {{ (0 if doc.reverse_charge else vat_amount) | tojson }},
     rounding: {{ rounding | tojson }},
     total: {{ total | tojson }},
+    // a final invoice: the advances it deducts; an advance: the day it arrived (PVN likums 126(1)7)
+    advances: {{ advances | tojson }},
+    received: {{ (dmy(doc.paid_on) if (is_advance and doc.paid_on and doc.paid_on != doc.doc_date) else '') | tojson }},
     ref: {{ ref_line | tojson }},
     vatPayer: {{ 'true' if settings.get('is_vat_payer', '1') == '1' else 'false' }},
     reverseCharge: {{ 'true' if doc.reverse_charge else 'false' }}

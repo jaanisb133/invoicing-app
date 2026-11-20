@@ -20,6 +20,7 @@
         <a href="#nosutit" class="plain">Nosūtīšana klientam</a>
         <a href="#apmaksa" class="plain">Apmaksa un kavētie rēķini</a>
         <a href="#piedavajumi" class="plain">Piedāvājumi</a>
+        <a href="#avansi" class="plain">Avansa rēķini</a>
         <a href="#periodiskie" class="plain">Periodiskie rēķini</a>
         <a href="#e-rekini" class="plain">E-rēķini</a>
         <a href="#eksports" class="plain">Eksports grāmatvedim</a>
@@ -58,6 +59,7 @@
             <h2>Klienti un produkti</h2>
             <p>Klientus un produktus var pievienot uzreiz rēķinā vai sadaļās <a href="/clients">Klienti</a> un <a href="/products">Produkti</a>. Produktam saglabājas mērvienība, un nākamajā rēķinā ienāk tā pēdējā cena.</p>
             <p>Klientu sarakstā redzams, kad katram izrakstīts pēdējais rēķins, un no turienes var uzreiz izrakstīt jaunu.</p>
+            <p>Ja klienti jau ir citā programmā vai Excel tabulā, sadaļā <a href="/clients">Klienti</a> spiediet <b>Importēt</b> un ielādējiet .xlsx vai CSV failu. Kolonnas atpazīstam pēc nosaukumiem, un pirms saglabāšanas redzat, kas tiks pievienots; klienti, kas jau ir sarakstā (pēc reģ. nr.), netiek dublēti. Paraugs: <a href="/static/paraugi/klienti-paraugs.xlsx" download>Excel</a>.</p>
         </section>
 
         <section class="card help-sec" id="nosutit">
@@ -76,6 +78,13 @@
         <section class="card help-sec" id="piedavajumi">
             <h2>Piedāvājumi un rēķins no piedāvājuma</h2>
             <p>Sadaļā <a href="/offers">Piedāvājumi</a> veidojiet cenu piedāvājumus tieši tāpat kā rēķinus. Kad klients piekrīt, atzīmējiet to kā <b>pieņemtu</b> un spiediet <b>Izveidot rēķinu</b>: rindas un cenas pārceļas, un pirms saglabāšanas tās var labot. Piedāvājumi neskaitās mēneša rēķinu limitā.</p>
+        </section>
+
+        <section class="card help-sec" id="avansi">
+            <h2>Avansa rēķini</h2>
+            <p>Ja pirms darba prasāt avansu, jaunā rēķina augšā izvēlieties <b>Avansa rēķins</b> vai piedāvājuma izvēlnē ⋯ <b>Izrakstīt avansa rēķinu</b>. Avansa rēķiniem ir sava numerācija (AV-…), un tie neietekmē apgrozījumu pārskatā.</p>
+            <p>Kad klients samaksā, atzīmējiet avansa rēķinu kā <b>apmaksātu</b> un spiediet <b>Izrakstīt gala rēķinu</b>. Gala rēķinā norādiet visu piegādi: samaksātais avanss tiek atskaitīts no kopsummas, un klientam paliek apmaksāt tikai atlikumu. Gala rēķinā ieskaitīt var tikai apmaksātus avansus.</p>
+            <p>Ja avanss netiks maksāts vai to atmaksājat, avansa rēķina izvēlnē spiediet <b>Anulēt</b>: tiks izrakstīts kredītrēķins.</p>
         </section>
 
         <section class="card help-sec" id="periodiskie">
